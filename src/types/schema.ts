@@ -221,6 +221,48 @@ export interface KnowledgeBaseEntry {
 }
 
 // -----------------------------------
+// --- Appointment & Scheduling ---
+
+export interface AvailabilityProfile {
+  id: string; // User ID or Org ID
+  workingDays: ('Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'|'Sun')[];
+  workingHours: { day: string; start: string; end: string }[];
+  consultationHours?: { day: string; start: string; end: string }[];
+  unavailableDates: { start: string; end: string; reason?: string }[];
+  backupContactId?: string;
+  allowedChannels: ('inPerson'|'video'|'chat'|'phone')[];
+  appointmentReasons?: string[];
+}
+
+export interface Holiday {
+  id: string;
+  region: string; // 'NG', 'US', etc.
+  date: string; // YYYY-MM-DD
+  description: string;
+}
+
+export interface Appointment {
+  id: string;
+  title: string;
+  participants: string[]; // User IDs
+  initiator: string; // User ID
+  reason: 'assessment' | 'therapy' | 'consultation' | 'followUp' | 'remoteSession' | string;
+  channel: 'inPerson' | 'video' | 'chat' | 'phone';
+  location?: string; // Physical or Link
+  
+  startTime: string; // ISO
+  endTime: string; // ISO
+  
+  status: 'proposed' | 'confirmed' | 'rescheduled' | 'cancelled';
+  proposedSlots?: { start: string; end: string }[];
+  
+  caseId?: string;
+  createdByAI?: boolean;
+  urgent?: boolean;
+  notes?: string;
+}
+
+// -----------------------------------
 
 export interface Observation {
   id: string;
@@ -294,19 +336,6 @@ export interface TrainingData {
   outcome?: 'positive' | 'neutral' | 'negative';
   anonymizedTranscript?: string;
   embedding?: number[]; 
-}
-
-// Phase 2: Appointments
-export interface Appointment {
-  id: string;
-  caseId?: string; 
-  participants: string[]; 
-  startTime: string; 
-  endTime: string; 
-  type: 'assessment' | 'counseling' | 'follow-up';
-  status: 'scheduled' | 'completed' | 'cancelled';
-  meetingLink?: string;
-  notes?: string;
 }
 
 // Phase 3: Placeholders
