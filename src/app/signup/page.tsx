@@ -1,4 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,6 +21,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Logo } from "@/components/logo";
+import { auth, db } from "@/lib/firebase";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 const roles = [
   "Admin",
@@ -32,6 +41,72 @@ const roles = [
 ];
 
 export default function SignupPage() {
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
+  const { toast } = useToast();
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsLoading(true);
+
+    const formData = new FormData(event.currentTarget);
+    const name = formData.get("name") as string;
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+    const role = formData.get("role") as string; // Note: Select component handling might need care
+
+    // Since Radix Select doesn't inject directly into FormData in some setups without hidden inputs,
+    // we'll assume the user picks one or handle it via state if strictly necessary. 
+    // For this simple example, let's grab the value from a hidden input or state if we wired it up.
+    // To keep it simple, I'll rely on the user filling it out.
+    // NOTE: In a real React Hook Form setup, this is cleaner. 
+    // I will mock the role retrieval or default to "parent" if missing for this pure HTML submit example, 
+    // BUT actually, I will switch this to use state for the role to be safe.
+
+    if (!role) {
+       toast({ title: "Role required", description: "Please select a role.", variant: "destructive" });
+       setIsLoading(false);
+       return;
+    }
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      await updateProfile(user, {
+        displayName: name,
+      });
+
+      // Create user document in Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: user.email,
+        displayName: name,
+        role: role,
+        createdAt: new Date().toISOString(),
+      });
+
+      toast({
+        title: "Account created",
+        description: "Welcome to MindKindler!",
+      });
+
+      router.push("/dashboard");
+    } catch (error: any) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // State for role to ensure we capture it
+  const [selectedRole, setSelectedRole] = useState("");
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-secondary/50 p-4">
       <Card className="mx-auto w-full max-w-sm">
@@ -45,15 +120,16 @@ export default function SignupPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4">
+          <form onSubmit={handleSubmit} className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="full-name">Full Name</Label>
-              <Input id="full-name" placeholder="John Doe" required />
+              <Label htmlFor="name">Full Name</Label>
+              <Input id="name" name="name" placeholder="John Doe" required />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="m@example.com"
                 required
@@ -61,11 +137,13 @@ export default function SignupPage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" required />
+              <Input id="password" name="password" type="password" required />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="role">Your Role</Label>
-              <Select>
+              {/* Hidden input to pass the select value to formData */}
+              <input type="hidden" name="role" value={selectedRole} />
+              <Select onValueChange={setSelectedRole} required>
                 <SelectTrigger id="role">
                   <SelectValue placeholder="Select your role" />
                 </SelectTrigger>
@@ -78,10 +156,11 @@ export default function SignupPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" className="w-full">
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Create account
             </Button>
-          </div>
+          </form>
           <div className="mt-4 text-center text-sm">
             Already have an account?{" "}
             <Link href="/login" className="underline">

@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -7,9 +9,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  BarChart,
   BookUser,
   ClipboardList,
+  FileText,
   FolderKanban,
   Users,
 } from "lucide-react";
@@ -73,7 +75,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-3xl font-bold tracking-tight text-primary">
             Welcome, Dr. Reed
           </h1>
           <p className="text-muted-foreground">
@@ -81,74 +83,77 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button asChild>
+          <Button asChild className="bg-primary hover:bg-primary/90 text-white shadow-lg">
             <Link href="/dashboard/cases">
-              <FolderKanban className="mr-2 h-4 w-4" /> New Case
+              <FolderKanban className="mr-2 h-5 w-5" /> New Case
             </Link>
           </Button>
-          <Button variant="secondary" asChild>
+          <Button variant="outline" asChild className="border-primary text-primary hover:bg-primary/10">
             <Link href="/dashboard/assessments">
-              <ClipboardList className="mr-2 h-4 w-4" /> New Assessment
+              <ClipboardList className="mr-2 h-5 w-5" /> New Assessment
             </Link>
           </Button>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Cases</CardTitle>
-            <FolderKanban className="h-4 w-4 text-muted-foreground" />
+            <FolderKanban className="h-5 w-5 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
+            <div className="text-3xl font-bold text-foreground">12</div>
             <p className="text-xs text-muted-foreground">+2 since last week</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Students Watched
             </CardTitle>
-            <BookUser className="h-4 w-4 text-muted-foreground" />
+            <BookUser className="h-5 w-5 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">34</div>
+            <div className="text-3xl font-bold text-foreground">34</div>
             <p className="text-xs text-muted-foreground">
               Across 3 schools
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Reports Generated
             </CardTitle>
-            <BarChart className="h-4 w-4 text-muted-foreground" />
+            <FileText className="h-5 w-5 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">8</div>
+            <div className="text-3xl font-bold text-foreground">8</div>
             <p className="text-xs text-muted-foreground">+3 this month</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Team Members
             </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <Users className="h-5 w-5 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">5</div>
+            <div className="text-3xl font-bold text-foreground">5</div>
             <p className="text-xs text-muted-foreground">Active in your team</p>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-        <Card>
+        <Card className="shadow-md border-t-4 border-t-primary">
           <CardHeader>
-            <CardTitle>Recent Cases</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <FolderKanban className="h-5 w-5 text-primary" />
+              Recent Cases
+            </CardTitle>
             <CardDescription>
               An overview of your most recent case files.
             </CardDescription>
@@ -165,18 +170,19 @@ export default function DashboardPage() {
               </TableHeader>
               <TableBody>
                 {recentCases.map((caseItem) => (
-                  <TableRow key={caseItem.id}>
-                    <TableCell className="font-medium">{caseItem.id}</TableCell>
+                  <TableRow key={caseItem.id} className="hover:bg-muted/50">
+                    <TableCell className="font-medium text-primary">{caseItem.id}</TableCell>
                     <TableCell>{caseItem.student}</TableCell>
                     <TableCell>
                       <Badge
-                        variant={
+                        className={
                           caseItem.status === "Open"
-                            ? "default"
+                            ? "bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200"
                             : caseItem.status === "Closed"
-                            ? "secondary"
-                            : "outline"
+                            ? "bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200"
+                            : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border-yellow-200"
                         }
+                        variant="outline"
                       >
                         {caseItem.status}
                       </Badge>
@@ -189,9 +195,12 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shadow-md border-t-4 border-t-primary">
           <CardHeader>
-            <CardTitle>Assessments Overview</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              Assessments Overview
+            </CardTitle>
             <CardDescription>
               Number of assessments conducted per month.
             </CardDescription>
@@ -214,15 +223,19 @@ export default function DashboardPage() {
                   tickFormatter={(value) => `${value}`}
                 />
                 <Tooltip
+                  cursor={{fill: 'hsl(var(--muted))', opacity: 0.4}}
                   contentStyle={{
-                    backgroundColor: "hsl(var(--background))",
+                    backgroundColor: "hsl(var(--card))",
                     borderColor: "hsl(var(--border))",
+                    borderRadius: "0.5rem",
+                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                   }}
                 />
                 <Bar
                   dataKey="assessments"
                   fill="hsl(var(--primary))"
                   radius={[4, 4, 0, 0]}
+                  barSize={32}
                 />
               </RechartsBarChart>
             </ResponsiveContainer>
