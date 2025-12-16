@@ -66,6 +66,7 @@ export interface Case {
   }[];
 }
 
+// Deprecated or Legacy Assessment (Manual Entry)
 export interface Assessment {
   id: string;
   caseId?: string; 
@@ -80,6 +81,72 @@ export interface Assessment {
   notes?: string;
   voiceNoteUrl?: string; // Audio/Video URL
 }
+
+// --- New Assessment Module Types ---
+
+export type QuestionType = 'multiple-choice' | 'true-false' | 'short-answer' | 'essay' | 'audio-response' | 'video-response' | 'scale';
+
+export interface Question {
+  id: string;
+  type: QuestionType;
+  text: string;
+  options?: string[]; // For MC, scale
+  correctAnswer?: string | string[];
+  points: number;
+  mediaUrl?: string; // Image/Audio/Video
+  mediaType?: 'image' | 'audio' | 'video';
+  hint?: string;
+  required: boolean;
+}
+
+export interface AssessmentTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: string; // e.g., 'Reading', 'Behavioral'
+  questions: Question[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  status: 'draft' | 'published' | 'archived';
+  settings: {
+    timeLimit?: number; // in minutes
+    allowBacktracking: boolean;
+    shuffleQuestions: boolean;
+  };
+}
+
+export interface AssessmentAssignment {
+  id: string;
+  templateId: string;
+  targetId: string; // Student ID, or Group ID
+  targetType: 'student' | 'group' | 'class';
+  assignedBy: string;
+  assignedAt: string;
+  dueDate?: string;
+  status: 'pending' | 'in-progress' | 'completed' | 'overdue';
+}
+
+export interface AssessmentResult {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  templateId: string;
+  startedAt: string;
+  completedAt?: string;
+  responses: {
+    questionId: string;
+    answer: string | string[]; // Text or URL for audio/video
+    score?: number;
+    feedback?: string; // AI or manual feedback
+  }[];
+  totalScore: number;
+  maxScore: number;
+  status: 'graded' | 'pending-review';
+  aiAnalysis?: string; // Overall summary/flags
+}
+
+// -----------------------------------
 
 export interface Report {
   id: string;

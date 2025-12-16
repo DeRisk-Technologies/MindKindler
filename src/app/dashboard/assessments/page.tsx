@@ -1,7 +1,17 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useFirestoreCollection } from "@/hooks/use-firestore";
+import { AssessmentTemplate } from "@/types/schema";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -10,189 +20,149 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Loader2, Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { Assessment } from "@/types/schema";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Search, FileText, BrainCircuit, Users, BarChart3, Edit, PlayCircle } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function AssessmentsPage() {
-  const { data: assessments, loading } = useFirestoreCollection<Assessment>("assessments", "date", "desc");
-  const { data: students } = useFirestoreCollection<any>("students", "lastName", "asc");
-
+  const router = useRouter();
+  const { data: templates, loading } = useFirestoreCollection<AssessmentTemplate>("assessment_templates", "createdAt", "desc");
   const [searchTerm, setSearchTerm] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const { toast } = useToast();
 
-  const filtered = assessments.filter(
-    (a) => a.type?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredTemplates = templates.filter(t => 
+    t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    const formData = new FormData(e.currentTarget);
-    const data = {
-        type: formData.get("type"),
-        studentId: formData.get("studentId"),
-        date: new Date().toISOString(), // Simplified date handling
-        status: "draft",
-        score: parseInt(formData.get("score") as string) || 0,
-        updatedAt: serverTimestamp(),
-    };
-    
-    try {
-      if (editingId) {
-         await updateDoc(doc(db, "assessments", editingId), data);
-         toast({ title: "Updated", description: "Assessment updated." });
-      } else {
-         await addDoc(collection(db, "assessments"), { ...data, createdAt: serverTimestamp() });
-         toast({ title: "Created", description: "New assessment started." });
-      }
-      setIsDialogOpen(false);
-      setEditingId(null);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-      if(!confirm("Are you sure?")) return;
-      await deleteDoc(doc(db, "assessments", id));
-  };
-
-  const getStudentName = (id: string) => {
-      const s = students.find(st => st.id === id);
-      return s ? `${s.firstName} ${s.lastName}` : id;
-  };
-
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8 p-8 pt-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary">Assessments</h1>
-          <p className="text-muted-foreground">Track and manage student assessments.</p>
+          <p className="text-muted-foreground">
+            Create, manage, and analyze student assessments.
+          </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) setEditingId(null); }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" /> New Assessment
+        <div className="flex items-center gap-2">
+           <Button variant="outline" onClick={() => router.push('/dashboard/assessments/analytics')}>
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Global Analytics
+           </Button>
+           <Button onClick={() => router.push('/dashboard/assessments/builder')}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Assessment
+           </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950 dark:to-background border-indigo-200 dark:border-indigo-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">AI Generator</CardTitle>
+            <BrainCircuit className="h-4 w-4 text-indigo-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">Quick Create</div>
+            <p className="text-xs text-muted-foreground mb-4">
+              Generate questions from a topic description using AI.
+            </p>
+            <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => router.push('/dashboard/assessments/builder?mode=ai')}>
+              Start Generator
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-             <DialogHeader>
-              <DialogTitle>{editingId ? "Edit Assessment" : "New Assessment"}</DialogTitle>
-              <DialogDescription>Record test details.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSave} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="type">Assessment Type</Label>
-                <Input id="type" name="type" placeholder="e.g. WISC-V" required defaultValue={editingId ? assessments.find(a => a.id === editingId)?.type : ""} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="studentId">Student</Label>
-                 <Select name="studentId" required defaultValue={editingId ? assessments.find(a => a.id === editingId)?.studentId : ""}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Student" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {students.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-               <div className="space-y-2">
-                <Label htmlFor="score">Score</Label>
-                <Input id="score" name="score" type="number" defaultValue={editingId ? assessments.find(a => a.id === editingId)?.score : "0"} />
-              </div>
-              <DialogFooter>
-                <Button type="submit" disabled={isSubmitting}>
-                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                   Save
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+          </CardContent>
+        </Card>
+        
+        <Card>
+           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Assignments</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">12</div>
+            <p className="text-xs text-muted-foreground">3 pending grading</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Library Size</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{templates.length}</div>
+            <p className="text-xs text-muted-foreground">Templates available</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="relative w-72">
+           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+           <Input 
+             placeholder="Search templates..." 
+             className="pl-8"
+             value={searchTerm}
+             onChange={(e) => setSearchTerm(e.target.value)}
+           />
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Assessment Records</CardTitle>
-            <div className="relative w-64">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search assessments..."
-                className="pl-8"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
+          <CardTitle>Template Library</CardTitle>
+          <CardDescription>Manage your assessment forms and questionnaires.</CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-             <div className="flex justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Questions</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTemplates.map((template) => (
+                <TableRow key={template.id}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                       <FileText className="h-4 w-4 text-blue-500" />
+                       {template.title}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{template.category}</Badge>
+                  </TableCell>
+                  <TableCell>{template.questions.length}</TableCell>
+                  <TableCell>
+                     <Badge variant={template.status === 'published' ? 'default' : 'secondary'}>
+                        {template.status}
+                     </Badge>
+                  </TableCell>
+                  <TableCell>{new Date(template.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/assessments/builder/${template.id}`)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" title="Preview/Assign">
+                      <PlayCircle className="h-4 w-4 text-green-600" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                 {filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      No assessments found.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filtered.map((a) => (
-                    <TableRow key={a.id}>
-                      <TableCell className="font-medium">{a.type}</TableCell>
-                      <TableCell>{getStudentName(a.studentId)}</TableCell>
-                      <TableCell>{new Date(a.date).toLocaleDateString()}</TableCell>
-                      <TableCell>{a.score ?? '-'}</TableCell>
-                      <TableCell className="text-right">
-                         <div className="flex justify-end gap-2">
-                             <Button variant="ghost" size="icon" onClick={() => { setEditingId(a.id); setIsDialogOpen(true); }}>
-                                <Pencil className="h-4 w-4" />
-                            </Button>
-                             <Button variant="ghost" size="icon" onClick={() => handleDelete(a.id)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
+              ))}
+              {!loading && filteredTemplates.length === 0 && (
+                <TableRow>
+                   <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      No templates found. Create one to get started.
+                   </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>
