@@ -13,10 +13,12 @@ import Link from "next/link";
 import {
   BarChart,
   BookUser,
+  Calendar,
   ClipboardList,
   FolderKanban,
   LayoutDashboard,
   MessageSquare,
+  PieChart,
   Settings,
 } from "lucide-react";
 
@@ -30,6 +32,8 @@ const navItems = [
     label: "Assessments",
   },
   { href: "/dashboard/reports", icon: <BarChart />, label: "Reports" },
+  { href: "/dashboard/appointments", icon: <Calendar />, label: "Appointments" },
+  { href: "/dashboard/analytics", icon: <PieChart />, label: "Analytics" },
   { href: "/dashboard/messages", icon: <MessageSquare />, label: "Messages" },
   { href: "/dashboard/settings", icon: <Settings />, label: "Settings" },
 ];
