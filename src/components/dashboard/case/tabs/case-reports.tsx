@@ -19,21 +19,31 @@ export function CaseReports({ caseData }: CaseReportsProps) {
       id: "rep_1",
       caseId: caseData.id,
       studentId: caseData.studentId || "std_1",
+      title: "Psychological Assessment Report",
+      sections: [
+        { title: "Summary", content: "Comprehensive psychological assessment report..." }
+      ],
       generatedContent: "...",
       finalContent: "Comprehensive psychological assessment report...",
       language: "en",
       createdAt: "2023-11-01",
-      status: "final"
+      status: "final",
+      version: 1
     },
     {
       id: "rep_2",
       caseId: caseData.id,
       studentId: caseData.studentId || "std_1",
+      title: "Progress Update",
+      sections: [
+        { title: "Progress", content: "Draft progress update..." }
+      ],
       generatedContent: "...",
       finalContent: "Draft progress update...",
       language: "en",
       createdAt: "2023-10-15",
-      status: "draft"
+      status: "draft",
+      version: 1
     }
   ]);
 
@@ -84,7 +94,7 @@ export function CaseReports({ caseData }: CaseReportsProps) {
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <div className="space-y-1">
                 <CardTitle className="text-base font-medium">
-                  {report.status === 'final' ? 'Psychological Assessment Report' : 'Progress Update (Draft)'}
+                  {report.title}
                 </CardTitle>
                 <CardDescription>
                   {new Date(report.createdAt).toLocaleDateString()} • {report.language.toUpperCase()}
@@ -96,7 +106,7 @@ export function CaseReports({ caseData }: CaseReportsProps) {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
-                {report.finalContent}
+                {report.sections?.[0]?.content || report.finalContent}
               </p>
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" size="sm">

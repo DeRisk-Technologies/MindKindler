@@ -147,19 +147,80 @@ export interface AssessmentResult {
 }
 
 // -----------------------------------
+// --- AI Co-Pilot & Reporting Module ---
+
+export interface ConsultationSession {
+  id: string;
+  caseId: string;
+  studentId: string;
+  eppId: string;
+  date: string; // ISO string
+  transcript?: string; // Optional raw text
+  transcriptUrl?: string; // Secure URL to audio/text file
+  notes: string; // Structured notes (SOAP/DAP)
+  
+  // AI Generated Insights
+  summary?: string;
+  differentialDiagnoses?: {
+    diagnosis: string;
+    reasoning: string;
+    confidence: 'low' | 'medium' | 'high';
+    selected: boolean;
+  }[];
+  treatmentSuggestions?: {
+    intervention: string;
+    rationale: string;
+    selected: boolean;
+  }[];
+  
+  reportId?: string; // Link to generated report
+  status: 'in-progress' | 'completed';
+}
+
+export interface ReportTemplate {
+  id: string;
+  name: string;
+  type: 'SOAP' | 'DAP' | 'Assessment' | 'Custom';
+  structure: {
+    sectionTitle: string;
+    prompt: string; // Instructions for AI
+    required: boolean;
+  }[];
+  createdBy?: string; // User ID or 'system'
+}
 
 export interface Report {
   id: string;
-  caseId?: string; 
+  sessionId?: string;
+  caseId?: string;
   assessmentId?: string;
   studentId: string;
-  generatedContent: string;
-  finalContent: string; 
+  templateId?: string;
+  
+  title: string;
+  sections: {
+    title: string;
+    content: string;
+  }[];
+  
+  generatedContent?: string; // Fallback or raw AI draft
+  finalContent?: string; 
   language: 'en' | 'ha' | 'yo' | 'ig';
   createdAt: string;
   authorId?: string;
-  status?: 'draft' | 'final';
+  status: 'draft' | 'final';
+  version: number;
 }
+
+export interface KnowledgeBaseEntry {
+  id: string;
+  tags: string[]; // e.g. ["adhd", "age-10", "reading-intervention"]
+  embedding?: number[]; 
+  content: string; // Anonymized snippet of effective intervention/outcome
+  metadata: Record<string, any>;
+}
+
+// -----------------------------------
 
 export interface Observation {
   id: string;

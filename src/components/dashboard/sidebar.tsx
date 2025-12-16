@@ -26,6 +26,7 @@ import {
   Settings,
   ShieldAlert,
   Siren,
+  Stethoscope,
   Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -35,10 +36,11 @@ import { doc, getDoc } from "firebase/firestore";
 const mainNavItems = [
   { href: "/dashboard", icon: <LayoutDashboard />, label: "Dashboard" },
   { href: "/dashboard/students", icon: <BookUser />, label: "Students / Parents" },
-  { href: "/dashboard/schools", icon: <School />, label: "Schools / Districts" },
+  { href: "/dashboard/consultations", icon: <Stethoscope />, label: "Consultations" },
   { href: "/dashboard/cases", icon: <FolderKanban />, label: "Cases" },
   { href: "/dashboard/assessments", icon: <ClipboardList />, label: "Assessments" },
-  { href: "/dashboard/reports", icon: <BarChart />, label: "Reports & Clinical Tools" },
+  { href: "/dashboard/reports", icon: <BarChart />, label: "Reports & Tools" },
+  { href: "/dashboard/schools", icon: <School />, label: "Schools / Districts" },
   { href: "/dashboard/appointments", icon: <Calendar />, label: "Appointments" },
   { href: "/dashboard/messages", icon: <MessageSquare />, label: "Messages" },
 ];
@@ -75,7 +77,7 @@ export function DashboardSidebar() {
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
-                isActive={pathname === item.href}
+                isActive={pathname === item.href || pathname.startsWith(item.href + '/')}
                 tooltip={{ children: item.label }}
               >
                 <Link href={item.href}>
@@ -89,17 +91,29 @@ export function DashboardSidebar() {
 
         {/* Analytics & Reports (Authorities) */}
         <SidebarGroup>
-           <SidebarGroupLabel>Analytics</SidebarGroupLabel>
+           <SidebarGroupLabel>Analytics & Insights</SidebarGroupLabel>
            <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
                   isActive={pathname === "/dashboard/analytics"}
-                  tooltip={{ children: "Analytics" }}
+                  tooltip={{ children: "General Analytics" }}
                 >
                   <Link href="/dashboard/analytics">
                     <PieChart />
-                    <span>Analytics</span>
+                    <span>Overview</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/assessments/analytics"}
+                  tooltip={{ children: "Assessment Analytics" }}
+                >
+                  <Link href="/dashboard/assessments/analytics">
+                    <BarChart className="h-4 w-4" />
+                    <span>Assessment Data</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
