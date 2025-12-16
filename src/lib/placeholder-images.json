@@ -1,3 +1,46 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "hero-1",
+      "description": "A child psychologist interacting with a young student in a bright, friendly classroom environment.",
+      "imageUrl": "https://images.unsplash.com/photo-1673636157843-9cebee93ed2d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxjaGlsZCUyMHBzeWNob2xvZ2lzdHxlbnwwfHx8fDE3NjU4NzI1NDh8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "child psychologist"
+    },
+    {
+      "id": "student-1",
+      "description": "Portrait of a smiling young boy.",
+      "imageUrl": "https://images.unsplash.com/flagged/photo-1551600466-464bbbbd15f9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw4fHxjaGlsZCUyMHBvcnRyYWl0fGVufDB8fHx8MTc2NTg3MjU0N3ww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "child portrait"
+    },
+    {
+      "id": "student-2",
+      "description": "Portrait of a young girl with glasses, looking thoughtful.",
+      "imageUrl": "https://images.unsplash.com/photo-1637878314356-9f3b0338bc7c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxjaGlsZCUyMHBvcnRyYWl0fGVufDB8fHx8MTc2NTg3MjU0N3ww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "child portrait"
+    },
+    {
+      "id": "student-3",
+      "description": "Portrait of a teenage boy in a school hallway.",
+      "imageUrl": "https://images.unsplash.com/photo-1635899077148-5d2b16eb20d0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHx0ZWVuYWdlciUyMHBvcnRyYWl0fGVufDB8fHx8MTc2NTgwNjQyOHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "teenager portrait"
+    },
+    {
+      "id": "student-4",
+      "description": "Portrait of a young girl laughing.",
+      "imageUrl": "https://images.unsplash.com/photo-1690639866830-ee4d95b89718?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxjaGlsZCUyMHBvcnRyYWl0fGVufDB8fHx8MTc2NTg3MjU0N3ww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "child portrait"
+    },
+    {
+      "id": "student-5",
+      "description": "Portrait of a young boy reading a book.",
+      "imageUrl": "https://images.unsplash.com/photo-1516042438821-0abd7a73c4b3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxjaGlsZCUyMHJlYWRpbmd8ZW58MHx8fHwxNzY1ODYyODc0fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "child reading"
+    },
+    {
+      "id": "student-6",
+      "description": "Portrait of a teenage girl with a backpack.",
+      "imageUrl": "https://images.unsplash.com/photo-1635899077148-5d2b16eb20d0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHx0ZWVuYWdlciUyMHBvcnRyYWl0fGVufDB8fHx8MTc2NTgwNjQyOHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "teenager portrait"
+    }
+  ]
 }
