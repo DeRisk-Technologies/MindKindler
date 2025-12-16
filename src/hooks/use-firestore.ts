@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot, DocumentData } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, DocumentData, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export function useFirestoreCollection<T = DocumentData>(
@@ -16,8 +16,6 @@ export function useFirestoreCollection<T = DocumentData>(
   useEffect(() => {
     setLoading(true);
     try {
-      // In a real app, you might want to check if the field exists or index is ready
-      // For simple prototyping, we might default to simple fetch if sorting fails
       const q = query(collection(db, collectionName), orderBy(sortField, direction));
       
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -41,4 +39,39 @@ export function useFirestoreCollection<T = DocumentData>(
   }, [collectionName, sortField, direction]);
 
   return { data, loading, error };
+}
+
+export function useFirestore() {
+    const getDocument = async (collectionName: string, id: string) => {
+        try {
+            const docRef = doc(db, collectionName, id);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                return { id: docSnap.id, ...docSnap.data() };
+            } else {
+                return null;
+            }
+        } catch (error) {
+            console.error("Error getting document:", error);
+            throw error;
+        }
+    };
+    
+    // Add other helpers as needed (add, update, delete)
+    return { getDocument };
+}
+
+export async function getCase(id: string) {
+    // Server-side safe fetching (if needed) or simple client fetch wrapper
+    // Since we're using client SDK mostly:
+    try {
+        const docRef = doc(db, "cases", id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return { id: docSnap.id, ...docSnap.data() };
+        }
+        return null;
+    } catch (e) {
+        return null;
+    }
 }

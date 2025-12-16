@@ -18,7 +18,7 @@ import {
   CardTitle,
   CardDescription
 } from "@/components/ui/card";
-import { Plus, Search, Loader2, Pencil, Trash2, FolderOpen, School, User, MessageCircle, FileText } from "lucide-react";
+import { Plus, Search, Loader2, Pencil, Trash2, FolderOpen, School, User, MessageCircle, FileText, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -30,18 +30,21 @@ import { db } from "@/lib/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useRouter } from "next/navigation";
 
 export default function CasesPage() {
-  const { data: cases, loading: loadingCases } = useFirestoreCollection<Case>("cases", "openedAt", "desc");
+  const router = useRouter();
+  // Sort by createdAt now, consistent with new schema
+  const { data: cases, loading: loadingCases } = useFirestoreCollection<Case>("cases", "createdAt", "desc");
   const { data: students } = useFirestoreCollection<any>("students", "lastName", "asc");
   const { data: schools } = useFirestoreCollection<any>("schools", "name", "asc");
-  const { data: users } = useFirestoreCollection<any>("users", "displayName", "asc"); // For parents/consultations
+  const { data: users } = useFirestoreCollection<any>("users", "displayName", "asc"); 
   
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [caseType, setCaseType] = useState<string>("student"); // 'student', 'school', 'consultation'
+  const [caseType, setCaseType] = useState<string>("student");
   
   const { toast } = useToast();
 
@@ -85,9 +88,10 @@ export default function CasesPage() {
         status: formData.get("status"),
         priority: formData.get("priority"),
         description: formData.get("description"),
-        // If creating new, openedAt is set. If editing, we preserve unless re-opening logic is needed.
-        ...(editingId ? {} : { openedAt: new Date().toISOString() }),
-        updatedAt: serverTimestamp(),
+        // Use createdAt for new schema consistency
+        ...(editingId ? {} : { createdAt: new Date().toISOString() }),
+        lastUpdated: new Date().toISOString(), // Manual update of lastUpdated string
+        // updatedAt: serverTimestamp(), // Firestore server timestamp if needed
     };
     
     try {
@@ -97,8 +101,8 @@ export default function CasesPage() {
       } else {
         await addDoc(collection(db, "cases"), { 
             ...data, 
-            activities: [], // Initialize empty timeline
-            createdAt: serverTimestamp() 
+            activities: [], 
+            // createdAt is already in data object
         });
         toast({ title: "Created", description: "New case file opened." });
       }
@@ -278,8 +282,8 @@ export default function CasesPage() {
                                         .filter(c => tab === 'all' ? true : c.type === tab)
                                         .map((c) => (
                                         <TableRow key={c.id}>
-                                            <TableCell className="font-medium">
-                                                <div className="flex items-center gap-2">
+                                            <TableCell className="font-medium cursor-pointer" onClick={() => router.push(`/dashboard/cases/${c.id}`)}>
+                                                <div className="flex items-center gap-2 hover:underline">
                                                     <FolderOpen className="h-4 w-4 text-blue-500" />
                                                     {c.title}
                                                 </div>
@@ -308,10 +312,13 @@ export default function CasesPage() {
                                             <TableCell className="text-muted-foreground text-xs">
                                                 {c.activities && c.activities.length > 0 
                                                     ? new Date(c.activities[c.activities.length-1].date).toLocaleDateString() 
-                                                    : new Date(c.openedAt).toLocaleDateString()}
+                                                    : c.createdAt ? new Date(c.createdAt).toLocaleDateString() : 'N/A'}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
+                                                    <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/cases/${c.id}`)} title="Open Details">
+                                                        <ExternalLink className="h-4 w-4" />
+                                                    </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => { setEditingId(c.id); setCaseType(c.type); setIsDialogOpen(true); }}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>

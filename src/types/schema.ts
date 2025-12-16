@@ -28,18 +28,33 @@ export interface Case {
   title: string;
   type: 'student' | 'school' | 'consultation' | 'general';
   
-  // Linking fields (at least one usually required based on type)
+  // Linking fields
   studentId?: string;
   schoolId?: string;
-  parentId?: string; // For pure parent consultation cases
+  parentId?: string; 
   
   status: 'Open' | 'In Progress' | 'In Review' | 'Closed';
   priority: 'High' | 'Medium' | 'Low';
   
   // Detailed tracking
-  assignedTo: string; // EPP User ID
+  assignedTo: string; // EPP User ID (assignedEPP)
+  teamRefs?: string[]; // Array of user IDs
   description?: string;
   
+  // Metadata
+  createdAt: string; // openedAt
+  lastUpdated: string;
+  closedAt?: string;
+
+  // Tabs Data (optional UI state persistence)
+  tabsData?: Record<string, any>;
+  
+  // Permissions
+  permissions?: {
+    userId: string;
+    role: 'owner' | 'editor' | 'viewer';
+  }[];
+
   // Chronological timeline of activities
   activities: {
     id: string;
@@ -49,53 +64,117 @@ export interface Case {
     summary: string;
     performedBy: string;
   }[];
-
-  openedAt: string;
-  closedAt?: string;
 }
 
 export interface Assessment {
   id: string;
-  caseId?: string; // Link to Case
+  caseId?: string; 
   studentId: string;
-  eppId?: string; // Optional for draft
-  date: string; // ISO date string
+  eppId?: string; 
+  date: string; 
   type: string;
-  data?: Record<string, any>; // JSON data of the assessment
+  data?: Record<string, any>; 
   status: 'draft' | 'completed';
   score?: number;
+  outcome?: string; // For high-risk alerts
   notes?: string;
+  voiceNoteUrl?: string; // Audio/Video URL
 }
 
 export interface Report {
   id: string;
-  caseId?: string; // Link to Case
+  caseId?: string; 
   assessmentId?: string;
   studentId: string;
   generatedContent: string;
-  finalContent: string; // EPP edited version
+  finalContent: string; 
   language: 'en' | 'ha' | 'yo' | 'ig';
   createdAt: string;
+  authorId?: string;
+  status?: 'draft' | 'final';
+}
+
+export interface Observation {
+  id: string;
+  caseId: string;
+  authorId: string; // Teacher, Parent, Psychologist
+  authorRole: string;
+  date: string;
+  content: string; // Rich text
+  privacyLevel: 'public' | 'team' | 'private';
+  attachments?: string[];
+  audioUrl?: string;
+}
+
+export interface IEP {
+  id: string;
+  caseId: string;
+  studentId: string;
+  startDate: string;
+  endDate: string;
+  goals: {
+    id: string;
+    type: 'academic' | 'behavioral' | 'social';
+    description: string;
+    successCriteria: string;
+    dueDate: string;
+    responsibleParty: string;
+    status: 'pending' | 'in-progress' | 'achieved' | 'failed';
+    progress: number; // 0-100
+  }[];
+  status: 'active' | 'draft' | 'archived';
+}
+
+export interface Intervention {
+  id: string;
+  caseId: string;
+  type: string; // e.g., speech therapy
+  startDate: string;
+  endDate?: string;
+  frequency: string; 
+  status: 'planned' | 'in-progress' | 'completed';
+  outcomes?: string;
+  assignedTo?: string; // Staff member
+}
+
+export interface Message {
+  id: string;
+  caseId: string;
+  senderId: string;
+  content: string;
+  timestamp: string;
+  attachments?: string[];
+  readBy?: string[];
+}
+
+export interface BillingEntry {
+  id: string;
+  caseId: string;
+  description: string;
+  amount: number;
+  date: string;
+  status: 'pending' | 'paid' | 'overdue';
+  invoiceId?: string;
 }
 
 // Phase 2: Training Data for Self-Learning
 export interface TrainingData {
   id: string;
   originalReportId?: string;
-  issueTags: string[]; // e.g., ["reading-difficulty", "attention-deficit"]
+  issueTags: string[]; 
   interventionsUsed: string[];
   outcome?: 'positive' | 'neutral' | 'negative';
   anonymizedTranscript?: string;
-  embedding?: number[]; // For RAG later
+  embedding?: number[]; 
 }
 
 // Phase 2: Appointments
 export interface Appointment {
   id: string;
-  caseId?: string; // Link to Case
-  participants: string[]; // User IDs (EPP, Parent, etc.)
-  startTime: string; // ISO date string
-  endTime: string;
+  caseId?: string; 
+  participants: string[]; 
+  startTime: string; 
+  endTime: string; 
   type: 'assessment' | 'counseling' | 'follow-up';
   status: 'scheduled' | 'completed' | 'cancelled';
   meetingLink?: string;
@@ -110,9 +189,9 @@ export interface VideoObservation {
   durationSeconds: number;
   deviceIdentifier: string;
   storagePath: string;
-  consentId: string; // Link to consent record
+  consentId: string; 
   analysisStatus: 'pending' | 'processing' | 'completed';
-  aiMetadata?: Record<string, any>; // To store future AI findings
+  aiMetadata?: Record<string, any>; 
 }
 
 export interface SensorReading {
@@ -135,10 +214,10 @@ export interface ConsentRecord {
 }
 
 export interface OrganizationSettings {
-  id: string; // organizationId
+  id: string; 
   theme: {
     primaryColor: string;
     fontFamily: string;
   };
-  enabledWidgets: string[]; // List of widget IDs to show on dashboard
+  enabledWidgets: string[]; 
 }
