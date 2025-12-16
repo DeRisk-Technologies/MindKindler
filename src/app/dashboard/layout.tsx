@@ -1,6 +1,7 @@
 import { DashboardHeader } from "@/components/dashboard/header";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { Sidebar, SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { AIAssistantFloat } from "@/components/ai-assistant-float";
 
 export default function DashboardLayout({
   children,
@@ -9,7 +10,7 @@ export default function DashboardLayout({
 }>) {
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background text-foreground">
+      <div className="flex min-h-screen w-full bg-background text-foreground relative">
         <Sidebar className="border-r">
           <DashboardSidebar />
         </Sidebar>
@@ -19,6 +20,7 @@ export default function DashboardLayout({
             {children}
           </main>
         </SidebarInset>
+        <AIAssistantFloat />
       </div>
     </SidebarProvider>
   );
