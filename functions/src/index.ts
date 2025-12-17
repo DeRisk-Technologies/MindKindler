@@ -11,6 +11,9 @@ import * as scheduling from "./scheduling/scheduler";
 import * as grading from "./assessments/grading";
 import * as userMgmt from "./admin/userManagement";
 import * as maintenance from "./admin/dataMaintenance";
+import * as seed from "./admin/seedData";
+import * as clear from "./admin/clearData";
+import * as integrations from "./integrations/syncEngine";
 
 // Set Global Options for 2nd Gen and Region
 setGlobalOptions({ region: "europe-west3", maxInstances: 10 });
@@ -20,13 +23,17 @@ if (admin.apps.length === 0) {
     admin.initializeApp();
 }
 
+// Enable CORS for all Callable Functions
+// Explicitly allowing all origins to fix dev environment issues
+const callOptions = { cors: true }; 
+
 // 1. AI & Intelligence Layer
-export const generateClinicalReport = onCall(aiReports.handler);
-export const generateAssessmentContent = onCall(aiAssessments.handler);
-export const analyzeConsultationInsight = onCall(aiInsights.handler);
+export const generateClinicalReport = onCall(callOptions, aiReports.handler);
+export const generateAssessmentContent = onCall(callOptions, aiAssessments.handler);
+export const analyzeConsultationInsight = onCall(callOptions, aiInsights.handler);
 
 // 2. Scheduling & Workflow Automation
-export const findAvailabilitySlots = onCall(scheduling.findAvailabilityHandler);
+export const findAvailabilitySlots = onCall(callOptions, scheduling.findAvailabilityHandler);
 export const onAppointmentChange = onDocumentWritten('appointments/{apptId}', scheduling.onAppointmentChangeHandler);
 export const sendDailyReminders = onSchedule({ schedule: 'every day 06:00', timeZone: 'Europe/Berlin' }, scheduling.sendDailyRemindersHandler);
 
@@ -36,6 +43,9 @@ export const detectAnomalies = onDocumentCreated('assessment_results/{resultId}'
 
 // 4. Admin & Data Maintenance
 export const anonymizeTrainingData = onSchedule({ schedule: '0 0 1 * *', timeZone: 'Europe/Berlin' }, maintenance.anonymizeDataHandler);
+export const setupUserProfile = onCall(callOptions, userMgmt.setupUserProfileHandler);
+export const seedDemoData = onCall({ ...callOptions, timeoutSeconds: 300, memory: "1GiB" }, seed.seedDemoDataHandler);
+export const clearDemoData = onCall(callOptions, clear.clearDemoDataHandler);
 
-// Converted to Callable to bypass Auth Trigger configuration issues
-export const setupUserProfile = onCall(userMgmt.setupUserProfileHandler);
+// 5. Integrations
+export const syncExternalData = onCall(callOptions, integrations.syncExternalData);

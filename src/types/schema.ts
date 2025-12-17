@@ -378,3 +378,80 @@ export interface OrganizationSettings {
   };
   enabledWidgets: string[]; 
 }
+
+// --- Document AI & Integration Module ---
+
+export type DocumentCategory = 
+  | 'academic_record' 
+  | 'attendance_log' 
+  | 'iep_document' 
+  | 'lesson_plan' 
+  | 'clinical_note' 
+  | 'admin_record';
+
+export type ProcessingStatus = 'uploading' | 'processing' | 'review_required' | 'processed' | 'error';
+
+export interface UploadedDocument {
+  id: string;
+  userId: string;
+  schoolId?: string;
+  fileName: string;
+  fileUrl: string; // Storage path or download URL
+  fileType: string; // MIME type
+  category: DocumentCategory;
+  uploadDate: string; // ISO
+  status: ProcessingStatus;
+  extractedDataRef?: string; // ID in extraction_staging
+  errorMsg?: string;
+}
+
+export interface ExtractedDataStaging {
+  id: string;
+  documentId: string;
+  category: DocumentCategory;
+  rawExtraction: any; // The JSON returned by AI
+  confidenceScore: number;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  targetCollection?: string; // Where this data will go (e.g. 'assessment_results')
+}
+
+// Integration Configuration
+export interface IntegrationConfig {
+  id: string; // schoolId
+  type: 'canvas' | 'blackboard' | 'powerschool' | 'google_classroom';
+  status: 'active' | 'inactive' | 'error';
+  credentials: {
+    clientId?: string;
+    clientSecret?: string; // Stored securely (or pointer to Secret Manager)
+    baseUrl: string;
+  };
+  lastSync?: string;
+  settings: {
+    syncGrades: boolean;
+    syncAttendance: boolean;
+    syncRoster: boolean;
+  };
+}
+
+// --- Data Models for Extracted Content ---
+
+export interface ExternalAcademicRecord {
+  id: string;
+  studentId: string; // Mapped MindKindler Student ID
+  sourceSystem: string; // 'upload' or 'canvas'
+  subject: string;
+  grade: string | number;
+  date: string;
+  term: string;
+  comments?: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  studentId: string;
+  date: string;
+  status: 'present' | 'absent' | 'tardy';
+  reason?: string;
+  source: string;
+}

@@ -6,8 +6,7 @@ import { useFirestoreCollection } from "@/hooks/use-firestore";
 import { Appointment } from "@/types/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar as CalendarIcon, Clock, Video, MapPin, User, MessageCircle } from "lucide-react";
+import { Plus, Video, Calendar as CalendarIcon, Clock, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +14,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+
+// Calendar Imports
+import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
+import format from 'date-fns/format';
+import parse from 'date-fns/parse';
+import startOfWeek from 'date-fns/startOfWeek';
+import getDay from 'date-fns/getDay';
+import enUS from 'date-fns/locale/en-US';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+const locales = {
+  'en-US': enUS,
+};
+
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  locales,
+});
 
 export default function AppointmentsPage() {
   const router = useRouter();
@@ -23,6 +44,16 @@ export default function AppointmentsPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState("consultation");
   const { toast } = useToast();
+  const [view, setView] = useState(Views.MONTH);
+
+  // Map Firestore appointments to Calendar events
+  const events = appointments.map(appt => ({
+      id: appt.id,
+      title: appt.title,
+      start: new Date(appt.startTime),
+      end: new Date(appt.endTime),
+      resource: appt
+  }));
 
   const handleCreateAppointment = async () => {
     try {
@@ -44,11 +75,16 @@ export default function AppointmentsPage() {
     }
   };
 
-  const upcomingAppointments = appointments.filter(a => new Date(a.startTime) > new Date());
-  const pastAppointments = appointments.filter(a => new Date(a.startTime) <= new Date());
+  const handleSelectEvent = (event: any) => {
+      if (event.resource.channel === 'video') {
+          router.push(`/dashboard/consultations/${event.resource.caseId || 'new'}`);
+      } else {
+          toast({ title: event.title, description: "Viewing details..." });
+      }
+  };
 
   return (
-    <div className="space-y-8 p-8 pt-6">
+    <div className="space-y-8 p-8 pt-6 h-[calc(100vh-4rem)] flex flex-col">
        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
              <h1 className="text-3xl font-bold tracking-tight text-primary">Appointments</h1>
@@ -83,7 +119,7 @@ export default function AppointmentsPage() {
                           </Select>
                       </div>
                       <div className="p-4 bg-muted rounded text-sm text-center">
-                          AI Scheduler Placeholder: "Find a slot next Tuesday..."
+                          AI Scheduler: "Finding optimal slot..."
                       </div>
                   </div>
                   <DialogFooter>
@@ -93,63 +129,22 @@ export default function AppointmentsPage() {
           </Dialog>
        </div>
 
-       {/* Upcoming Section */}
-       <div className="space-y-4">
-           <h2 className="text-xl font-semibold flex items-center gap-2">
-               <CalendarIcon className="h-5 w-5 text-indigo-500" /> Upcoming
-           </h2>
-           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-               {upcomingAppointments.length === 0 && <p className="text-muted-foreground text-sm col-span-3">No upcoming appointments.</p>}
-               {upcomingAppointments.map((appt) => (
-                   <Card key={appt.id} className="border-l-4 border-l-indigo-500">
-                       <CardHeader className="pb-2">
-                           <div className="flex justify-between items-start">
-                               <Badge variant="outline" className="uppercase text-[10px]">{appt.reason}</Badge>
-                               {appt.channel === 'video' && <Video className="h-4 w-4 text-purple-500" />}
-                           </div>
-                           <CardTitle className="text-base pt-2">{appt.title}</CardTitle>
-                           <CardDescription>
-                               {new Date(appt.startTime).toLocaleDateString()} at {new Date(appt.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                           </CardDescription>
-                       </CardHeader>
-                       <CardContent>
-                           <div className="flex flex-col gap-3">
-                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                   <User className="h-4 w-4" />
-                                   <span>Participants: {appt.participants.length}</span>
-                               </div>
-                               {appt.channel === 'video' && (
-                                   <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => router.push(`/dashboard/consultations/${appt.caseId || 'new'}`)}>
-                                       <Video className="mr-2 h-4 w-4" /> Join Session
-                                   </Button>
-                               )}
-                           </div>
-                       </CardContent>
-                   </Card>
-               ))}
-           </div>
-       </div>
-
-        {/* Past Section */}
-        <div className="space-y-4 pt-8 border-t">
-           <h2 className="text-xl font-semibold flex items-center gap-2 text-muted-foreground">
-               <Clock className="h-5 w-5" /> Past History
-           </h2>
-           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 opacity-75">
-               {pastAppointments.map((appt) => (
-                   <Card key={appt.id}>
-                       <CardHeader className="pb-2">
-                           <CardTitle className="text-sm">{appt.title}</CardTitle>
-                           <CardDescription className="text-xs">
-                               {new Date(appt.startTime).toLocaleDateString()}
-                           </CardDescription>
-                       </CardHeader>
-                       <CardContent>
-                           <Badge variant="secondary">{appt.status}</Badge>
-                       </CardContent>
-                   </Card>
-               ))}
-           </div>
+       <div className="flex-1 bg-white dark:bg-slate-950 p-4 rounded-xl border shadow-sm">
+           <Calendar
+               localizer={localizer}
+               events={events}
+               startAccessor="start"
+               endAccessor="end"
+               style={{ height: '100%' }}
+               views={['month', 'week', 'day', 'agenda']}
+               onSelectEvent={handleSelectEvent}
+               eventPropGetter={(event) => {
+                   let backgroundColor = '#3174ad';
+                   if (event.resource.reason === 'assessment') backgroundColor = '#e11d48'; // red
+                   if (event.resource.reason === 'therapy') backgroundColor = '#16a34a'; // green
+                   return { style: { backgroundColor } };
+               }}
+           />
        </div>
     </div>
   );

@@ -17,9 +17,11 @@ import {
   BookUser,
   Calendar,
   ClipboardList,
+  Database,
   FolderKanban,
   Layers,
   LayoutDashboard,
+  Link2,
   MessageSquare,
   PieChart,
   School,
@@ -40,6 +42,7 @@ const mainNavItems = [
   { href: "/dashboard/cases", icon: <FolderKanban />, label: "Cases" },
   { href: "/dashboard/assessments", icon: <ClipboardList />, label: "Assessments" },
   { href: "/dashboard/reports", icon: <BarChart />, label: "Reports & Tools" },
+  { href: "/dashboard/data-ingestion", icon: <Database />, label: "Data Import" }, 
   { href: "/dashboard/schools", icon: <School />, label: "Schools / Districts" },
   { href: "/dashboard/appointments", icon: <Calendar />, label: "Appointments" },
   { href: "/dashboard/messages", icon: <MessageSquare />, label: "Messages" },
@@ -117,6 +120,18 @@ export function DashboardSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/schools/analytics"}
+                  tooltip={{ children: "District Analytics" }}
+                >
+                  <Link href="/dashboard/schools/analytics">
+                    <School className="h-4 w-4" />
+                    <span>District Overview</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
            </SidebarMenu>
         </SidebarGroup>
 
@@ -157,6 +172,18 @@ export function DashboardSidebar() {
         <SidebarGroup>
            <SidebarGroupLabel>Configuration</SidebarGroupLabel>
            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/settings/integrations"}
+                  tooltip={{ children: "LMS Integrations" }}
+                >
+                  <Link href="/dashboard/settings/integrations">
+                    <Link2 />
+                    <span>Integrations</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {(role === 'admin' || role === 'educationalpsychologist') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
