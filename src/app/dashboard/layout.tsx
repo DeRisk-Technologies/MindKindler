@@ -8,6 +8,8 @@ import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { Sidebar, SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AIAssistantFloat } from "@/components/ai-assistant-float";
 
+const FUNCTIONS_BASE_URL = "https://europe-west3-studio-1557923276-46e4b.cloudfunctions.net";
+
 export default function DashboardLayout({
   children,
 }: Readonly<{
@@ -15,13 +17,15 @@ export default function DashboardLayout({
 }>) {
   
   useEffect(() => {
-    // Attempt to set up user profile on every dashboard load (idempotent on backend)
-    // ensuring profile exists even if trigger failed or user is new.
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
         if (user) {
             try {
-                const functions = getFunctions(undefined, 'europe-west3');
-                const setupProfile = httpsCallable(functions, 'setupUserProfile');
+                // Use the explicit URL for the callable function
+                const functionsInstance = getFunctions(); 
+                // Ensure the region matches your deployment
+                functionsInstance.customDomain = FUNCTIONS_BASE_URL; 
+
+                const setupProfile = httpsCallable(functionsInstance, 'setupUserProfile');
                 await setupProfile();
             } catch (e) {
                 console.error("Profile setup check failed (non-critical):", e);

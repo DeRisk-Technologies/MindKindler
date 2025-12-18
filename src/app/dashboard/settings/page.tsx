@@ -7,6 +7,8 @@ import { Database, Loader2, Sparkles, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
+const FUNCTIONS_BASE_URL = "https://europe-west3-studio-1557923276-46e4b.cloudfunctions.net";
+
 export default function SettingsPage() {
   const { toast } = useToast();
   const [isSeeding, setIsSeeding] = useState(false);
@@ -27,7 +29,8 @@ export default function SettingsPage() {
           toast({ title: "Success", description: "Basic mock data added." });
       } else {
           // Server-side AI seed
-          const functions = getFunctions(undefined, 'europe-west3');
+          const functions = getFunctions(); 
+          functions.customDomain = FUNCTIONS_BASE_URL; // Set the custom domain
           const seedDemoData = httpsCallable(functions, 'seedDemoData');
           await seedDemoData();
           toast({ title: "AI Seed Complete", description: "Complex student profiles generated." });
@@ -45,7 +48,8 @@ export default function SettingsPage() {
       if (!confirm("Are you sure? This will delete ALL demo students and cases created by the seed script.")) return;
       setIsClearing(true);
       try {
-          const functions = getFunctions(undefined, 'europe-west3');
+          const functions = getFunctions(); 
+          functions.customDomain = FUNCTIONS_BASE_URL; // Set the custom domain
           const clearDemoData = httpsCallable(functions, 'clearDemoData');
           const result: any = await clearDemoData();
           

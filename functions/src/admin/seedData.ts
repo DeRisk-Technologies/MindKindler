@@ -4,11 +4,23 @@ import { genkit } from "genkit";
 import { googleAI } from "@genkit-ai/google-genai";
 import { faker } from '@faker-js/faker';
 
-// Initialize AI
-const ai = genkit({
-    plugins: [googleAI()],
-    model: "googleai/gemini-2.5-flash", // Fast model for seeding
-});
+// Lazy init for AI to prevent cold-start crashes if env vars missing
+let ai: any = null;
+
+const getAi = () => {
+    if (!ai) {
+        try {
+            ai = genkit({
+                plugins: [googleAI()],
+                model: "googleai/gemini-1.5-flash", 
+            });
+        } catch (e) {
+            console.error("Failed to init Genkit (Missing Key?)", e);
+            throw new Error("AI Service Unavailable");
+        }
+    }
+    return ai;
+};
 
 const getDb = () => {
     if (admin.apps.length === 0) {
@@ -18,16 +30,10 @@ const getDb = () => {
 };
 
 export const seedDemoDataHandler = async (request: CallableRequest) => {
-    // 1. Security Check (Admin Only in prod, open for demo)
-    // if (!request.auth?.token.admin) return { error: "Unauthorized" };
-
     const db = getDb();
     const batch = db.batch();
     const studentIds: string[] = [];
 
-    // 2. Generate Students (Hybrid: Faker + AI)
-    // We use AI to generate the "Story" (Case history, behavior) and Faker for PII
-    
     const count = 5;
     
     // Prompt Gemini for rich profiles
@@ -42,15 +48,15 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
 
     let aiProfiles: any[] = [];
     try {
-        const { output } = await ai.generate(profilePrompt);
+        const aiInstance = getAi();
+        const { output } = await aiInstance.generate(profilePrompt);
         const text = output?.text || "[]";
-        // Simple cleanup for code blocks if Gemini adds them
         const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
         aiProfiles = JSON.parse(jsonStr);
     } catch (e) {
-        console.error("AI Gen Failed, using fallback", e);
+        console.warn("AI Gen Failed, using fallback. Key likely missing.", e);
         // Fallback profiles if AI fails
-        aiProfiles = Array(count).fill({ riskLevel: 'Low', diagnosis: [], narrative: "Standard student.", recentEvents: [] });
+        aiProfiles = Array(count).fill({ riskLevel: 'Low', diagnosis: [], narrative: "Standard student (Fallback).", recentEvents: [] });
     }
 
     // 3. Create Entities
@@ -77,12 +83,10 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
         });
 
         // Assessment Results (Historical Trend)
-        // Generate 6 months of scores
         for (let m = 0; m < 6; m++) {
             const date = new Date();
             date.setMonth(date.getMonth() - m);
             
-            // Score Logic: High risk students have declining or volatile scores
             let baseScore = profile.riskLevel === 'High' ? 60 : (profile.riskLevel === 'Medium' ? 75 : 90);
             let variance = faker.number.int({ min: -10, max: 10 });
             
@@ -93,11 +97,11 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
                 maxScore: 100,
                 status: 'graded',
                 completedAt: date.toISOString(),
-                subject: 'Math' // For analytics grouping
+                subject: 'Math' 
             });
         }
 
-        // Attendance / Behavior Logs (New Collection)
+        // Attendance / Behavior Logs 
         for (const event of profile.recentEvents) {
             batch.set(db.collection("attendance_logs").doc(), {
                 studentId,
@@ -108,7 +112,7 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             });
         }
 
-        // Case File (If High/Medium Risk)
+        // Case File
         if (profile.riskLevel !== 'Low') {
             const caseRef = db.collection("cases").doc();
             batch.set(caseRef, {
