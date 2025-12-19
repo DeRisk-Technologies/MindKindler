@@ -1,7 +1,8 @@
 import * as admin from "firebase-admin";
-import { CallableRequest } from "firebase-functions/v2/https";
+import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 
 const getDb = () => {
+    // Check if app is already initialized to avoid "default app already exists" error
     if (admin.apps.length === 0) {
         admin.initializeApp();
     }
@@ -9,34 +10,46 @@ const getDb = () => {
 };
 
 export const setupUserProfileHandler = async (request: CallableRequest) => {
-    // Check if user is authenticated
-    if (!request.auth) return { status: 'unauthenticated' };
+    // 1. Check Authentication
+    if (!request.auth) {
+        // Return a standard HttpsError for the client to handle gracefully
+        throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
 
     const db = getDb();
     const { uid, token } = request.auth;
-    const { email, name } = token; // Basic info from token
+    const { email, name, picture } = token; 
     
-    // Check if profile exists to avoid overwrite
+    // 2. Defensive Check: Ensure we don't overwrite indiscriminately
     const docRef = db.collection("users").doc(uid);
-    const docSnap = await docRef.get();
+    
+    try {
+        const docSnap = await docRef.get();
 
-    if (!docSnap.exists) {
-        try {
+        if (!docSnap.exists) {
+            // 3. Create Profile if missing
             await Promise.all([
                 docRef.set({
+                    uid: uid, // Store UID explicitly for easier indexing
                     email: email || "",
-                    displayName: name || "",
-                    role: 'parent', 
+                    displayName: name || "New User",
+                    photoURL: picture || "",
+                    role: 'parent', // Default role
+                    online: true,   // Default status
+                    isVisible: true, // Default privacy
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 }),
-                admin.auth().setCustomUserClaims(uid, { role: 'parent' })
+                // Only set claims if strictly necessary for security rules immediately
+                // admin.auth().setCustomUserClaims(uid, { role: 'parent' }) 
             ]);
-            return { status: 'created' };
-        } catch (e) {
-            console.error("Error creating user profile", e);
-            throw new Error("Profile creation failed");
+            return { status: 'created', message: 'User profile initialized.' };
         }
+        
+        return { status: 'exists', message: 'Profile already exists.' };
+
+    } catch (e: any) {
+        console.error("Error in setupUserProfile:", e);
+        // Throw structured error back to client
+        throw new HttpsError('internal', `Profile setup failed: ${e.message}`);
     }
-    
-    return { status: 'exists' };
 };

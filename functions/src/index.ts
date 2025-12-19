@@ -24,8 +24,9 @@ if (admin.apps.length === 0) {
 }
 
 // Enable CORS for all Callable Functions
-// Using "*" string or array to be explicit
-const callOptions = { cors: ["https://mindkindler-84fcf.web.app", "http://localhost:3000"] };
+// Using "*" allow all during development/testing if specific origins fail due to strict policies
+// Or ensure exact matches.
+const callOptions = { cors: true }; // 'true' enables CORS for all origins automatically in v2
 
 // 1. AI & Intelligence Layer
 export const generateClinicalReport = onCall(callOptions, aiReports.handler);
@@ -47,7 +48,7 @@ export const setupUserProfile = onCall(callOptions, userMgmt.setupUserProfileHan
 
 // Seed Data - Increased timeout/memory
 export const seedDemoData = onCall({ 
-    cors: callOptions.cors, 
+    cors: true, 
     timeoutSeconds: 540, 
     memory: "1GiB" 
 }, seed.seedDemoDataHandler);
