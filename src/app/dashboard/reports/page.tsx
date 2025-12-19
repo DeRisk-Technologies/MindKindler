@@ -3,79 +3,146 @@
 import { useFirestoreCollection } from "@/hooks/use-firestore";
 import { Report } from "@/types/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Eye, Edit, Plus } from "lucide-react";
+import { FileText, Download, Edit, Plus, MoreHorizontal, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { DataTable } from "@/components/ui/data-table";
+import { ColumnDef } from "@tanstack/react-table";
+import { AdhocReportGenerator } from "@/components/dashboard/reports/adhoc-generator";
+import { 
+    DropdownMenu, 
+    DropdownMenuContent, 
+    DropdownMenuItem, 
+    DropdownMenuLabel, 
+    DropdownMenuSeparator, 
+    DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
+import { format } from "date-fns";
+import { doc, deleteDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ReportsPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const { data: reports, loading } = useFirestoreCollection<Report>("reports", "createdAt", "desc");
+
+  const handleDelete = async (id: string) => {
+      try {
+          await deleteDoc(doc(db, "reports", id));
+          toast({ title: "Report deleted" });
+      } catch (e) {
+          console.error(e);
+          toast({ title: "Error deleting report", variant: "destructive" });
+      }
+  };
+
+  const columns: ColumnDef<Report>[] = [
+    {
+        accessorKey: "title",
+        header: "Title",
+        cell: ({ row }) => (
+            <div className="flex items-center gap-2 font-medium">
+                <FileText className="h-4 w-4 text-blue-500" />
+                {row.getValue("title") || "Untitled Report"}
+            </div>
+        )
+    },
+    {
+        accessorKey: "type",
+        header: "Type",
+        cell: ({ row }) => <span className="capitalize">{row.getValue("type")?.toString().replace("_", " ")}</span>
+    },
+    {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+            <Badge variant={row.getValue("status") === 'final' ? 'default' : 'outline'}>
+                {row.getValue("status")}
+            </Badge>
+        )
+    },
+    {
+        accessorKey: "createdAt",
+        header: "Date",
+        cell: ({ row }) => {
+            const date = row.getValue("createdAt");
+            return date ? format(new Date(date as any), "MMM d, yyyy") : "-";
+        }
+    },
+    {
+        id: "actions",
+        cell: ({ row }) => {
+            const report = row.original;
+            return (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => router.push(`/dashboard/reports/editor/${report.id}`)}>
+                            <Edit className="mr-2 h-4 w-4" /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                            <Download className="mr-2 h-4 w-4" /> Download PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(report.id)}>
+                            <Trash className="mr-2 h-4 w-4" /> Delete
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            )
+        }
+    }
+  ];
 
   return (
     <div className="space-y-8 p-8 pt-6">
        <div className="flex items-center justify-between">
           <div>
-             <h1 className="text-3xl font-bold tracking-tight text-primary">Reports & Clinical Documents</h1>
+             <h1 className="text-3xl font-bold tracking-tight text-primary">Reports & Documents</h1>
              <p className="text-muted-foreground">Manage generated assessments and consultation summaries.</p>
           </div>
-          <Button>
-              <Plus className="mr-2 h-4 w-4" /> Create Manual Report
-          </Button>
+          <div className="flex gap-2">
+              <AdhocReportGenerator />
+              <Button onClick={() => router.push('/dashboard/reports/templates')}>
+                  <Plus className="mr-2 h-4 w-4" /> Template Designer
+              </Button>
+          </div>
        </div>
 
        <Card>
            <CardHeader>
-               <CardTitle>Recent Reports</CardTitle>
-               <CardDescription>All clinical documentation generated by you or the AI Co-Pilot.</CardDescription>
+               <CardTitle>Report Library</CardTitle>
+               <CardDescription>
+                   Search, filter, and manage all your clinical documentation.
+               </CardDescription>
            </CardHeader>
            <CardContent>
-               <Table>
-                   <TableHeader>
-                       <TableRow>
-                           <TableHead>Title</TableHead>
-                           <TableHead>Type</TableHead>
-                           <TableHead>Status</TableHead>
-                           <TableHead>Date</TableHead>
-                           <TableHead className="text-right">Actions</TableHead>
-                       </TableRow>
-                   </TableHeader>
-                   <TableBody>
-                       {reports.map((report) => (
-                           <TableRow key={report.id}>
-                               <TableCell className="font-medium">
-                                   <div className="flex items-center gap-2">
-                                       <FileText className="h-4 w-4 text-blue-500" />
-                                       {report.title || "Untitled Report"}
-                                   </div>
-                               </TableCell>
-                               <TableCell>Consultation Summary</TableCell>
-                               <TableCell>
-                                   <Badge variant={report.status === 'final' ? 'default' : 'outline'}>
-                                       {report.status}
-                                   </Badge>
-                               </TableCell>
-                               <TableCell>{new Date(report.createdAt).toLocaleDateString()}</TableCell>
-                               <TableCell className="text-right space-x-2">
-                                   <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/reports/editor/${report.id}`)}>
-                                       <Edit className="h-4 w-4" />
-                                   </Button>
-                                   <Button variant="ghost" size="icon">
-                                       <Download className="h-4 w-4" />
-                                   </Button>
-                               </TableCell>
-                           </TableRow>
-                       ))}
-                       {!loading && reports.length === 0 && (
-                           <TableRow>
-                               <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                                   No reports found.
-                               </TableCell>
-                           </TableRow>
-                       )}
-                   </TableBody>
-               </Table>
+               <DataTable 
+                   columns={columns} 
+                   data={reports} 
+                   searchKey="title" 
+                   filterableColumns={[
+                       { 
+                           id: "status", 
+                           title: "Status", 
+                           options: [{label: "Draft", value: "draft"}, {label: "Final", value: "final"}] 
+                       },
+                       {
+                           id: "type",
+                           title: "Type",
+                           options: [
+                               {label: "Clinical Summary", value: "clinical_summary"},
+                               {label: "Progress Note", value: "progress_note"},
+                               {label: "IEP Draft", value: "iep_draft"}
+                           ]
+                       }
+                   ]}
+                />
            </CardContent>
        </Card>
     </div>
