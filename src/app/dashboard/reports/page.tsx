@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { AdhocReportGenerator } from "@/components/dashboard/reports/adhoc-generator";
+import { TranslatorTool } from "@/components/dashboard/translator";
 import { 
     DropdownMenu, 
     DropdownMenuContent, 
@@ -22,6 +23,7 @@ import { format } from "date-fns";
 import { doc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function ReportsPage() {
   const router = useRouter();
@@ -104,7 +106,7 @@ export default function ReportsPage() {
        <div className="flex items-center justify-between">
           <div>
              <h1 className="text-3xl font-bold tracking-tight text-primary">Reports & Documents</h1>
-             <p className="text-muted-foreground">Manage generated assessments and consultation summaries.</p>
+             <p className="text-muted-foreground">Manage generated assessments, consultation summaries, and translations.</p>
           </div>
           <div className="flex gap-2">
               <AdhocReportGenerator />
@@ -114,37 +116,64 @@ export default function ReportsPage() {
           </div>
        </div>
 
-       <Card>
-           <CardHeader>
-               <CardTitle>Report Library</CardTitle>
-               <CardDescription>
-                   Search, filter, and manage all your clinical documentation.
-               </CardDescription>
-           </CardHeader>
-           <CardContent>
-               <DataTable 
-                   columns={columns} 
-                   data={reports} 
-                   searchKey="title" 
-                   filterableColumns={[
-                       { 
-                           id: "status", 
-                           title: "Status", 
-                           options: [{label: "Draft", value: "draft"}, {label: "Final", value: "final"}] 
-                       },
-                       {
-                           id: "type",
-                           title: "Type",
-                           options: [
-                               {label: "Clinical Summary", value: "clinical_summary"},
-                               {label: "Progress Note", value: "progress_note"},
-                               {label: "IEP Draft", value: "iep_draft"}
-                           ]
-                       }
-                   ]}
-                />
-           </CardContent>
-       </Card>
+       <Tabs defaultValue="library" className="space-y-4">
+           <TabsList>
+               <TabsTrigger value="library">Library</TabsTrigger>
+               <TabsTrigger value="tools">Tools & Translation</TabsTrigger>
+           </TabsList>
+
+           <TabsContent value="library">
+               <Card>
+                   <CardHeader>
+                       <CardTitle>Report Library</CardTitle>
+                       <CardDescription>
+                           Search, filter, and manage all your clinical documentation.
+                       </CardDescription>
+                   </CardHeader>
+                   <CardContent>
+                       <DataTable 
+                           columns={columns} 
+                           data={reports} 
+                           searchKey="title" 
+                           filterableColumns={[
+                               { 
+                                   id: "status", 
+                                   title: "Status", 
+                                   options: [{label: "Draft", value: "draft"}, {label: "Final", value: "final"}] 
+                               },
+                               {
+                                   id: "type",
+                                   title: "Type",
+                                   options: [
+                                       {label: "Clinical Summary", value: "clinical_summary"},
+                                       {label: "Progress Note", value: "progress_note"},
+                                       {label: "IEP Draft", value: "iep_draft"}
+                                   ]
+                               }
+                           ]}
+                        />
+                   </CardContent>
+               </Card>
+           </TabsContent>
+
+           <TabsContent value="tools">
+               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                   <div className="lg:col-span-2">
+                       <TranslatorTool />
+                   </div>
+                   <div className="space-y-6">
+                       <Card>
+                           <CardHeader><CardTitle>Quick Links</CardTitle></CardHeader>
+                           <CardContent className="space-y-2">
+                               <Button variant="outline" className="w-full justify-start">DSM-5 Reference</Button>
+                               <Button variant="outline" className="w-full justify-start">ICD-10 Codes</Button>
+                               <Button variant="outline" className="w-full justify-start">Intervention Bank</Button>
+                           </CardContent>
+                       </Card>
+                   </div>
+               </div>
+           </TabsContent>
+       </Tabs>
     </div>
   );
 }

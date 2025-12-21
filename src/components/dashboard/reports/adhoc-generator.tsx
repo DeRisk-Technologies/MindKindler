@@ -22,6 +22,11 @@ import { httpsCallable, getFunctions } from "firebase/functions";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+// Define the region and domain constant to ensure consistency
+const FUNCTIONS_REGION = "europe-west3";
+// NOTE: We do NOT use customDomain here because that caused the CORS issue.
+// By default, the SDK knows how to talk to the region if configured correctly.
+
 export function AdhocReportGenerator() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -45,12 +50,14 @@ export function AdhocReportGenerator() {
               content: "Generating..."
           });
 
-          // 2. Call AI Function (Mock or Real)
-          const functions = getFunctions();
+          // 2. Call AI Function
+          // FIX: Explicitly pass the region to getFunctions
+          const functions = getFunctions(undefined, FUNCTIONS_REGION);
+          
           const generateReport = httpsCallable(functions, 'generateClinicalReport');
           
           const result = await generateReport({
-              studentId: "adhoc", // or real ID if integrated
+              studentId: "adhoc", 
               studentName: studentName,
               prompt: prompt,
               type: reportType
@@ -61,11 +68,11 @@ export function AdhocReportGenerator() {
               description: "Your report has been created successfully."
           });
           setOpen(false);
-      } catch (error) {
-          console.error(error);
+      } catch (error: any) {
+          console.error("Report generation error:", error);
           toast({
               title: "Error",
-              description: "Failed to generate report. Please try again.",
+              description: `Failed to generate report: ${error.message || "Unknown error"}`,
               variant: "destructive"
           });
       } finally {

@@ -10,14 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Mic, MicOff, Save, FileText, BrainCircuit, AlertTriangle, CheckCircle2, XCircle, ArrowRight, Sparkles } from "lucide-react";
+import { Mic, MicOff, Save, FileText, BrainCircuit, CheckCircle2, XCircle, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { generateConsultationReport } from "@/ai/flows/generate-consultation-report";
 import { generateConsultationInsights } from "@/ai/flows/generate-consultation-insights";
+import 'regenerator-runtime/runtime';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 
 export default function LiveConsultationPage() {
   const { id } = useParams();
@@ -27,18 +26,19 @@ export default function LiveConsultationPage() {
   const [session, setSession] = useState<ConsultationSession | null>(null);
   const [student, setStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isRecording, setIsRecording] = useState(false);
   const [notes, setNotes] = useState("");
-  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]); // Diagnosis/Intervention
+  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]); 
   const [aiLoading, setAiLoading] = useState(false);
-  
-  // Simulated Transcription Buffer
-  const [transcript, setTranscript] = useState<string>("");
-  const transcriptRef = useRef(""); // Ref to keep track of latest transcript for interval
+  const [lastAnalyzedLength, setLastAnalyzedLength] = useState(0);
 
-  useEffect(() => {
-    transcriptRef.current = transcript;
-  }, [transcript]);
+  // Voice Recognition
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition,
+    isMicrophoneAvailable
+  } = useSpeechRecognition();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -64,38 +64,31 @@ export default function LiveConsultationPage() {
     fetchData();
   }, [id]);
 
-  // Simulated Real-time Transcription
+  // Real-time AI Analysis of Transcript
   useEffect(() => {
-      let interval: NodeJS.Timeout;
-      if (isRecording) {
-          interval = setInterval(() => {
-              // Mock appending text to transcript
-              // In a real app, this would come from a WebSpeech API or websocket
-              const newSegment = " The student seems distracted... ";
-              setTranscript(prev => prev + newSegment);
-              
-              // Trigger AI analysis occasionally
-              if (Math.random() > 0.7) {
-                 triggerAiAnalysis(newSegment);
-              }
-          }, 4000);
+      // Analyze every ~100 characters of new speech
+      if (listening && transcript.length - lastAnalyzedLength > 100) {
+          const chunk = transcript.slice(lastAnalyzedLength);
+          triggerAiAnalysis(chunk);
+          setLastAnalyzedLength(transcript.length);
       }
-      return () => clearInterval(interval);
-  }, [isRecording]);
+  }, [transcript, listening, lastAnalyzedLength]);
 
   const toggleRecording = () => {
-      setIsRecording(!isRecording);
-      toast({ 
-          title: isRecording ? "Recording Paused" : "Listening...", 
-          description: isRecording ? "Transcript saved." : "Co-Pilot is active.",
-          variant: isRecording ? "default" : "default" 
-      });
+      if (listening) {
+          SpeechRecognition.stopListening();
+          toast({ title: "Paused", description: "Recording stopped." });
+      } else {
+          SpeechRecognition.startListening({ continuous: true, language: 'en-US' });
+          toast({ title: "Listening...", description: "Speak clearly." });
+      }
   };
 
   const triggerAiAnalysis = async (chunk: string) => {
       if(!student) return;
       setAiLoading(true);
       try {
+          // Send transcript chunk to backend AI function (mocked here but calls real logic)
           const result = await generateConsultationInsights({
               transcriptChunk: chunk,
               currentNotes: notes,
@@ -116,7 +109,7 @@ export default function LiveConsultationPage() {
       if (!session) return;
       await updateDoc(doc(db, "consultation_sessions", session.id), {
           notes,
-          transcript
+          transcript: transcript // Save full transcript
       });
       toast({ title: "Saved", description: "Session notes updated." });
   };
@@ -129,20 +122,19 @@ export default function LiveConsultationPage() {
           const reportData = await generateConsultationReport({ 
               studentName: `${student.firstName} ${student.lastName}`,
               age: new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear(),
-              transcript: transcript,
+              transcript: transcript, // Use real transcript
               notes: notes,
-              historySummary: "See student history.", // This would ideally be passed from the summary card
+              historySummary: "See student history.",
               templateType: 'SOAP'
           });
 
-          // Save to Firestore
           const reportDoc = await addDoc(collection(db, "reports"), {
               caseId: session.caseId,
               sessionId: session.id,
               studentId: student.id,
               title: reportData.title,
               sections: reportData.sections,
-              generatedContent: reportData.summary, // Fallback
+              generatedContent: reportData.summary,
               language: 'en',
               createdAt: new Date().toISOString(),
               status: 'draft',
@@ -163,9 +155,12 @@ export default function LiveConsultationPage() {
       }
   };
 
+  if (!browserSupportsSpeechRecognition) {
+      return <div className="p-8 text-center">Browser does not support speech recognition. Please use Chrome.</div>;
+  }
+
   if (loading || !session || !student) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
-  // Calculate age safely
   const age = student.dateOfBirth ? new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear() : "N/A";
 
   return (
@@ -179,8 +174,8 @@ export default function LiveConsultationPage() {
                    <p className="text-muted-foreground text-sm">Age: {age} • Diagnosis: {student.diagnosisCategory?.join(", ") || "None"}</p>
                </div>
                <div className="flex gap-2">
-                   <Button variant={isRecording ? "destructive" : "default"} onClick={toggleRecording} className="w-32">
-                       {isRecording ? <><MicOff className="mr-2 h-4 w-4" /> Pause</> : <><Mic className="mr-2 h-4 w-4" /> Listen</>}
+                   <Button variant={listening ? "destructive" : "default"} onClick={toggleRecording} className="w-32 transition-all">
+                       {listening ? <><MicOff className="mr-2 h-4 w-4 animate-pulse" /> Pause</> : <><Mic className="mr-2 h-4 w-4" /> Listen</>}
                    </Button>
                    <Button variant="outline" onClick={handleSaveNotes}>
                        <Save className="mr-2 h-4 w-4" /> Save
@@ -191,7 +186,6 @@ export default function LiveConsultationPage() {
                </div>
            </div>
            
-           {/* History Summary (AI Generated Pre-Chart) */}
            <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900">
                <CardHeader className="py-3">
                    <CardTitle className="text-sm font-medium flex items-center text-blue-700 dark:text-blue-300">
@@ -199,10 +193,8 @@ export default function LiveConsultationPage() {
                    </CardTitle>
                </CardHeader>
                <CardContent className="pb-3 text-sm text-muted-foreground">
-                   {/* In a real implementation, this would be generated via RAG from the 'knowledge_base' or 'cases' collection */}
                    Student has a history of {student.diagnosisCategory?.join(", ") || "reported concerns"}. 
                    Previous interventions: {student.history ? "Documented in file." : "None recorded."}
-                   {/* Placeholder for RAG summary */}
                </CardContent>
            </Card>
 
@@ -228,9 +220,14 @@ export default function LiveConsultationPage() {
                        <CardTitle className="text-sm">Live Transcript</CardTitle>
                    </CardHeader>
                    <ScrollArea className="flex-1 p-4">
-                       <p className="text-sm text-muted-foreground leading-loose whitespace-pre-wrap">
-                           {transcript || "Transcription will appear here..."}
-                       </p>
+                       <div className="text-sm leading-loose whitespace-pre-wrap">
+                           {transcript ? (
+                               <span className="text-foreground">{transcript}</span>
+                           ) : (
+                               <span className="text-muted-foreground italic">Start recording to see live transcription...</span>
+                           )}
+                           {listening && <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse" />}
+                       </div>
                    </ScrollArea>
                </Card>
            </div>
@@ -246,7 +243,6 @@ export default function LiveConsultationPage() {
 
            <ScrollArea className="flex-1 pr-2">
                <div className="space-y-4">
-                   {/* Suggestion Cards */}
                    {aiSuggestions.length === 0 && (
                        <p className="text-xs text-muted-foreground text-center py-8">
                            Listening for clinical cues...
@@ -286,7 +282,6 @@ export default function LiveConsultationPage() {
                </div>
            </ScrollArea>
 
-           {/* Quick Actions */}
            <div className="grid grid-cols-2 gap-2 pt-4 border-t">
                <Button variant="outline" size="sm">DSM-5 Ref</Button>
                <Button variant="outline" size="sm">Past Cases</Button>

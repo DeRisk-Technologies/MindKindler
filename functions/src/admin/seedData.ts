@@ -10,12 +10,17 @@ let ai: any = null;
 const getAi = () => {
     if (!ai) {
         try {
+            // Check for API Key presence explicitly
+            if (!process.env.GOOGLE_GENAI_API_KEY) {
+                console.warn("GOOGLE_GENAI_API_KEY is missing. AI features will fail.");
+                throw new Error("Missing API Key");
+            }
             ai = genkit({
                 plugins: [googleAI()],
                 model: "googleai/gemini-1.5-flash", 
             });
         } catch (e) {
-            console.error("Failed to init Genkit (Missing Key?)", e);
+            console.error("Failed to init Genkit", e);
             throw new Error("AI Service Unavailable");
         }
     }
@@ -54,7 +59,7 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
         const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
         aiProfiles = JSON.parse(jsonStr);
     } catch (e) {
-        console.warn("AI Gen Failed, using fallback. Key likely missing.", e);
+        console.warn("AI Gen Failed, using fallback. Key likely missing or error.", e);
         // Fallback profiles if AI fails
         aiProfiles = Array(count).fill({ riskLevel: 'Low', diagnosis: [], narrative: "Standard student (Fallback).", recentEvents: [] });
     }

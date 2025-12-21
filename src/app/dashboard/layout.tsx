@@ -8,7 +8,7 @@ import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { Sidebar, SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AIAssistantFloat } from "@/components/ai-assistant-float";
 
-const FUNCTIONS_BASE_URL = "https://europe-west3-studio-1557923276-46e4b.cloudfunctions.net";
+const FUNCTIONS_REGION = "europe-west3";
 
 export default function DashboardLayout({
   children,
@@ -20,11 +20,8 @@ export default function DashboardLayout({
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
         if (user) {
             try {
-                // Use the explicit URL for the callable function
-                const functionsInstance = getFunctions(); 
-                // Ensure the region matches your deployment
-                functionsInstance.customDomain = FUNCTIONS_BASE_URL; 
-
+                // FIX: Use explicit region instead of custom domain
+                const functionsInstance = getFunctions(undefined, FUNCTIONS_REGION);
                 const setupProfile = httpsCallable(functionsInstance, 'setupUserProfile');
                 await setupProfile();
             } catch (e) {

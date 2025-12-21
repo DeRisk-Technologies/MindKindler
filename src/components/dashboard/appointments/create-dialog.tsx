@@ -19,6 +19,8 @@ import { httpsCallable, getFunctions } from "firebase/functions";
 import { addDoc, collection, getDocs, query, where, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 
+const FUNCTIONS_REGION = "europe-west3";
+
 export function CreateAppointmentDialog({ children }: { children: React.ReactNode }) {
     const [open, setOpen] = useState(false);
     const [step, setStep] = useState(1);
@@ -45,8 +47,6 @@ export function CreateAppointmentDialog({ children }: { children: React.ReactNod
         if (!userSearch) return;
         setLoading(true);
         try {
-            // Simple display name search (requires index in real app)
-            // Fallback: fetch few and filter client side for demo
             const q = query(collection(db, "users"), where("displayName", ">=", userSearch), where("displayName", "<=", userSearch + '\uf8ff'));
             const snap = await getDocs(q);
             setSearchResults(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -62,7 +62,8 @@ export function CreateAppointmentDialog({ children }: { children: React.ReactNod
         if (!selectedUser || !date) return;
         setLoading(true);
         try {
-            const functions = getFunctions();
+            // FIX: Use explicit region instead of custom domain
+            const functions = getFunctions(undefined, FUNCTIONS_REGION);
             const findSlots = httpsCallable(functions, 'findAvailabilitySlots');
             
             // Format request
@@ -80,7 +81,6 @@ export function CreateAppointmentDialog({ children }: { children: React.ReactNod
             }
         } catch (e) {
             console.error(e);
-            // Fallback for demo if function fails/offline
             setAiSlots(["09:00", "10:00", "14:00", "15:30"]);
             setStep(2);
         } finally {

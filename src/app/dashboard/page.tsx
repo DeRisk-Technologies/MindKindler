@@ -33,6 +33,7 @@ import {
   YAxis,
   Tooltip,
 } from "recharts";
+import { DashboardAlerts } from "@/components/dashboard/dashboard-alerts";
 
 const chartData = [
   { month: "Jan", assessments: 18 },
@@ -146,6 +147,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* New Alerts Section */}
+      <DashboardAlerts />
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <Card className="shadow-md border-t-4 border-t-primary">

@@ -19,8 +19,9 @@ import { Separator } from "@/components/ui/separator";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LandingPageEditor } from "@/components/dashboard/settings/landing-page-editor";
 
-const FUNCTIONS_BASE_URL = "https://europe-west3-studio-1557923276-46e4b.cloudfunctions.net";
+const FUNCTIONS_REGION = "europe-west3";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -42,15 +43,17 @@ export default function SettingsPage() {
           await seedDatabase();
           toast({ title: "Success", description: "Basic mock data added." });
       } else {
-          const functions = getFunctions(); 
-          functions.customDomain = FUNCTIONS_BASE_URL; 
+          // Initialize functions with explicit region
+          const functions = getFunctions(undefined, FUNCTIONS_REGION);
           const seedDemoData = httpsCallable(functions, 'seedDemoData');
+          
           await seedDemoData();
+          
           toast({ title: "AI Seed Complete", description: "Complex student profiles generated." });
       }
     } catch (e: any) {
        console.error(e);
-       toast({ title: "Error", description: e.message, variant: "destructive" });
+       toast({ title: "Error", description: e.message || "Failed to seed data", variant: "destructive" });
     } finally {
       setIsSeeding(false);
       setIsAiSeeding(false);
@@ -61,8 +64,7 @@ export default function SettingsPage() {
       if (!confirm("Are you sure? This will delete ALL demo students and cases created by the seed script.")) return;
       setIsClearing(true);
       try {
-          const functions = getFunctions(); 
-          functions.customDomain = FUNCTIONS_BASE_URL;
+          const functions = getFunctions(undefined, FUNCTIONS_REGION);
           const clearDemoData = httpsCallable(functions, 'clearDemoData');
           const result: any = await clearDemoData();
           
@@ -87,7 +89,7 @@ export default function SettingsPage() {
 
         <div className="grid gap-6 md:grid-cols-2">
             
-            {/* 1. General Preferences & Navigation Links */}
+            {/* 1. General Preferences */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -118,10 +120,6 @@ export default function SettingsPage() {
                          <Button variant="outline" className="justify-start" onClick={() => router.push('/dashboard/settings/integrations')}>
                              <Globe className="mr-2 h-4 w-4" />
                              Integrations
-                         </Button>
-                         <Button variant="outline" className="justify-start opacity-50 cursor-not-allowed">
-                             <Lock className="mr-2 h-4 w-4" />
-                             Security & Password (Coming Soon)
                          </Button>
                      </div>
                 </CardContent>
@@ -159,6 +157,11 @@ export default function SettingsPage() {
                     </Button>
                 </CardContent>
             </Card>
+
+            {/* 3. Landing Page Editor (Full Width on Mobile, Col span 2 on large) */}
+            <div className="md:col-span-2">
+                <LandingPageEditor />
+            </div>
         </div>
     </div>
   );

@@ -7,6 +7,8 @@ import * as admin from "firebase-admin";
 import * as aiReports from "./ai/generateClinicalReport";
 import * as aiAssessments from "./ai/generateAssessmentContent";
 import * as aiInsights from "./ai/analyzeConsultationInsight";
+import * as aiDocs from "./ai/processUploadedDocument"; // Import new handler
+
 import * as scheduling from "./scheduling/scheduler";
 import * as grading from "./assessments/grading";
 import * as userMgmt from "./admin/userManagement";
@@ -23,15 +25,14 @@ if (admin.apps.length === 0) {
     admin.initializeApp();
 }
 
-// Enable CORS for all Callable Functions
-// Using "*" allow all during development/testing if specific origins fail due to strict policies
-// Or ensure exact matches.
-const callOptions = { cors: true }; // 'true' enables CORS for all origins automatically in v2
+const callOptions = { cors: true }; 
 
 // 1. AI & Intelligence Layer
 export const generateClinicalReport = onCall(callOptions, aiReports.handler);
 export const generateAssessmentContent = onCall(callOptions, aiAssessments.handler);
 export const analyzeConsultationInsight = onCall(callOptions, aiInsights.handler);
+// New: Document Processing Trigger
+export const processUploadedDocument = aiDocs.processDocumentHandler;
 
 // 2. Scheduling & Workflow Automation
 export const findAvailabilitySlots = onCall(callOptions, scheduling.findAvailabilityHandler);
@@ -46,7 +47,6 @@ export const detectAnomalies = onDocumentCreated('assessment_results/{resultId}'
 export const anonymizeTrainingData = onSchedule({ schedule: '0 0 1 * *', timeZone: 'Europe/Berlin' }, maintenance.anonymizeDataHandler);
 export const setupUserProfile = onCall(callOptions, userMgmt.setupUserProfileHandler);
 
-// Seed Data - Increased timeout/memory
 export const seedDemoData = onCall({ 
     cors: true, 
     timeoutSeconds: 540, 

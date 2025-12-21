@@ -8,7 +8,7 @@ import { UploadedDocument } from "@/types/schema";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Eye, FileCheck, AlertTriangle, RefreshCw } from "lucide-react";
+import { Eye, FileCheck, AlertTriangle, RefreshCw, User, Building, Briefcase } from "lucide-react";
 
 export default function DataIngestionPage() {
   const { data: documents, loading } = useFirestoreCollection<UploadedDocument>("documents", "createdAt", "desc");
@@ -35,22 +35,35 @@ export default function DataIngestionPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>File Name</TableHead>
-                                    <TableHead>Category</TableHead>
+                                    <TableHead>File</TableHead>
+                                    <TableHead>Target</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {documents.map((doc) => (
+                                {documents.map((doc: any) => (
                                     <TableRow key={doc.id}>
-                                        <TableCell className="font-medium">{doc.fileName}</TableCell>
-                                        <TableCell className="capitalize">{doc.category.replace('_', ' ')}</TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">{doc.fileName}</span>
+                                                <span className="text-xs text-muted-foreground capitalize">{doc.category.replace('_', ' ')}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2 text-sm">
+                                                {doc.targetType === 'student' && <User className="h-3 w-3 text-muted-foreground" />}
+                                                {doc.targetType === 'school' && <Building className="h-3 w-3 text-muted-foreground" />}
+                                                {doc.targetType === 'user' && <Briefcase className="h-3 w-3 text-muted-foreground" />}
+                                                {doc.targetName || "Unknown"}
+                                            </div>
+                                        </TableCell>
                                         <TableCell>
                                             {doc.status === 'processing' && <Badge variant="outline" className="animate-pulse">Processing</Badge>}
                                             {doc.status === 'review_required' && <Badge variant="destructive">Review Needed</Badge>}
                                             {doc.status === 'processed' && <Badge variant="default" className="bg-green-600">Processed</Badge>}
                                             {doc.status === 'uploading' && <Badge variant="secondary">Uploading</Badge>}
+                                            {doc.status === 'error' && <Badge variant="destructive">Error</Badge>}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {doc.status === 'review_required' ? (
