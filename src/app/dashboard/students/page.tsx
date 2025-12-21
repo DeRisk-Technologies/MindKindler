@@ -18,7 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Plus, Search, Loader2, UploadCloud, User, AlertTriangle, Pencil, Trash2, Users, FileText } from "lucide-react";
+import { Plus, Search, Loader2, UploadCloud, User, AlertTriangle, Pencil, Trash2, Users, FileText, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import {
@@ -30,6 +30,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { db } from "@/lib/firebase";
 import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
@@ -39,6 +44,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 export default function StudentsPage() {
   const { data: students, loading: loadingStudents } = useFirestoreCollection<Student>("students", "lastName", "asc");
@@ -331,15 +337,62 @@ export default function StudentsPage() {
                       {filteredStudents.map((student) => (
                           <TableRow key={student.id}>
                             <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                                  {student.firstName?.[0]}{student.lastName?.[0]}
-                                </div>
-                                <div>
-                                  <div>{student.firstName} {student.lastName}</div>
-                                  <div className="text-xs text-muted-foreground">{student.dateOfBirth}</div>
-                                </div>
-                              </div>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <div className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-2 rounded-md transition-colors w-fit">
+                                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                                      {student.firstName?.[0]}{student.lastName?.[0]}
+                                    </div>
+                                    <div className="text-left">
+                                      <div className="font-semibold">{student.firstName} {student.lastName}</div>
+                                      <div className="text-xs text-muted-foreground">{student.dateOfBirth}</div>
+                                    </div>
+                                  </div>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80 p-0" align="start">
+                                  <div className="p-4 space-y-4">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <h4 className="font-semibold text-base">{student.firstName} {student.lastName}</h4>
+                                        <p className="text-xs text-muted-foreground">{getSchoolName(student.schoolId)}</p>
+                                      </div>
+                                      <Link href={`/dashboard/students/${student.id}`}>
+                                        <Button size="sm" variant="default" className="h-8">
+                                          View Profile <ExternalLink className="ml-2 h-3 w-3" />
+                                        </Button>
+                                      </Link>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 text-sm border-t pt-3">
+                                      <div className="flex flex-col">
+                                        <span className="text-xs text-muted-foreground">Date of Birth</span>
+                                        <span>{student.dateOfBirth || "N/A"}</span>
+                                      </div>
+                                      <div className="flex flex-col">
+                                        <span className="text-xs text-muted-foreground">Gender</span>
+                                        <span className="capitalize">{student.gender || "N/A"}</span>
+                                      </div>
+                                      <div className="col-span-2 flex flex-col">
+                                        <span className="text-xs text-muted-foreground">Guardian</span>
+                                        <span>{getParentName(student.parentId)}</span>
+                                      </div>
+                                    </div>
+
+                                    {(student.alerts && student.alerts.length > 0) ? (
+                                       <div className="bg-red-50 p-2 rounded border border-red-200 text-xs text-red-800 flex items-start gap-2">
+                                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                                          <div>
+                                            <strong>Action Required:</strong> {student.alerts.length} active alerts linked to this student.
+                                          </div>
+                                       </div>
+                                    ) : (
+                                       <div className="bg-green-50 p-2 rounded border border-green-200 text-xs text-green-800 text-center">
+                                          No active alerts.
+                                       </div>
+                                    )}
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
                             </TableCell>
                             <TableCell>{getSchoolName(student.schoolId)}</TableCell>
                             <TableCell>

@@ -67,8 +67,15 @@ export function AssessmentBuilder({ initialMode = 'manual', existingTemplate }: 
         title,
         description,
         category,
-        questions,
-        createdBy: "current_user_id", // Replace with auth context
+        questions: questions.map(q => ({
+            ...q,
+            // Ensure no undefined values which cause Firestore crashes
+            options: q.options || [], 
+            mediaUrl: q.mediaUrl || "",
+            mediaType: q.mediaType || "image",
+            hint: q.hint || ""
+        })),
+        createdBy: "current_user_id", 
         createdAt: existingTemplate ? existingTemplate.createdAt : serverTimestamp(),
         updatedAt: serverTimestamp(),
         status: 'draft',
@@ -78,12 +85,12 @@ export function AssessmentBuilder({ initialMode = 'manual', existingTemplate }: 
         }
       };
 
-      // In real app: check if updating or creating
       await addDoc(collection(db, "assessment_templates"), templateData);
       
       toast({ title: "Success", description: "Assessment template saved." });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      console.error(error);
+      toast({ title: "Error", description: `Save failed: ${error.message}`, variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -100,7 +107,12 @@ export function AssessmentBuilder({ initialMode = 'manual', existingTemplate }: 
       <div className="flex items-center justify-between">
          <div>
            <h1 className="text-2xl font-bold tracking-tight">Assessment Designer</h1>
-           <p className="text-muted-foreground">Build assessments manually or with AI assistance.</p>
+           <p className="text-muted-foreground">
+               Design evaluations to assess students, schools, or teachers. <br/>
+               <span className="text-xs italic opacity-70">
+                   Note: These questions are for the evaluator to answer about the subject, or for the subject to self-report.
+               </span>
+           </p>
          </div>
          <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowAI(true)}>
@@ -212,7 +224,7 @@ export function AssessmentBuilder({ initialMode = 'manual', existingTemplate }: 
                       title,
                       description,
                       category,
-                      questions,
+                      questions: questions.map(q => ({ ...q, options: q.options || [] })), // Sanitized for preview
                       createdBy: "",
                       createdAt: "",
                       updatedAt: "",

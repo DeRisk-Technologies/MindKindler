@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, FileText, Loader2, CheckCircle, AlertCircle, Search, User, Building, Briefcase } from "lucide-react";
+import { Upload, FileText, Loader2, CheckCircle, AlertCircle, Search, User, Building, Briefcase, ChevronsUpDown, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,6 +14,20 @@ import { DocumentCategory } from "@/types/schema";
 import { addDoc, collection, serverTimestamp, query, where, getDocs, limit } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 // Mock storage upload
 const uploadFileToStorage = async (file: File) => {
@@ -26,9 +40,10 @@ export function DocumentUploader() {
   const [file, setFile] = useState<File | null>(null);
   const [category, setCategory] = useState<DocumentCategory | "">("");
   const [targetType, setTargetType] = useState<"student" | "school" | "user">("student");
-  const [targetSearch, setTargetSearch] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedTarget, setSelectedTarget] = useState<any>(null);
+  const [openCombobox, setOpenCombobox] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
   
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -54,16 +69,19 @@ export function DocumentUploader() {
 
   // Search Logic
   useEffect(() => {
-      const delayDebounceFn = setTimeout(async () => {
-          if (!targetSearch || selectedTarget) return;
+      const fetchResults = async () => {
+          if (!searchValue) {
+              setSearchResults([]);
+              return;
+          }
 
           let q;
           if (targetType === 'student') {
-             q = query(collection(db, 'students'), where('firstName', '>=', targetSearch), limit(5));
+             q = query(collection(db, 'students'), where('firstName', '>=', searchValue), limit(5));
           } else if (targetType === 'school') {
-             q = query(collection(db, 'schools'), where('name', '>=', targetSearch), limit(5));
+             q = query(collection(db, 'schools'), where('name', '>=', searchValue), limit(5));
           } else {
-             q = query(collection(db, 'users'), where('displayName', '>=', targetSearch), limit(5));
+             q = query(collection(db, 'users'), where('displayName', '>=', searchValue), limit(5));
           }
 
           try {
@@ -72,10 +90,11 @@ export function DocumentUploader() {
           } catch (e) {
              console.error(e);
           }
-      }, 500);
+      };
 
-      return () => clearTimeout(delayDebounceFn);
-  }, [targetSearch, targetType, selectedTarget]);
+      const timer = setTimeout(fetchResults, 300);
+      return () => clearTimeout(timer);
+  }, [searchValue, targetType]);
 
 
   const handleUpload = async () => {
@@ -109,13 +128,18 @@ export function DocumentUploader() {
           setFile(null);
           setCategory("");
           setSelectedTarget(null);
-          setTargetSearch("");
+          setSearchValue("");
       } catch (e) {
           toast({ title: "Error", description: "Upload failed.", variant: "destructive" });
       } finally {
           setUploading(false);
           setTimeout(() => setProgress(0), 2000);
       }
+  };
+
+  const getDisplayName = (item: any) => {
+      if (!item) return "";
+      return item.firstName ? `${item.firstName} ${item.lastName}` : (item.name || item.displayName);
   };
 
   return (
@@ -125,7 +149,7 @@ export function DocumentUploader() {
             {/* 1. Target Selection */}
             <div className="space-y-3">
                 <Label>Who is this document for?</Label>
-                <RadioGroup defaultValue="student" value={targetType} onValueChange={(v: any) => { setTargetType(v); setSelectedTarget(null); setTargetSearch(""); }} className="flex gap-4">
+                <RadioGroup defaultValue="student" value={targetType} onValueChange={(v: any) => { setTargetType(v); setSelectedTarget(null); setSearchValue(""); }} className="flex gap-4">
                     <div className="flex items-center space-x-2">
                         <RadioGroupItem value="student" id="r1" />
                         <Label htmlFor="r1">Student</Label>
@@ -140,42 +164,47 @@ export function DocumentUploader() {
                     </div>
                 </RadioGroup>
 
-                {!selectedTarget ? (
-                    <div className="relative">
-                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                            placeholder={`Search ${targetType}...`} 
-                            className="pl-8"
-                            value={targetSearch}
-                            onChange={e => setTargetSearch(e.target.value)}
-                        />
-                        {searchResults.length > 0 && targetSearch && (
-                            <div className="absolute top-full left-0 right-0 bg-background border rounded-md shadow-lg mt-1 z-10 max-h-40 overflow-y-auto">
-                                {searchResults.map(res => (
-                                    <div 
-                                        key={res.id} 
-                                        className="p-2 hover:bg-muted cursor-pointer text-sm"
-                                        onClick={() => { setSelectedTarget(res); setTargetSearch(""); }}
-                                    >
-                                        {res.firstName ? `${res.firstName} ${res.lastName}` : (res.name || res.displayName)}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="flex items-center justify-between p-3 bg-muted/30 border rounded-md">
-                        <div className="flex items-center gap-2">
-                            {targetType === 'student' && <User className="h-4 w-4 text-primary" />}
-                            {targetType === 'school' && <Building className="h-4 w-4 text-primary" />}
-                            {targetType === 'user' && <Briefcase className="h-4 w-4 text-primary" />}
-                            <span className="font-medium text-sm">
-                                {selectedTarget.firstName ? `${selectedTarget.firstName} ${selectedTarget.lastName}` : (selectedTarget.name || selectedTarget.displayName)}
-                            </span>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => setSelectedTarget(null)}>Change</Button>
-                    </div>
-                )}
+                <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={openCombobox}
+                      className="w-full justify-between"
+                    >
+                      {selectedTarget ? getDisplayName(selectedTarget) : `Select ${targetType}...`}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0">
+                    <Command shouldFilter={false}> 
+                      <CommandInput placeholder={`Search ${targetType}...`} value={searchValue} onValueChange={setSearchValue} />
+                      <CommandList>
+                        <CommandEmpty>No results found.</CommandEmpty>
+                        <CommandGroup>
+                          {searchResults.map((item) => (
+                            <CommandItem
+                              key={item.id}
+                              value={item.id}
+                              onSelect={() => {
+                                setSelectedTarget(item);
+                                setOpenCombobox(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedTarget?.id === item.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {getDisplayName(item)}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
             </div>
 
             {/* 2. Category Selection */}

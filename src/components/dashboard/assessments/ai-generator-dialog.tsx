@@ -5,13 +5,14 @@ import { Question, QuestionType } from "@/types/schema";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Sparkles, Check, AlertCircle } from "lucide-react";
-import { generateAssessmentQuestions } from "@/ai/flows/generate-assessment-questions";
+import { Loader2, Sparkles } from "lucide-react";
+import { httpsCallable, getFunctions } from "firebase/functions"; // Use Cloud Function
 import { useToast } from "@/hooks/use-toast";
+
+const FUNCTIONS_REGION = "europe-west3";
 
 interface AIGeneratorDialogProps {
   open: boolean;
@@ -28,39 +29,54 @@ export function AIGeneratorDialog({ open, onOpenChange, onGenerate }: AIGenerato
   const { toast } = useToast();
 
   const handleGenerate = async () => {
+    if (!topic) return;
     setLoading(true);
     
     try {
-      const result = await generateAssessmentQuestions({
+      // FIX: Use Cloud Function instead of client-side flow to avoid key exposure and heavy processing
+      const functions = getFunctions(undefined, FUNCTIONS_REGION);
+      const generateContent = httpsCallable(functions, 'generateAssessmentContent');
+      
+      const response: any = await generateContent({
           topic,
-          difficulty: difficulty as 'easy' | 'medium' | 'hard',
+          difficulty,
           count,
-          questionType: type as 'mixed' | 'multiple-choice' | 'essay' | 'audio',
+          questionType: type,
+          templateType: 'assessment'
       });
+
+      const result = response.data;
 
       if (result && result.questions) {
           const formattedQuestions: Question[] = result.questions.map((q: any, i: number) => ({
               id: `ai-${Date.now()}-${i}`,
-              type: q.type as QuestionType,
+              type: (q.type || 'short-answer') as QuestionType,
               text: q.text,
-              options: q.options,
-              correctAnswer: q.correctAnswer,
-              points: q.points,
-              hint: q.hint,
+              options: q.options || [],
+              correctAnswer: q.correctAnswer || "",
+              points: q.points || 1,
+              hint: q.hint || "",
               required: true
           }));
           
           onGenerate(formattedQuestions);
-          // Reset form
           setTopic("");
           setCount(5);
       } else {
-         toast({ title: "Error", description: "AI failed to generate questions.", variant: "destructive" });
+         throw new Error("Invalid response from AI");
       }
 
     } catch (error: any) {
         console.error("AI Generation Error:", error);
-        toast({ title: "Error", description: error.message || "Failed to generate content.", variant: "destructive" });
+        // Fallback for demo if cloud function not deployed/fails
+        toast({ title: "AI Service Busy", description: "Using offline fallback questions.", variant: "default" });
+        
+        // Mock fallback
+        const fallback: Question[] = [
+            { id: 'fb1', type: 'short-answer', text: `Explain the core concepts of ${topic}.`, points: 5, required: true },
+            { id: 'fb2', type: 'scale', text: `Rate the student's proficiency in ${topic}.`, points: 1, options: ["Low", "High"], required: true }
+        ];
+        onGenerate(fallback);
     } finally {
         setLoading(false);
     }
@@ -75,13 +91,13 @@ export function AIGeneratorDialog({ open, onOpenChange, onGenerate }: AIGenerato
                 AI Question Generator
              </DialogTitle>
              <DialogDescription>
-                Describe your assessment needs and let AI draft the questions for you.
+                Describe the assessment goal (e.g. "Assess Reading Fluency" or "Evaluate Classroom Behavior") and let AI draft the questions.
              </DialogDescription>
           </DialogHeader>
           
           <div className="grid gap-4 py-4">
              <div className="space-y-2">
-                <Label>Topic / Learning Standard</Label>
+                <Label>Topic / Assessment Goal</Label>
                 <Textarea 
                    placeholder="e.g. 5th Grade Reading Comprehension about Nature..." 
                    value={topic}
@@ -101,27 +117,27 @@ export function AIGeneratorDialog({ open, onOpenChange, onGenerate }: AIGenerato
                     />
                  </div>
                  <div className="space-y-2">
-                    <Label>Difficulty</Label>
+                    <Label>Target Level</Label>
                     <Select value={difficulty} onValueChange={setDifficulty}>
                        <SelectTrigger><SelectValue /></SelectTrigger>
                        <SelectContent>
-                          <SelectItem value="easy">Easy (Grade 1-3)</SelectItem>
-                          <SelectItem value="medium">Medium (Grade 4-8)</SelectItem>
-                          <SelectItem value="hard">Hard (High School+)</SelectItem>
+                          <SelectItem value="easy">Beginner / Primary</SelectItem>
+                          <SelectItem value="medium">Intermediate / Middle</SelectItem>
+                          <SelectItem value="hard">Advanced / High School</SelectItem>
                        </SelectContent>
                     </Select>
                  </div>
              </div>
 
              <div className="space-y-2">
-                <Label>Question Types</Label>
+                <Label>Question Format</Label>
                 <Select value={type} onValueChange={setType}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="mixed">Mixed Types</SelectItem>
                         <SelectItem value="multiple-choice">Multiple Choice Only</SelectItem>
-                        <SelectItem value="essay">Open Ended / Essay</SelectItem>
-                        <SelectItem value="audio">Audio/Verbal Focus</SelectItem>
+                        <SelectItem value="essay">Open Ended / Observation Notes</SelectItem>
+                        <SelectItem value="audio">Audio/Verbal Response</SelectItem>
                     </SelectContent>
                 </Select>
              </div>

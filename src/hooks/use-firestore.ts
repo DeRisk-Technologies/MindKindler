@@ -41,6 +41,42 @@ export function useFirestoreCollection<T = DocumentData>(
   return { data, loading, error };
 }
 
+export function useFirestoreDocument<T = DocumentData>(
+    collectionName: string, 
+    docId: string
+) {
+    const [data, setData] = useState<T | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
+
+    useEffect(() => {
+        if (!docId) {
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        const docRef = doc(db, collectionName, docId);
+        
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setData({ id: docSnap.id, ...docSnap.data() } as T);
+            } else {
+                setData(null);
+            }
+            setLoading(false);
+        }, (err) => {
+            console.error("Firestore Document Error:", err);
+            setError(err);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [collectionName, docId]);
+
+    return { data, loading, error };
+}
+
 export function useFirestore() {
     const getDocument = async (collectionName: string, id: string) => {
         try {
