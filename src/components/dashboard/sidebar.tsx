@@ -36,6 +36,9 @@ import {
   Users,
   Handshake,
   FileText,
+  Map,
+  Languages,
+  BookA,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -222,6 +225,22 @@ export function DashboardSidebar() {
               <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={isActive("/dashboard/partners/revenue")} tooltip="Revenue Ops">
                       <Link href="/dashboard/partners/revenue"><BarChart className="text-red-500"/> <span className="text-red-500">Revenue Ops</span></Link>
+                  </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isActive("/dashboard/settings/localization")} tooltip="Localization">
+                      <Link href="/dashboard/settings/localization"><Map className="text-red-500"/> <span className="text-red-500">Localization</span></Link>
+                  </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isActive("/dashboard/settings/translations")} tooltip="Translations">
+                      <Link href="/dashboard/settings/translations"><Languages className="text-red-500"/> <span className="text-red-500">Translations</span></Link>
+                  </SidebarMenuButton>
+              </SidebarMenuItem>
+              {/* New: Glossary Manager Link */}
+              <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isActive("/dashboard/settings/glossary")} tooltip="Glossary">
+                      <Link href="/dashboard/settings/glossary"><BookA className="text-red-500"/> <span className="text-red-500">Glossary</span></Link>
                   </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

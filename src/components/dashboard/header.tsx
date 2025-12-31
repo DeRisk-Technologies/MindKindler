@@ -10,9 +10,12 @@ import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { Badge } from "@/components/ui/badge";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useTranslation } from "@/i18n/provider";
 
 export function DashboardHeader() {
   const [role, setRole] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -35,7 +38,7 @@ export function DashboardHeader() {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search cases, students..."
+            placeholder={t('common.search')}
             className="w-full rounded-lg bg-secondary pl-8 md:w-[200px] lg:w-[320px]"
           />
         </div>
@@ -45,6 +48,7 @@ export function DashboardHeader() {
            </Badge>
         )}
       </div>
+      <LanguageSwitcher />
       <Button variant="ghost" size="icon" className="rounded-full">
         <Bell className="h-5 w-5" />
         <span className="sr-only">Toggle notifications</span>
