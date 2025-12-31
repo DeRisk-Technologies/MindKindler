@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 
+      Bright & Elegant Theme based on Blueprint
+      Primary: Gentle Blue (#A0CFEC) -> HSL 203 66% 78% (approx)
+      Background: Light Blue (#F0F8FF) -> HSL 208 100% 97%
+      Accent: Muted Yellow (#E8D579) -> HSL 50 69% 69%
+      
+      Adjusted for sufficient contrast while keeping the "feel":
+      Primary: A bit darker for text/icons on light bg -> HSL 203 66% 40% (for better visibility)
+               Or keep the "brand" color as is, but use a derived color for text.
+      Let's use a rich blue for primary elements to be "elegant".
+    */
+
+    --background: 208 100% 97%; /* #F0F8FF AliceBlue */
+    --foreground: 222 47% 11%; /* Dark Blue-Black for text */
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary: Using a stronger version of the "Gentle Blue" for better visibility/elegance */
+    --primary: 203 70% 40%; 
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 90%;
+    --muted-foreground: 215.4 16.3% 40%;
+
+    /* Accent: Muted Yellow */
+    --accent: 50 69% 69%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 85%;
+    --input: 214.3 31.8% 85%;
+    --ring: 203 70% 40%;
+
+    --radius: 0.75rem; /* Slightly more rounded for friendly feel */
+
+    /* Sidebar Variables - Matches Card/Light Theme */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 203 70% 40%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 208 100% 95%; /* Slightly darker than main bg */
+    --sidebar-accent-foreground: 203 70% 40%;
+    --sidebar-border: 214.3 31.8% 90%;
+    --sidebar-ring: 203 70% 40%;
+  }
+
+  .dark {
+    /* Elegant Dark Theme */
+    --background: 222.2 47% 11%; /* Deep Blue-Black */
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 13%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 13%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 203 66% 60%; /* Lighter blue for dark mode */
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 50 69% 60%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+
+    /* Sidebar Variables - Dark */
+    --sidebar-background: 222 47% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 203 66% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 47% 15%;
+    --sidebar-accent-foreground: 203 66% 60%;
+    --sidebar-border: 217.2 32.6% 17.5%;
+    --sidebar-ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

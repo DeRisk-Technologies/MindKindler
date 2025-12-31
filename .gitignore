@@ -1,0 +1,11 @@
+# Filtering for Firebase Functions
+functions/node_modules
+functions/lib
+functions/firebase-debug.log*
+
+# Filtering for Next.js
+.next/
+node_modules/
+.env.local
+.env
+apphosting.yaml

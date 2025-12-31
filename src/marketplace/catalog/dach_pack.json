@@ -1,0 +1,22 @@
+{
+    "id": "dach_pack",
+    "name": "DACH Region Pack",
+    "description": "GDPR-strict policies for Germany, Austria, Switzerland.",
+    "version": "1.0.0",
+    "regionTags": ["DACH", "Europe"],
+    "actions": [
+        {
+            "type": "createPolicyRule",
+            "payload": {
+                "title": "DSGVO: Data Minimization",
+                "description": "Verify minimal data collection.",
+                "severity": "warning",
+                "mode": "advisory",
+                "triggerEvent": "document.upload",
+                "triggerCondition": "pii_leak",
+                "remediation": "Redact names where possible.",
+                "jurisdiction": "DE"
+            }
+        }
+    ]
+}

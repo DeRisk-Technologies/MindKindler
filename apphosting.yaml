@@ -1,0 +1,6 @@
+# apphosting.yaml
+# We rely on environment variables set in the Firebase App Hosting Console.
+# We do not need to explicitly list them here unless we are binding them to secrets or hardcoding values.
+runConfig:
+  cpu: 1
+  memoryMiB: 512

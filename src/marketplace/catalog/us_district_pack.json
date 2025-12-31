@@ -1,0 +1,24 @@
+{
+    "id": "us_district_pack",
+    "name": "US District Compliance Pack",
+    "description": "FERPA-aligned rules and safety protocols for US School Districts.",
+    "version": "1.0.0",
+    "regionTags": ["US", "North America"],
+    "actions": [
+        {
+            "type": "createPolicyRule",
+            "payload": {
+                "title": "FERPA: Consent Check",
+                "description": "Ensure parental consent is on file before assessment.",
+                "severity": "critical",
+                "mode": "enforce",
+                "blockActions": true,
+                "appliesToActions": ["assessment.finalize"],
+                "triggerEvent": "assessment.finalize",
+                "triggerCondition": "missing_consent",
+                "remediation": "Obtain signed consent form.",
+                "jurisdiction": "US"
+            }
+        }
+    ]
+}
