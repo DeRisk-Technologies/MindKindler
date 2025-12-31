@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -10,49 +12,67 @@ import {
   MessageSquare,
   TabletSmartphone,
   BookOpen,
+  Globe,
+  Briefcase,
+  Store,
+  GraduationCap
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
+import { useEffect, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-const heroImage = PlaceHolderImages.find((img) => img.id === "hero-1");
+const defaultHero = PlaceHolderImages.find((img) => img.id === "hero-1");
 
 export default function Home() {
+  const [heroImageSrc, setHeroImageSrc] = useState(defaultHero?.imageUrl);
+  
+  useEffect(() => {
+    // Phase 6B: Fetch landing page settings
+    async function fetchSettings() {
+        try {
+            const settingsDoc = await getDoc(doc(db, "organization_settings", "global"));
+            if (settingsDoc.exists() && settingsDoc.data().landingPage?.heroImageUrl) {
+                setHeroImageSrc(settingsDoc.data().landingPage.heroImageUrl);
+            }
+        } catch (e) {
+            console.error("Failed to load landing settings", e);
+        }
+    }
+    fetchSettings();
+  }, []);
+
   const features = [
     {
-      icon: <Users className="h-8 w-8 text-primary" />,
-      title: "Holistic Case Management",
-      description:
-        "Seamlessly manage student cases from initial assessment to ongoing intervention and progress tracking.",
+      icon: <Globe className="h-8 w-8 text-primary" />,
+      title: "Government Intelligence",
+      description: "Policy planning, benchmarking, and roll-out simulation for education ministries and local authorities.",
+    },
+    {
+      icon: <Store className="h-8 w-8 text-primary" />,
+      title: "Global Marketplace",
+      description: "Discover and install verified templates, training packs, and policy rulebooks from expert partners.",
     },
     {
       icon: <BrainCircuit className="h-8 w-8 text-primary" />,
-      title: "AI-Assisted Reporting",
-      description:
-        "Generate comprehensive draft reports in minutes, summarizing strengths, challenges, and interventions.",
+      title: "AI Co-Pilot & Guardian",
+      description: "Real-time clinical insights with a compliance engine that ensures every action meets local regulations.",
+    },
+     {
+      icon: <GraduationCap className="h-8 w-8 text-primary" />,
+      title: "Training Academy",
+      description: "Continuous professional development with tracked certifications and adaptive learning paths.",
+    },
+    {
+      icon: <Users className="h-8 w-8 text-primary" />,
+      title: "Holistic Case Management",
+      description: "Seamlessly manage student cases from initial assessment to ongoing intervention and progress tracking.",
     },
     {
       icon: <BarChart className="h-8 w-8 text-primary" />,
       title: "Insightful Dashboards",
-      description:
-        "Visualize student progress and classroom trends with role-based, interactive charts and graphs.",
-    },
-    {
-      icon: <MessageSquare className="h-8 w-8 text-primary" />,
-      title: "Collaborative Messaging",
-      description:
-        "Foster communication between teachers, psychologists, and parents with secure, in-app messaging.",
-    },
-    {
-      icon: <TabletSmartphone className="h-8 w-8 text-primary" />,
-      title: "Mobile & Offline Ready",
-      description:
-        "Access critical information and capture notes anytime, anywhere, even without an internet connection.",
-    },
-    {
-      icon: <BookOpen className="h-8 w-8 text-primary" />,
-      title: "Resource Library",
-      description:
-        "Access a rich library of training materials and evidence-based strategies for professional development.",
+      description: "Visualize student progress and classroom trends with role-based, interactive charts and graphs.",
     },
   ];
 
@@ -74,30 +94,29 @@ export default function Home() {
         <section className="container mx-auto grid grid-cols-1 items-center gap-8 px-4 py-12 md:grid-cols-2 md:px-6 lg:py-24">
           <div className="space-y-6">
             <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl lg:text-6xl/none">
-              Kindling Potential, One Child at a Time
+              Kindling Potential, <span className="text-primary">Globally</span>.
             </h1>
             <p className="max-w-[600px] text-lg text-muted-foreground md:text-xl">
-              MindKindler is a comprehensive, AI-enabled platform designed to
-              support the educational and psychological development of every
-              child.
+              MindKindler is the AI-enabled ecosystem connecting governments, schools, and clinicians to support every child's development.
             </p>
             <div className="flex flex-col gap-4 sm:flex-row">
               <Button size="lg" asChild>
                 <Link href="/signup">Get Started for Free</Link>
               </Button>
               <Button size="lg" variant="secondary" asChild>
-                <Link href="#features">Learn More</Link>
+                <Link href="/dashboard/partner-portal/apply">Become a Partner</Link>
               </Button>
             </div>
           </div>
           <div className="relative h-64 w-full overflow-hidden rounded-xl shadow-2xl md:h-96">
-            {heroImage && (
+            {heroImageSrc && (
               <Image
-                src={heroImage.imageUrl}
-                alt={heroImage.description}
+                src={heroImageSrc}
+                alt="MindKindler Platform"
                 fill
                 className="object-cover"
-                data-ai-hint={heroImage.imageHint}
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                priority
               />
             )}
           </div>
@@ -107,16 +126,15 @@ export default function Home() {
           <div className="container mx-auto px-4 md:px-6">
             <div className="mx-auto mb-12 max-w-2xl text-center">
               <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl">
-                A Unified Platform for Growth
+                The Complete EdPsych OS
               </h2>
               <p className="mt-4 text-muted-foreground md:text-lg">
-                MindKindler connects the entire support ecosystem to provide
-                seamless, evidence-based care.
+                From national policy to individual interventions, MindKindler provides the tools to drive better outcomes.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
               {features.map((feature, index) => (
-                <Card key={index} className="flex flex-col">
+                <Card key={index} className="flex flex-col hover:shadow-lg transition-all">
                   <CardHeader className="flex flex-row items-center gap-4">
                     {feature.icon}
                     <CardTitle className="text-xl">{feature.title}</CardTitle>
@@ -133,35 +151,45 @@ export default function Home() {
         </section>
 
         <section className="container mx-auto px-4 py-12 md:px-6 md:py-24">
-          <Card className="bg-primary/10">
-            <CardContent className="grid items-center gap-8 p-8 md:grid-cols-3">
-              <div className="md:col-span-2">
-                <h3 className="text-2xl font-bold">
-                  Cut Report Writing Time by Hours
-                </h3>
-                <p className="mt-2 text-muted-foreground">
-                  Our AI-assisted report generation, powered by Gemini, helps
-                  educational psychologists draft comprehensive reports
-                  significantly faster. This frees up valuable time to focus on
-                  what matters most: supporting children.
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground/80">
-                  Inspired by insights from{" "}
-                  <a
-                    href="https://lightner-ai.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    lightner-ai.com
-                  </a>
-                </p>
-              </div>
-              <div className="flex justify-center">
-                <FileText className="h-24 w-24 text-primary/80" />
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
+             <Card className="bg-primary/5 border-primary/20">
+              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-3">
+                <div className="md:col-span-2">
+                  <h3 className="text-2xl font-bold">
+                    For Governments & Districts
+                  </h3>
+                  <p className="mt-2 text-muted-foreground">
+                    Simulate policy rollouts, track readiness across thousands of schools, and benchmark performance against global standards using our Government Intelligence suite.
+                  </p>
+                  <Button variant="link" className="px-0 mt-4" asChild>
+                      <Link href="/signup">Request Demo &rarr;</Link>
+                  </Button>
+                </div>
+                <div className="flex justify-center">
+                  <Globe className="h-20 w-20 text-primary/80" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800">
+              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-3">
+                <div className="md:col-span-2">
+                  <h3 className="text-2xl font-bold">
+                    For Partners & Experts
+                  </h3>
+                  <p className="mt-2 text-muted-foreground">
+                    Monetize your expertise by publishing assessment templates, training packs, and policy rulebooks to our global marketplace. Track revenue and impact in real-time.
+                  </p>
+                   <Button variant="link" className="px-0 mt-4 text-orange-600" asChild>
+                      <Link href="/dashboard/partner-portal/apply">Apply as Partner &rarr;</Link>
+                  </Button>
+                </div>
+                <div className="flex justify-center">
+                  <Briefcase className="h-20 w-20 text-orange-500" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </section>
       </main>
 

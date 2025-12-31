@@ -51,7 +51,7 @@ export function LandingPageEditor() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, "settings", "global");
+        const docRef = doc(db, "organization_settings", "global");
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           const data = snap.data() as OrganizationSettings;
@@ -68,7 +68,7 @@ export function LandingPageEditor() {
   const handleSave = async () => {
     setLoading(true);
     try {
-      await setDoc(doc(db, "settings", "global"), {
+      await setDoc(doc(db, "organization_settings", "global"), {
         landingPage: settings,
         branding: branding
       }, { merge: true });
