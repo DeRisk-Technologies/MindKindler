@@ -29,24 +29,17 @@ import {
   ShieldAlert,
   Siren,
   Stethoscope,
+  Store,
+  GraduationCap,
+  Globe,
+  Briefcase,
   Users,
+  Handshake,
+  FileText,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
-
-const mainNavItems = [
-  { href: "/dashboard", icon: <LayoutDashboard />, label: "Dashboard" },
-  { href: "/dashboard/students", icon: <BookUser />, label: "Students / Parents" },
-  { href: "/dashboard/consultations", icon: <Stethoscope />, label: "Consultations" },
-  { href: "/dashboard/cases", icon: <FolderKanban />, label: "Cases" },
-  { href: "/dashboard/assessments", icon: <ClipboardList />, label: "Assessments" },
-  { href: "/dashboard/reports", icon: <BarChart />, label: "Reports & Tools" },
-  { href: "/dashboard/data-ingestion", icon: <Database />, label: "Data Import" }, 
-  { href: "/dashboard/schools", icon: <School />, label: "Schools / Districts" },
-  { href: "/dashboard/appointments", icon: <Calendar />, label: "Appointments" },
-  { href: "/dashboard/messages", icon: <MessageSquare />, label: "Messages" },
-];
 
 export function DashboardSidebar() {
   const pathname = usePathname();
@@ -68,149 +61,181 @@ export function DashboardSidebar() {
     return () => unsubscribe();
   }, []);
 
+  // Helper to check active state
+  const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
+
   return (
     <>
       <SidebarHeader>
         <Logo />
       </SidebarHeader>
       <SidebarContent className="p-2">
-        {/* Main Navigation */}
-        <SidebarMenu>
-          {mainNavItems.map((item) => (
-            <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton
-                asChild
-                isActive={pathname === item.href || pathname.startsWith(item.href + '/')}
-                tooltip={{ children: item.label }}
-              >
-                <Link href={item.href}>
-                  {item.icon}
-                  <span>{item.label}</span>
-                </Link>
+        
+        {/* === 1. Clinical & Case Management === */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Clinical Workflow</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === "/dashboard"} tooltip="Overview">
+                <Link href="/dashboard"><LayoutDashboard /><span>Dashboard</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive("/dashboard/students")} tooltip="Students">
+                <Link href="/dashboard/students"><BookUser /><span>Students & Parents</span></Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive("/dashboard/cases")} tooltip="Cases">
+                <Link href="/dashboard/cases"><FolderKanban /><span>Cases & IEPs</span></Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive("/dashboard/consultations")} tooltip="Consultations">
+                <Link href="/dashboard/consultations"><Stethoscope /><span>Consultations</span></Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive("/dashboard/assessments")} tooltip="Assessments">
+                <Link href="/dashboard/assessments"><ClipboardList /><span>Assessments</span></Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+               <SidebarMenuButton asChild isActive={isActive("/dashboard/appointments")} tooltip="Calendar">
+                 <Link href="/dashboard/appointments"><Calendar /><span>Appointments</span></Link>
+               </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
 
-        {/* Analytics & Reports (Authorities) */}
+        {/* === 2. Government & Intelligence (Phase 4) === */}
         <SidebarGroup>
-           <SidebarGroupLabel>Analytics & Insights</SidebarGroupLabel>
+           <SidebarGroupLabel>Government & Intelligence</SidebarGroupLabel>
            <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/analytics"}
-                  tooltip={{ children: "General Analytics" }}
-                >
-                  <Link href="/dashboard/analytics">
-                    <PieChart />
-                    <span>Overview</span>
-                  </Link>
-                </SidebarMenuButton>
+                 <SidebarMenuButton asChild isActive={isActive("/dashboard/govintel/overview")} tooltip="GovIntel Overview">
+                    <Link href="/dashboard/govintel/overview"><Globe /><span>Overview</span></Link>
+                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/assessments/analytics"}
-                  tooltip={{ children: "Assessment Analytics" }}
-                >
-                  <Link href="/dashboard/assessments/analytics">
-                    <BarChart className="h-4 w-4" />
-                    <span>Assessment Data</span>
-                  </Link>
-                </SidebarMenuButton>
+                 <SidebarMenuButton asChild isActive={isActive("/dashboard/govintel/benchmarking")} tooltip="Benchmarking">
+                    <Link href="/dashboard/govintel/benchmarking"><BarChart /><span>Benchmarking</span></Link>
+                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/schools/analytics"}
-                  tooltip={{ children: "District Analytics" }}
-                >
-                  <Link href="/dashboard/schools/analytics">
-                    <School className="h-4 w-4" />
-                    <span>District Overview</span>
-                  </Link>
-                </SidebarMenuButton>
+                 <SidebarMenuButton asChild isActive={isActive("/dashboard/govintel/planner")} tooltip="Capacity Planner">
+                    <Link href="/dashboard/govintel/planner"><PieChart /><span>Policy Planner</span></Link>
+                 </SidebarMenuButton>
+              </SidebarMenuItem>
+               <SidebarMenuItem>
+                 <SidebarMenuButton asChild isActive={isActive("/dashboard/intelligence")} tooltip="Knowledge Vault">
+                    <Link href="/dashboard/intelligence"><Database /><span>Knowledge Vault</span></Link>
+                 </SidebarMenuButton>
               </SidebarMenuItem>
            </SidebarMenu>
         </SidebarGroup>
 
-        {/* Admin Section */}
+        {/* === 3. Training & Professional Development (Phase 3D) === */}
+        <SidebarGroup>
+            <SidebarGroupLabel>Training Academy</SidebarGroupLabel>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/dashboard/training/library")} tooltip="Course Library">
+                        <Link href="/dashboard/training/library"><GraduationCap /><span>Course Library</span></Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/dashboard/training/certificates")} tooltip="Certificates">
+                        <Link href="/dashboard/training/certificates"><FileText /><span>My Certificates</span></Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                 {role === 'admin' && (
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/training/admin")} tooltip="Training Admin">
+                             <Link href="/dashboard/training/admin"><Settings /><span>Training Admin</span></Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                )}
+            </SidebarMenu>
+        </SidebarGroup>
+
+        {/* === 4. Marketplace & Partners (Phase 5) === */}
+        <SidebarGroup>
+            <SidebarGroupLabel>Ecosystem</SidebarGroupLabel>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/dashboard/marketplace")} tooltip="Marketplace">
+                        <Link href="/dashboard/marketplace"><Store /><span>Marketplace</span></Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/dashboard/partners")} tooltip="Partners">
+                        <Link href="/dashboard/partners"><Handshake /><span>Partner Network</span></Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                {/* Specific link for active partners to manage their revenue */}
+                <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/dashboard/partner-portal")} tooltip="Partner Portal">
+                        <Link href="/dashboard/partner-portal/revenue"><Briefcase /><span>Partner Portal</span></Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarGroup>
+
+        {/* === 5. Admin & Operations === */}
+        <SidebarGroup>
+           <SidebarGroupLabel>Operations</SidebarGroupLabel>
+           <SidebarMenu>
+               <SidebarMenuItem>
+                   <SidebarMenuButton asChild isActive={isActive("/dashboard/schools")} tooltip="Districts">
+                       <Link href="/dashboard/schools"><School /><span>Schools & Districts</span></Link>
+                   </SidebarMenuButton>
+               </SidebarMenuItem>
+               <SidebarMenuItem>
+                 <SidebarMenuButton asChild isActive={isActive("/dashboard/reports")} tooltip="Reports">
+                   <Link href="/dashboard/reports"><BarChart /><span>Analytics & Reports</span></Link>
+                 </SidebarMenuButton>
+               </SidebarMenuItem>
+               <SidebarMenuItem>
+                   <SidebarMenuButton asChild isActive={isActive("/dashboard/data-ingestion")} tooltip="Data Import">
+                       <Link href="/dashboard/data-ingestion"><Database /><span>Data Ingestion</span></Link>
+                   </SidebarMenuButton>
+               </SidebarMenuItem>
+               <SidebarMenuItem>
+                 <SidebarMenuButton asChild isActive={isActive("/dashboard/settings/integrations")} tooltip="Integrations">
+                   <Link href="/dashboard/settings/integrations"><Link2 /><span>Integrations</span></Link>
+                 </SidebarMenuButton>
+               </SidebarMenuItem>
+           </SidebarMenu>
+        </SidebarGroup>
+
+        {/* === 6. System Admin (Role Protected) === */}
         {role === 'admin' && (
           <SidebarGroup>
-            <SidebarGroupLabel className="text-red-500">Administration</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-red-500">System Admin</SidebarGroupLabel>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/admin/users"}
-                  tooltip={{ children: "User Management" }}
-                >
-                  <Link href="/dashboard/admin/users">
-                    <ShieldAlert className="text-red-500" />
-                    <span className="text-red-500 font-medium">User Management</span>
-                  </Link>
+                <SidebarMenuButton asChild isActive={isActive("/dashboard/admin/users")} tooltip="User Management">
+                  <Link href="/dashboard/admin/users"><ShieldAlert className="text-red-500" /> <span className="text-red-500">User Management</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/admin/departments"}
-                  tooltip={{ children: "Departments" }}
-                >
-                  <Link href="/dashboard/admin/departments">
-                    <Layers className="text-red-500" />
-                    <span className="text-red-500 font-medium">Departments</span>
-                  </Link>
-                </SidebarMenuButton>
+                  <SidebarMenuButton asChild isActive={isActive("/dashboard/partners/revenue")} tooltip="Revenue Ops">
+                      <Link href="/dashboard/partners/revenue"><BarChart className="text-red-500"/> <span className="text-red-500">Revenue Ops</span></Link>
+                  </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
         )}
 
-        {/* Settings & Configuration */}
         <SidebarGroup>
-           <SidebarGroupLabel>Configuration</SidebarGroupLabel>
-           <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/settings/integrations"}
-                  tooltip={{ children: "LMS Integrations" }}
-                >
-                  <Link href="/dashboard/settings/integrations">
-                    <Link2 />
-                    <span>Integrations</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {(role === 'admin' || role === 'educationalpsychologist') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === "/dashboard/settings/alerts"}
-                    tooltip={{ children: "AI Alerts" }}
-                  >
-                    <Link href="/dashboard/settings/alerts">
-                      <Siren className="text-orange-500" />
-                      <span className="text-orange-500 font-medium">Alert Config</span>
-                    </Link>
-                  </SidebarMenuButton>
+            <SidebarMenu>
+                 <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/dashboard/settings")} tooltip="Settings">
+                        <Link href="/dashboard/settings"><Settings /><span>Global Settings</span></Link>
+                    </SidebarMenuButton>
                 </SidebarMenuItem>
-              )}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/settings"}
-                  tooltip={{ children: "Settings" }}
-                >
-                  <Link href="/dashboard/settings">
-                    <Settings />
-                    <span>Settings</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-           </SidebarMenu>
+            </SidebarMenu>
         </SidebarGroup>
 
       </SidebarContent>
