@@ -1,7 +1,6 @@
-env:
-  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+# apphosting.yaml
+# We rely on environment variables set in the Firebase App Hosting Console.
+# We do not need to explicitly list them here unless we are binding them to secrets or hardcoding values.
+runConfig:
+  cpu: 1
+  memoryMiB: 512
