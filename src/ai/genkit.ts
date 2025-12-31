@@ -1,7 +1,8 @@
 import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/google-genai';
+import { DEFAULT_MODEL } from './config';
 
 export const ai = genkit({
   plugins: [googleAI()],
-  model: 'googleai/gemini-2.5-flash',
+  model: DEFAULT_MODEL, // Centralized model default
 });
