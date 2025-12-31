@@ -27,6 +27,9 @@ import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
+// Add this to force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 const roles = [
   "Admin",
   "EducationalPsychologist",
