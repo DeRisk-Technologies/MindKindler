@@ -1,0 +1,22 @@
+{
+    "id": "gulf_pack",
+    "name": "Gulf Region Compliance",
+    "description": "Data residency and cultural sensitivity rules.",
+    "version": "1.0.0",
+    "regionTags": ["Gulf", "Middle East"],
+    "actions": [
+        {
+            "type": "createPolicyRule",
+            "payload": {
+                "title": "Data Residency Check",
+                "description": "Ensure data remains in region.",
+                "severity": "critical",
+                "mode": "enforce",
+                "triggerEvent": "document.upload",
+                "triggerCondition": "missing_metadata",
+                "remediation": "Tag with jurisdiction.",
+                "jurisdiction": "UAE"
+            }
+        }
+    ]
+}

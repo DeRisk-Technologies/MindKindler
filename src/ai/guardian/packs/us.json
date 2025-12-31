@@ -1,0 +1,28 @@
+[
+  {
+    "title": "US - FERPA Consent Check",
+    "description": "Requires documented consent for assessment activities.",
+    "severity": "critical",
+    "mode": "enforce",
+    "triggerEvent": "assessment.finalize",
+    "triggerCondition": "missing_consent",
+    "remediation": "Ensure FERPA-compliant consent is recorded.",
+    "enabled": true,
+    "blockActions": true,
+    "appliesToActions": ["assessment.finalize"],
+    "allowOverride": true
+  },
+  {
+    "title": "US - PII Visibility Warning",
+    "description": "Flags potential PII exposure in public documents.",
+    "severity": "warning",
+    "mode": "advisory",
+    "triggerEvent": "document.upload",
+    "triggerCondition": "pii_leak",
+    "remediation": "Check document for student names before making public.",
+    "enabled": true,
+    "blockActions": false,
+    "appliesToActions": ["document.upload"],
+    "allowOverride": true
+  }
+]

@@ -23,12 +23,13 @@ import { Input } from "@/components/ui/input";
 import { Loader2, CheckCircle2, Clock, AlertCircle, ChevronLeft, ChevronRight, Save } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { VoiceInput } from "@/components/ui/voice-input";
+import { cn } from "@/lib/utils";
 
 export default function AssessmentRunnerPage() {
   const { id } = useParams() as { id: string }; // Assignment ID
@@ -38,9 +39,6 @@ export default function AssessmentRunnerPage() {
   // Fetch the assignment first
   const { data: assignment, loading: loadingAssignment } = useFirestoreDocument<AssessmentAssignment>("assessment_assignments", id);
   
-  // Then fetch the template (dependent query)
-  // Note: In a real app, we'd handle this dependent fetching more gracefully.
-  // For now, we'll fetch the template only when assignment is loaded.
   const [template, setTemplate] = useState<AssessmentTemplate | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(true);
 
@@ -50,16 +48,16 @@ export default function AssessmentRunnerPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
   
-  // Timer (optional implementation)
+  // Timer
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Determine Mode
+  const isLiveMode = assignment?.mode === 'clinician-live';
 
   useEffect(() => {
     async function fetchTemplate() {
         if (assignment?.templateId) {
-            // Manual fetch to avoid hook complexity here
-            // In a better architecture, use SWR or React Query
             try {
-                const { getDoc, doc } = await import("firebase/firestore");
                 const snap = await getDoc(doc(db, "assessment_templates", assignment.templateId));
                 if (snap.exists()) {
                     setTemplate(snap.data() as AssessmentTemplate);
@@ -95,30 +93,52 @@ export default function AssessmentRunnerPage() {
       return <div className="p-8 text-center">Assessment not found or invalid link.</div>;
   }
 
-  const questions = template.questions || [];
-  const currentQuestion = questions[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+  // Branching Logic Filter
+  const visibleQuestions = (template.questions || []).filter(q => {
+      if (!q.conditions || q.conditions.length === 0) return true;
+      
+      // Check all conditions (AND logic)
+      return q.conditions.every(cond => {
+          const dependentAnswer = responses[cond.questionId];
+          if (cond.operator === 'equals') {
+              return dependentAnswer === cond.value;
+          }
+          if (cond.operator === 'not_equals') {
+              return dependentAnswer !== cond.value;
+          }
+          return true;
+      });
+  });
+
+  const currentQuestion = visibleQuestions[currentQuestionIndex];
+  const progress = ((currentQuestionIndex + 1) / visibleQuestions.length) * 100;
 
   const handleStart = async () => {
       setIsStarted(true);
-      // Ideally update assignment status to 'in-progress'
       if (assignment.status === 'pending') {
           await updateDoc(doc(db, "assessment_assignments", id), {
               status: 'in-progress',
-              startedAt: serverTimestamp()
+              startedAt: new Date().toISOString()
           });
       }
   };
 
-  const handleAnswerChange = (value: any) => {
+  const handleAnswerChange = async (value: any) => {
       setResponses(prev => ({
           ...prev,
           [currentQuestion.id]: value
       }));
+
+      // In Live Mode, auto-save drafts could happen here or debounced
+      // For now, client state is sufficient until submit
   };
 
   const handleNext = () => {
-      if (currentQuestionIndex < questions.length - 1) {
+      if (currentQuestion.required && !responses[currentQuestion.id]) {
+          toast({ title: "Required", description: "Please answer this question to proceed.", variant: "destructive" });
+          return;
+      }
+      if (currentQuestionIndex < visibleQuestions.length - 1) {
           setCurrentQuestionIndex(prev => prev + 1);
       }
   };
@@ -130,25 +150,36 @@ export default function AssessmentRunnerPage() {
   };
 
   const handleSubmit = async () => {
+      if (currentQuestion.required && !responses[currentQuestion.id]) {
+          toast({ title: "Required", description: "Please answer the final question.", variant: "destructive" });
+          return;
+      }
       if (!confirm("Are you sure you want to submit your assessment? You cannot change answers after submission.")) return;
       
       setIsSubmitting(true);
       try {
-          // 1. Create Result Document
           const resultId = `res_${id}_${Date.now()}`;
-          const totalQuestions = questions.length;
-          let rawScore = 0; // Basic auto-grading if possible
+          let rawScore = 0; 
           
           const formattedResponses = Object.entries(responses).map(([qId, ans]) => {
-              const question = questions.find(q => q.id === qId);
+              const question = visibleQuestions.find(q => q.id === qId); // Use visible questions only for score? Or map against full list?
+              // Map against full template to find question metadata even if hidden (though hidden usually means skipped)
+              // Actually, logic dictates we only score visible/answered questions.
+              // Let's stick to simple map of what was answered.
+              
+              const qMeta = template.questions.find(q => q.id === qId);
               let score = 0;
-              // Simple auto-grading for MC/TF
-              if (question && (question.type === 'multiple-choice' || question.type === 'true-false')) {
-                  if (question.correctAnswer === ans) {
-                      score = question.points;
-                      rawScore += score;
+              
+              if (qMeta) {
+                  if (['multiple-choice', 'yes-no', 'scale'].includes(qMeta.type)) {
+                      if (qMeta.correctAnswer === ans) score = qMeta.points;
+                      if (qMeta.scoringRules?.weights && qMeta.scoringRules.weights[ans]) {
+                          score = qMeta.scoringRules.weights[ans];
+                      }
                   }
               }
+              
+              rawScore += score;
               return {
                   questionId: qId,
                   answer: ans,
@@ -164,21 +195,21 @@ export default function AssessmentRunnerPage() {
               startedAt: new Date(Date.now() - elapsedTime * 1000).toISOString(),
               completedAt: new Date().toISOString(),
               responses: formattedResponses,
-              totalScore: rawScore, // Provisional
-              maxScore: questions.reduce((acc, q) => acc + q.points, 0),
-              status: 'pending-review' // Assume manual review needed for essays etc.
+              totalScore: rawScore, 
+              maxScore: visibleQuestions.reduce((acc, q) => acc + q.points, 0), // Calculate max based on what was shown
+              status: 'pending-review',
+              mode: assignment.mode || 'self'
           };
 
           await setDoc(doc(db, "assessment_results", resultId), resultData);
 
-          // 2. Update Assignment Status
           await updateDoc(doc(db, "assessment_assignments", id), {
               status: 'completed',
-              completedAt: serverTimestamp()
+              completedAt: new Date().toISOString()
           });
 
           toast({ title: "Submitted", description: "Assessment completed successfully." });
-          router.push(`/dashboard/assessments/analytics`); // Redirect to somewhere useful
+          router.push(`/dashboard/students/${assignment.targetId}`);
       } catch (e: any) {
           console.error(e);
           toast({ title: "Error", description: "Failed to submit assessment.", variant: "destructive" });
@@ -194,56 +225,73 @@ export default function AssessmentRunnerPage() {
 
       switch (q.type) {
           case 'multiple-choice':
-          case 'true-false':
+          case 'yes-no':
               return (
                   <RadioGroup value={value as string} onValueChange={handleAnswerChange} className="space-y-3">
-                      {q.options?.map((opt, idx) => (
-                          <div key={idx} className="flex items-center space-x-2 border p-4 rounded-md hover:bg-muted/50 cursor-pointer transition-colors">
-                              <RadioGroupItem value={opt} id={`${q.id}-${idx}`} />
-                              <Label htmlFor={`${q.id}-${idx}`} className="flex-1 cursor-pointer">{opt}</Label>
-                          </div>
-                      ))}
-                      {!q.options && q.type === 'true-false' && (
+                      {q.type === 'yes-no' && !q.options ? (
                            <>
-                            <div className="flex items-center space-x-2 border p-4 rounded-md"><RadioGroupItem value="True" id="t" /><Label htmlFor="t">True</Label></div>
-                            <div className="flex items-center space-x-2 border p-4 rounded-md"><RadioGroupItem value="False" id="f" /><Label htmlFor="f">False</Label></div>
+                            <div className={cn("flex items-center space-x-2 border p-4 rounded-md hover:bg-muted/50 cursor-pointer", isLiveMode && "p-6")}>
+                                <RadioGroupItem value="Yes" id="y" className={isLiveMode ? "h-6 w-6" : ""} /><Label htmlFor="y" className={cn("flex-1 cursor-pointer", isLiveMode && "text-xl")}>Yes</Label>
+                            </div>
+                            <div className={cn("flex items-center space-x-2 border p-4 rounded-md hover:bg-muted/50 cursor-pointer", isLiveMode && "p-6")}>
+                                <RadioGroupItem value="No" id="n" className={isLiveMode ? "h-6 w-6" : ""} /><Label htmlFor="n" className={cn("flex-1 cursor-pointer", isLiveMode && "text-xl")}>No</Label>
+                            </div>
                            </>
+                      ) : (
+                          q.options?.map((opt, idx) => (
+                              <div key={idx} className={cn("flex items-center space-x-2 border p-4 rounded-md hover:bg-muted/50 cursor-pointer transition-colors", isLiveMode && "p-6")}>
+                                  <RadioGroupItem value={opt} id={`${q.id}-${idx}`} className={isLiveMode ? "h-6 w-6" : ""} />
+                                  <Label htmlFor={`${q.id}-${idx}`} className={cn("flex-1 cursor-pointer", isLiveMode && "text-xl")}>{opt}</Label>
+                              </div>
+                          ))
                       )}
                   </RadioGroup>
               );
           case 'short-answer':
               return (
-                  <Input 
-                    placeholder="Type your answer here..." 
-                    value={value as string || ""} 
-                    onChange={(e) => handleAnswerChange(e.target.value)} 
-                    className="h-12 text-lg"
-                  />
+                  <div className="flex gap-2">
+                      <Input 
+                        placeholder="Type answer..." 
+                        value={value as string || ""} 
+                        onChange={(e) => handleAnswerChange(e.target.value)} 
+                        className={cn("h-12 text-lg", isLiveMode && "h-16 text-xl")}
+                      />
+                      <VoiceInput 
+                        onTranscript={(text) => handleAnswerChange(text)} 
+                        currentValue={value as string || ""}
+                      />
+                  </div>
               );
           case 'essay':
               return (
-                  <Textarea 
-                    placeholder="Type your detailed response here..." 
-                    value={value as string || ""} 
-                    onChange={(e) => handleAnswerChange(e.target.value)} 
-                    className="min-h-[200px] text-lg leading-relaxed"
-                  />
+                  <div className="relative">
+                      <Textarea 
+                        placeholder="Detailed response..." 
+                        value={value as string || ""} 
+                        onChange={(e) => handleAnswerChange(e.target.value)} 
+                        className={cn("min-h-[200px] text-lg leading-relaxed pr-12", isLiveMode && "text-xl")}
+                      />
+                      <div className="absolute top-2 right-2">
+                           <VoiceInput 
+                             onTranscript={(text) => handleAnswerChange(text)} 
+                             currentValue={value as string || ""}
+                           />
+                      </div>
+                  </div>
               );
             case 'scale':
-                // Simple scale 1-5 or 1-10 if not defined
-                const max = 5; 
                 return (
-                    <div className="flex justify-between items-center py-8 px-4">
-                        {[1, 2, 3, 4, 5].map((num) => (
-                            <div key={num} className="flex flex-col items-center gap-2">
+                    <div className="flex justify-between items-center py-8 px-4 flex-wrap gap-4">
+                        {(q.options && q.options.length > 0 ? q.options : ['1', '2', '3', '4', '5']).map((opt, idx) => (
+                            <div key={idx} className="flex flex-col items-center gap-2">
                                 <Button 
-                                    variant={value === num.toString() ? "default" : "outline"}
-                                    className="h-12 w-12 rounded-full text-lg"
-                                    onClick={() => handleAnswerChange(num.toString())}
+                                    variant={value === opt ? "default" : "outline"}
+                                    className={cn("h-12 w-12 rounded-full text-lg", isLiveMode && "h-16 w-16 text-2xl")}
+                                    onClick={() => handleAnswerChange(opt)}
                                 >
-                                    {num}
+                                    {idx + 1}
                                 </Button>
-                                <span className="text-xs text-muted-foreground">{num === 1 ? "Low" : num === 5 ? "High" : ""}</span>
+                                <span className="text-xs text-muted-foreground text-center max-w-[60px] truncate">{opt}</span>
                             </div>
                         ))}
                     </div>
@@ -265,37 +313,46 @@ export default function AssessmentRunnerPage() {
                       <CardDescription className="text-lg mt-2">{template.description}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                      {isLiveMode && (
+                          <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-lg flex items-center gap-2 text-indigo-800">
+                              <CheckCircle2 className="h-5 w-5" /> 
+                              <strong>Clinician Live Mode Enabled:</strong> Optimized for in-session use.
+                          </div>
+                      )}
+                      {assignment.notes && (
+                        <div className="bg-yellow-50 border border-yellow-200 p-3 rounded text-sm text-yellow-800">
+                          <strong>Note from EPP:</strong> {assignment.notes}
+                        </div>
+                      )}
                       <div className="flex items-center gap-4 text-sm text-muted-foreground bg-muted p-4 rounded-lg">
-                          <div className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> {questions.length} Questions</div>
+                          <div className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> {visibleQuestions.length} Questions</div>
                           <div className="flex items-center gap-1"><Clock className="h-4 w-4" /> {template.settings.timeLimit ? `${template.settings.timeLimit} Minutes` : "No Time Limit"}</div>
-                          <div className="flex items-center gap-1"><AlertCircle className="h-4 w-4" /> Single Attempt</div>
-                      </div>
-                      <div className="text-sm">
-                          <strong>Instructions:</strong> Please read each question carefully. You can navigate back to change answers before submitting if allowed.
                       </div>
                   </CardContent>
                   <CardFooter>
-                      <Button size="lg" className="w-full" onClick={handleStart}>Start Assessment</Button>
+                      <Button size="lg" className={cn("w-full", isLiveMode && "h-16 text-xl")} onClick={handleStart}>
+                          {isLiveMode ? "Start Live Session" : "Start Assessment"}
+                      </Button>
                   </CardFooter>
               </Card>
           </div>
       );
   }
 
+  // --- LIVE MODE STYLES VS STANDARD ---
   return (
-    <div className="min-h-screen flex flex-col bg-muted/20">
+    <div className={cn("min-h-screen flex flex-col bg-muted/20", isLiveMode && "bg-white")}>
       {/* Top Bar */}
       <div className="bg-background border-b sticky top-0 z-10">
           <div className="container max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
              <div>
-                 <h2 className="font-semibold truncate max-w-[200px] md:max-w-md">{template.title}</h2>
-                 <div className="text-xs text-muted-foreground">Question {currentQuestionIndex + 1} of {questions.length}</div>
+                 <h2 className={cn("font-semibold truncate max-w-[200px] md:max-w-md", isLiveMode && "text-lg")}>{template.title}</h2>
+                 <div className="text-xs text-muted-foreground">Question {currentQuestionIndex + 1} of {visibleQuestions.length}</div>
              </div>
              <div className="flex items-center gap-4">
                  <div className="text-sm font-mono bg-muted px-2 py-1 rounded">
                      {Math.floor(elapsedTime / 60)}:{(elapsedTime % 60).toString().padStart(2, '0')}
                  </div>
-                 {/* <Button variant="ghost" size="sm">Save & Exit</Button> */}
              </div>
           </div>
           <Progress value={progress} className="h-1 rounded-none" />
@@ -303,14 +360,15 @@ export default function AssessmentRunnerPage() {
 
       {/* Main Content */}
       <div className="flex-1 container max-w-3xl mx-auto px-4 py-8 flex flex-col justify-center">
-          <Card className="shadow-lg border-t-4 border-t-primary">
+          <Card className={cn("shadow-lg border-t-4 border-t-primary", isLiveMode && "border-none shadow-none")}>
               <CardHeader>
-                  <CardTitle className="text-xl md:text-2xl leading-relaxed">
+                  <CardTitle className={cn("text-xl md:text-2xl leading-relaxed", isLiveMode && "text-3xl")}>
                       {currentQuestion.text}
                   </CardTitle>
-                  {currentQuestion.hint && (
-                      <CardDescription className="italic text-sm">Hint: {currentQuestion.hint}</CardDescription>
+                  {currentQuestion.helpText && (
+                      <CardDescription className={cn(isLiveMode && "text-lg")}>{currentQuestion.helpText}</CardDescription>
                   )}
+                  {currentQuestion.required && <Badge variant="secondary" className="w-fit text-[10px]">Required</Badge>}
               </CardHeader>
               <CardContent className="pt-6 pb-8">
                   {renderQuestionInput(currentQuestion)}
@@ -319,33 +377,29 @@ export default function AssessmentRunnerPage() {
       </div>
 
       {/* Footer Navigation */}
-      <div className="bg-background border-t p-4">
+      <div className={cn("bg-background border-t p-4", isLiveMode && "p-6")}>
           <div className="container max-w-3xl mx-auto flex justify-between items-center">
               <Button 
                 variant="outline" 
                 onClick={handlePrev} 
                 disabled={currentQuestionIndex === 0}
-                className="w-28"
+                className={cn("w-28", isLiveMode && "h-14 text-lg")}
               >
                   <ChevronLeft className="mr-2 h-4 w-4" /> Previous
               </Button>
 
-              <div className="flex gap-2">
-                {/* Optional 'Review' button logic could go here */}
-              </div>
-
-              {currentQuestionIndex === questions.length - 1 ? (
+              {currentQuestionIndex === visibleQuestions.length - 1 ? (
                   <Button 
                     onClick={handleSubmit} 
                     disabled={isSubmitting}
-                    className="w-32 bg-green-600 hover:bg-green-700"
+                    className={cn("w-32 bg-green-600 hover:bg-green-700", isLiveMode && "h-14 w-40 text-lg")}
                   >
                       {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit <Save className="ml-2 h-4 w-4" /></>}
                   </Button>
               ) : (
                   <Button 
                     onClick={handleNext} 
-                    className="w-28"
+                    className={cn("w-28", isLiveMode && "h-14 text-lg")}
                   >
                       Next <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>

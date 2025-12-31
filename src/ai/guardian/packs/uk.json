@@ -1,0 +1,41 @@
+[
+  {
+    "title": "UK - Safeguarding Recommended",
+    "description": "Advises raising a safeguarding incident if high-risk content is detected.",
+    "severity": "warning",
+    "mode": "advisory",
+    "triggerEvent": "assessment.finalize",
+    "triggerCondition": "safeguarding_recommended",
+    "remediation": "Review the content and consider raising a formal Safeguarding Incident.",
+    "enabled": true,
+    "blockActions": false,
+    "appliesToActions": ["assessment.finalize"],
+    "allowOverride": true
+  },
+  {
+    "title": "UK - Assessment Consent Required",
+    "description": "Ensures valid assessment consent is in place before finalizing.",
+    "severity": "critical",
+    "mode": "enforce",
+    "triggerEvent": "assessment.finalize",
+    "triggerCondition": "missing_consent",
+    "remediation": "Obtain and record assessment consent from the parent/guardian before proceeding.",
+    "enabled": true,
+    "blockActions": true,
+    "appliesToActions": ["assessment.finalize"],
+    "allowOverride": true
+  },
+  {
+    "title": "UK - Data Minimization Check",
+    "description": "Warns if excessive PII is detected in public documents.",
+    "severity": "warning",
+    "mode": "advisory",
+    "triggerEvent": "document.upload",
+    "triggerCondition": "pii_leak",
+    "remediation": "Review document visibility. Consider restricting to 'Team' or 'Private'.",
+    "enabled": true,
+    "blockActions": false,
+    "appliesToActions": ["document.upload"],
+    "allowOverride": true
+  }
+]

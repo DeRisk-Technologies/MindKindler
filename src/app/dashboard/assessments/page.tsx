@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, FileText, BrainCircuit, Users, BarChart3, Edit, PlayCircle, ClipboardList } from "lucide-react";
+import { Plus, Search, FileText, BrainCircuit, Users, BarChart3, Edit, PlayCircle, ClipboardList, Mic } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -50,7 +50,7 @@ export default function AssessmentsPage() {
       setStudentResults(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   };
 
-  const createAssignment = async (status: 'pending' | 'in-progress' = 'pending') => {
+  const createAssignment = async (status: 'pending' | 'in_progress' = 'pending', mode: 'student-async' | 'clinician-live' = 'student-async') => {
       if (!selectedTemplate || !targetStudent) return null;
 
       const assignmentData = {
@@ -60,7 +60,8 @@ export default function AssessmentsPage() {
         assignedBy: auth.currentUser?.uid || 'system',
         assignedAt: new Date().toISOString(),
         status: status,
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // +7 days
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // +7 days
+        mode: mode
       };
 
       const docRef = await addDoc(collection(db, "assessment_assignments"), assignmentData);
@@ -70,7 +71,7 @@ export default function AssessmentsPage() {
   const handleAssign = async () => {
       setIsAssigning(true);
       try {
-          await createAssignment('pending');
+          await createAssignment('pending', 'student-async');
           toast({ title: "Assigned", description: `Assessment assigned to student.` });
           setSelectedTemplate(null);
       } catch (e) {
@@ -80,11 +81,11 @@ export default function AssessmentsPage() {
       }
   };
 
-  const handleStartNow = async () => {
+  const handleStartNow = async (mode: 'student-async' | 'clinician-live') => {
       setIsAssigning(true);
       try {
           // Create an assignment specifically for this run
-          const assignmentId = await createAssignment('in-progress');
+          const assignmentId = await createAssignment('in_progress', mode);
           if (assignmentId) {
              // Navigate to the runner with the ASSIGNMENT ID, not template ID
              router.push(`/portal/assessment/${assignmentId}`);
@@ -98,7 +99,7 @@ export default function AssessmentsPage() {
 
   const filteredTemplates = templates.filter(t => 
     t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.category.toLowerCase().includes(searchTerm.toLowerCase())
+    (t.category && t.category.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -197,7 +198,7 @@ export default function AssessmentsPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">{template.category}</Badge>
+                            <Badge variant="outline">{template.category || 'General'}</Badge>
                           </TableCell>
                           <TableCell>{template.questions?.length || 0}</TableCell>
                           <TableCell>
@@ -237,9 +238,17 @@ export default function AssessmentsPage() {
                                             </Select>
                                         </div>
                                     </div>
-                                    <DialogFooter>
-                                        <Button onClick={handleStartNow} disabled={isAssigning || !targetStudent}>
-                                            Start Now
+                                    <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
+                                        <Button onClick={() => handleStartNow('student-async')} disabled={isAssigning || !targetStudent}>
+                                            Start Now (Self)
+                                        </Button>
+                                        <Button 
+                                            onClick={() => handleStartNow('clinician-live')} 
+                                            disabled={isAssigning || !targetStudent}
+                                            className="bg-indigo-600 hover:bg-indigo-700"
+                                        >
+                                            <Mic className="h-4 w-4 mr-2" />
+                                            Start Live Session
                                         </Button>
                                         <Button variant="outline" onClick={handleAssign} disabled={isAssigning || !targetStudent}>
                                             Assign for Later
@@ -283,6 +292,7 @@ export default function AssessmentsPage() {
                                               {/* In real app, fetch template title or store denormalized */}
                                               Template {assignment.templateId.substring(0, 6)}...
                                           </div>
+                                          {assignment.mode === 'clinician-live' && <Badge variant="secondary" className="text-[10px] mt-1">Live Mode</Badge>}
                                       </TableCell>
                                       <TableCell>{assignment.targetId}</TableCell>
                                       <TableCell>{new Date(assignment.assignedAt).toLocaleDateString()}</TableCell>

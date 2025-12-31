@@ -1,0 +1,24 @@
+{
+    "id": "nigeria_foundation_pack",
+    "name": "Nigeria Education Foundation",
+    "description": "Localized content for Nigerian schools, supporting low-bandwidth delivery.",
+    "version": "1.0.0",
+    "regionTags": ["Nigeria", "Africa"],
+    "actions": [
+        {
+            "type": "createTrainingModule",
+            "payload": {
+                "title": "Child Protection (NG)",
+                "category": "safeguarding",
+                "audience": "teacher",
+                "level": "beginner",
+                "format": "microLesson",
+                "contentBlocks": [
+                    { "type": "text", "content": "Guidelines for child safety in Nigerian schools..." }
+                ],
+                "verified": true,
+                "smsSummarySegments": ["Child safety is priority. Report abuse immediately."]
+            }
+        }
+    ]
+}

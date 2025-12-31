@@ -1,0 +1,28 @@
+[
+  {
+    "title": "EU - GDPR Processing Consent",
+    "description": "Strict check for valid data processing consent.",
+    "severity": "critical",
+    "mode": "enforce",
+    "triggerEvent": "assessment.finalize",
+    "triggerCondition": "missing_consent",
+    "remediation": "Valid GDPR processing consent is mandatory.",
+    "enabled": true,
+    "blockActions": true,
+    "appliesToActions": ["assessment.finalize"],
+    "allowOverride": false
+  },
+  {
+    "title": "EU - Public Document Warning",
+    "description": "Advises against public visibility for uploaded reports.",
+    "severity": "warning",
+    "mode": "advisory",
+    "triggerEvent": "document.upload",
+    "triggerCondition": "pii_leak",
+    "remediation": "Default to private visibility unless necessary.",
+    "enabled": true,
+    "blockActions": false,
+    "appliesToActions": ["document.upload"],
+    "allowOverride": true
+  }
+]

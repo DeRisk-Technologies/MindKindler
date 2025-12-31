@@ -1,0 +1,38 @@
+{
+    "id": "uk_la_pack",
+    "name": "UK Local Authority Starter Pack",
+    "description": "Essential compliance and training for UK Councils. Includes KCSIE safeguarding rules and GDPR policies.",
+    "version": "1.0.0",
+    "regionTags": ["UK", "Europe"],
+    "actions": [
+        {
+            "type": "createPolicyRule",
+            "payload": {
+                "title": "KCSIE: Safeguarding Reporting",
+                "description": "Requires immediate reporting of safeguarding concerns.",
+                "severity": "critical",
+                "mode": "enforce",
+                "blockActions": true,
+                "appliesToActions": ["assessment.finalize"],
+                "triggerEvent": "assessment.finalize",
+                "triggerCondition": "safeguarding_recommended",
+                "remediation": "Raise a formal incident in the Safeguarding module.",
+                "jurisdiction": "UK"
+            }
+        },
+        {
+            "type": "createTrainingModule",
+            "payload": {
+                "title": "KCSIE Basics 2024",
+                "category": "safeguarding",
+                "audience": "teacher",
+                "level": "beginner",
+                "format": "microLesson",
+                "contentBlocks": [
+                    { "type": "text", "content": "Keeping Children Safe in Education is statutory guidance..." }
+                ],
+                "verified": true
+            }
+        }
+    ]
+}
