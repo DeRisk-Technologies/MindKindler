@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertData } from "./AlertCard";
-import { createCaseFromAlert } from "@/services/case-service";
+import { createCase } from "@/services/case-service"; // Updated import
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { CasePriority } from "@/types/schema";
 
 interface CreateCaseModalProps {
     isOpen: boolean;
@@ -19,7 +20,7 @@ interface CreateCaseModalProps {
     alert?: AlertData;
     studentId: string;
     tenantId: string;
-    userId: string; // Current user ID
+    userId: string;
 }
 
 export function CreateCaseModal({ isOpen, onClose, alert, studentId, tenantId, userId }: CreateCaseModalProps) {
@@ -28,14 +29,17 @@ export function CreateCaseModal({ isOpen, onClose, alert, studentId, tenantId, u
     
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
-    const [priority, setPriority] = useState<string>("Medium");
+    const [priority, setPriority] = useState<CasePriority>("Medium");
 
-    // Auto-fill from alert when it changes
     useEffect(() => {
         if (alert) {
             setTitle(`Case: ${alert.title}`);
             setDescription(alert.description + (alert.evidence ? `\n\nEvidence:\n- ${alert.evidence.map(e => e.snippet).join('\n- ')}` : ""));
-            setPriority(alert.severity === 'critical' ? 'Critical' : alert.severity === 'high' ? 'High' : 'Medium');
+            setPriority(
+                alert.severity === 'critical' ? 'Critical' : 
+                alert.severity === 'high' ? 'High' : 
+                'Medium'
+            );
         } else {
             setTitle("");
             setDescription("");
@@ -47,12 +51,14 @@ export function CreateCaseModal({ isOpen, onClose, alert, studentId, tenantId, u
         if (!title || !studentId) return;
         setLoading(true);
         try {
-            await createCaseFromAlert({
+            // Using the robust createCase from Stage 4
+            await createCase({
                 tenantId,
-                studentId,
+                type: 'student',
+                subjectId: studentId,
                 title,
                 description,
-                priority: priority as any,
+                priority,
                 sourceAlertId: alert?.id,
                 evidence: alert?.evidence,
                 createdBy: userId
@@ -85,7 +91,7 @@ export function CreateCaseModal({ isOpen, onClose, alert, studentId, tenantId, u
                     
                     <div className="grid gap-2">
                         <Label>Priority</Label>
-                        <Select value={priority} onValueChange={setPriority}>
+                        <Select value={priority} onValueChange={(val) => setPriority(val as CasePriority)}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Critical">Critical</SelectItem>

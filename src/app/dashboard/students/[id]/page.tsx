@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConsentTab } from "@/components/dashboard/students/consent-tab";
 import InterventionList from "@/components/dashboard/students/intervention-list";
+import { Student360Main } from "@/components/student360/Student360Main";
 
 export default function StudentProfilePage() {
   const { id } = useParams();
@@ -98,7 +99,9 @@ export default function StudentProfilePage() {
       if (!r1 || !r2) return null;
 
       // Ensure chronological order
-      const sorted = [r1, r2].sort((a, b) => new Date(a.completedAt || "").getTime() - new Date(b.completedAt || "").getTime());
+      // Safe date parsing: use 0 timestamp fallback for sorting if undefined
+      const getTime = (d?: string) => d ? new Date(d).getTime() : 0;
+      const sorted = [r1, r2].sort((a, b) => getTime(a.completedAt) - getTime(b.completedAt));
       
       const scoreDiff = sorted[1].totalScore - sorted[0].totalScore;
 
@@ -126,121 +129,18 @@ export default function StudentProfilePage() {
 
   return (
     <div className="space-y-8 p-8 pt-6">
-        {/* Header Profile */}
-        <div className="flex flex-col md:flex-row gap-6 items-start">
-            <Avatar className="h-24 w-24">
-                <AvatarFallback className="text-2xl">{student.firstName[0]}{student.lastName[0]}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-3">
-                    <h1 className="text-3xl font-bold">{student.firstName} {student.lastName}</h1>
-                    <Badge variant="outline" className="text-sm">Grade 5</Badge>
-                    {cases.length > 0 && <Badge className="bg-purple-600">Active Case</Badge>}
-                </div>
-                <p className="text-muted-foreground">Student ID: {student.id} • DOB: {student.dateOfBirth}</p>
-                <div className="flex gap-4 pt-2">
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <BookOpen className="h-4 w-4" /> 92% Attendance
-                    </div>
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Activity className="h-4 w-4" /> 3 Behavioral Incidents
-                    </div>
-                </div>
-            </div>
-        </div>
+        
+        {/* New: Student 360 Main Component (Alerts, Quick Actions, Evidence) */}
+        <Student360Main studentId={id as string} tenantId={student.tenantId || "global"} />
 
-        {/* AI Correlation Alert */}
-        <Alert variant="destructive" className="bg-red-50 border-red-200">
-            <BrainCircuit className="h-4 w-4 text-red-600" />
-            <AlertTitle className="text-red-700">AI Pattern Detected</AlertTitle>
-            <AlertDescription className="text-red-600">
-                Correlation found: Drop in Math scores (Sept-Nov) coincides with 3 recorded absences and 1 behavioral incident in October.
-            </AlertDescription>
-        </Alert>
-
-        {/* 360 Dashboards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
-            {/* 1. Academic Performance (External) */}
-            <Card className="col-span-2">
-                <CardHeader>
-                    <CardTitle>Academic Trajectory</CardTitle>
-                    <CardDescription>Grades imported from Canvas/SIS.</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={trendData}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="date" />
-                            <YAxis domain={[0, 100]} />
-                            <Tooltip />
-                            <Line type="monotone" dataKey="score" stroke="#2563eb" strokeWidth={3} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </CardContent>
-            </Card>
-
-            {/* 2. Holistic Competency (Radar) */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Competency Radar</CardTitle>
-                    <CardDescription>Holistic view of strengths/weaknesses.</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                            <PolarGrid />
-                            <PolarAngleAxis dataKey="subject" />
-                            <PolarRadiusAxis />
-                            <Radar name="Student" dataKey="A" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-                        </RadarChart>
-                    </ResponsiveContainer>
-                </CardContent>
-            </Card>
-        </div>
-
-        <Tabs defaultValue="timeline" className="space-y-4">
+        {/* Existing: Detailed Academic & Assessment Data */}
+        <Tabs defaultValue="assessments" className="space-y-4">
             <TabsList>
-                <TabsTrigger value="timeline">Unified Timeline</TabsTrigger>
                 <TabsTrigger value="assessments">Assessment History</TabsTrigger>
                 <TabsTrigger value="interventions">Interventions</TabsTrigger>
+                <TabsTrigger value="charts">Academic Trends</TabsTrigger>
                 <TabsTrigger value="consent">Consent & Privacy</TabsTrigger>
             </TabsList>
-
-            <TabsContent value="timeline">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Activity History</CardTitle>
-                        <CardDescription>Chronological events across all systems.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {/* Mock Unified Timeline */}
-                            <div className="flex gap-4">
-                                <div className="mt-1"><AlertTriangle className="h-5 w-5 text-orange-500" /></div>
-                                <div>
-                                    <p className="font-medium">Behavioral Incident Report</p>
-                                    <p className="text-sm text-muted-foreground">Oct 25, 2023 • Disruptive in class</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-4">
-                                <div className="mt-1"><TrendingDown className="h-5 w-5 text-red-500" /></div>
-                                <div>
-                                    <p className="font-medium">Math Grade Alert</p>
-                                    <p className="text-sm text-muted-foreground">Oct 20, 2023 • Score dropped to 72%</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-4">
-                                <div className="mt-1"><Clock className="h-5 w-5 text-blue-500" /></div>
-                                <div>
-                                    <p className="font-medium">Late Arrival</p>
-                                    <p className="text-sm text-muted-foreground">Oct 18, 2023 • 15 mins late</p>
-                                </div>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </TabsContent>
 
             <TabsContent value="assessments">
                 <Card>
@@ -317,7 +217,7 @@ export default function StudentProfilePage() {
                                                 <FileText className="h-4 w-4 text-blue-500" />
                                                 {assessmentTemplates[res.templateId]?.title || "Untitled Assessment"}
                                             </TableCell>
-                                            <TableCell>{new Date(res.completedAt || res.startedAt).toLocaleDateString()}</TableCell>
+                                            <TableCell>{res.completedAt ? new Date(res.completedAt).toLocaleDateString() : (res.startedAt ? new Date(res.startedAt).toLocaleDateString() : 'N/A')}</TableCell>
                                             <TableCell>
                                                 <Badge variant="secondary">{res.totalScore} / {res.maxScore}</Badge>
                                             </TableCell>
@@ -338,6 +238,49 @@ export default function StudentProfilePage() {
                         </Table>
                     </CardContent>
                 </Card>
+            </TabsContent>
+
+            <TabsContent value="charts">
+                 {/* 360 Dashboards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    {/* 1. Academic Performance (External) */}
+                    <Card className="col-span-2">
+                        <CardHeader>
+                            <CardTitle>Academic Trajectory</CardTitle>
+                            <CardDescription>Grades imported from Canvas/SIS.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={trendData}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                    <XAxis dataKey="date" />
+                                    <YAxis domain={[0, 100]} />
+                                    <Tooltip />
+                                    <Line type="monotone" dataKey="score" stroke="#2563eb" strokeWidth={3} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* 2. Holistic Competency (Radar) */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Competency Radar</CardTitle>
+                            <CardDescription>Holistic view of strengths/weaknesses.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+                                    <PolarGrid />
+                                    <PolarAngleAxis dataKey="subject" />
+                                    <PolarRadiusAxis />
+                                    <Radar name="Student" dataKey="A" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
+                                </RadarChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+                </div>
             </TabsContent>
 
             <TabsContent value="consent">

@@ -13,7 +13,7 @@ jest.mock('firebase/firestore', () => ({
     serverTimestamp: () => 'MOCK_TIMESTAMP'
 }));
 
-import { createCaseFromAlert } from "../case-service";
+import { createCase, CreateCaseInput } from "../case-service"; // Updated import
 
 describe('Case Service', () => {
     beforeEach(() => {
@@ -21,26 +21,27 @@ describe('Case Service', () => {
         mockAddDoc.mockResolvedValue({ id: 'case_123' });
     });
 
-    test('createCaseFromAlert creates case doc', async () => {
-        const input = {
+    test('createCase creates case doc', async () => {
+        const input: CreateCaseInput = {
             tenantId: 't1',
-            studentId: 's1',
+            type: 'student',
+            subjectId: 's1',
             title: 'Test Case',
             description: 'Desc',
-            priority: 'High' as const,
+            priority: 'High',
             sourceAlertId: 'a1',
             createdBy: 'u1'
         };
 
-        const result = await createCaseFromAlert(input);
+        const result = await createCase(input);
 
         expect(result).toBe('case_123');
-        expect(mockCollection).toHaveBeenCalledWith(undefined, "cases");
-        expect(mockAddDoc).toHaveBeenCalledWith(undefined, expect.objectContaining({
+        expect(mockCollection).toHaveBeenCalledWith(undefined, "tenants", "t1", "cases");
+        expect(mockAddDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
             title: 'Test Case',
             priority: 'High',
             sourceAlertId: 'a1',
-            status: 'Open'
+            status: 'triage'
         }));
     });
 });

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { AlertCard, AlertData } from "./AlertCard";
 import { EvidencePanel, EvidenceDoc } from "./EvidencePanel";
 import { QuickActionsBar } from "./QuickActionsBar";
-import { CreateCaseModal } from "./CreateCaseModal";
+import { CreateCaseModal } from "@/components/cases/CreateCaseModal"; // Fixed import path
 import { getStudentProfile, getStudentAlerts, getStudentEvidence, performOptimisticAction } from "@/services/student360-service";
 import { Student } from "@/types/schema";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +16,7 @@ import { auth } from "@/lib/firebase";
 import { useTranslation } from "@/i18n/provider";
 import { applyGlossaryToStructured } from "@/ai/utils/glossarySafeApply";
 import { getGlossary } from "@/services/glossary-service";
+import { Button } from "@/components/ui/button"; // Added Button import
 
 interface Props {
     studentId: string;
@@ -89,7 +90,8 @@ export function Student360Main({ studentId, tenantId }: Props) {
             if (done) {
                 toast({ title: t('common.actions'), description: `${action} executed.` });
             } else {
-                toast({ title: "Queued", description: `${action} will sync when online.`, variant: "secondary" });
+                // Fixed variant type: changed 'secondary' to 'default' as toast only supports default|destructive
+                toast({ title: "Queued", description: `${action} will sync when online.`, variant: "default" });
             }
         }
     };
