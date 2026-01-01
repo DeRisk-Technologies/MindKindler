@@ -6,7 +6,7 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
 // Trigger: When an Alert is created
-export const onAlertCreated = functions.firestore
+export const onAlertCreated = functions.region('europe-west3').firestore
     .document('tenants/{tenantId}/alerts/{alertId}')
     .onCreate(async (snap, context) => {
         const { tenantId, alertId } = context.params;
@@ -16,22 +16,17 @@ export const onAlertCreated = functions.firestore
 
         try {
             // 1. Fetch Tenant Rules
-            // Optimized: Could cache rules in global var for warm instances
             const rulesSnap = await db.doc(`tenants/${tenantId}/settings/caseSlaRules`).get();
             const rules = rulesSnap.exists ? rulesSnap.data() : null;
 
             if (!rules || !rules.autoCreateEnabled) return;
 
             // 2. Evaluate Auto-Create Logic
-            // Logic A: Critical Severity -> Auto Case
             if (alertData.severity === 'critical' && rules.autoCreateCritical) {
                 await createSystemCase(tenantId, alertData, 'Critical Risk Detected');
                 return;
             }
 
-            // Logic B: Pattern Detection (School Level)
-            // e.g. If > 3 alerts of type 'attendance' in same school in 24h
-            // Simplified check: Just query count.
             if (alertData.schoolId) {
                 const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24h
                 const q = db.collection(`tenants/${tenantId}/alerts`)
@@ -53,9 +48,6 @@ export const onAlertCreated = functions.firestore
     });
 
 async function createSystemCase(tenantId: string, alert: any, reason: string) {
-    // Dedup check: Check if open case exists for this alert?
-    // Assume alert links to case later, or we check if alert.caseId is set (but trigger is onCreate)
-    
     await db.collection(`tenants/${tenantId}/cases`).add({
         type: 'student',
         subjectId: alert.studentId || 'unknown',
@@ -67,12 +59,11 @@ async function createSystemCase(tenantId: string, alert: any, reason: string) {
         sourceAlertId: alert.id,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        slaDueAt: admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000) // 24h default
+        slaDueAt: admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000)
     });
 }
 
 async function createSchoolCase(tenantId: string, schoolId: string, type: string, count: number) {
-    // Check if active school case exists for this type
     const q = db.collection(`tenants/${tenantId}/cases`)
         .where('type', '==', 'school')
         .where('subjectId', '==', schoolId)
@@ -80,7 +71,7 @@ async function createSchoolCase(tenantId: string, schoolId: string, type: string
         .limit(1);
     
     const existing = await q.get();
-    if (!existing.empty) return; // Already tracking
+    if (!existing.empty) return;
 
     await db.collection(`tenants/${tenantId}/cases`).add({
         type: 'school',

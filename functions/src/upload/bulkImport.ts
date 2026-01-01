@@ -11,12 +11,12 @@ interface BulkItem {
     fileName: string;
     studentId?: string;
     category: string;
-    // For V1, we assume files are pre-uploaded to a temp bucket path or we upload one by one.
-    // Here we assume the manifest is processed after file uploads or drives the upload process.
-    // Let's implement the logic where manifest creates placeholders for the UI to fill.
 }
 
-export const processBulkManifest = onCall(async (request: CallableRequest<any>) => {
+export const processBulkManifest = onCall({ 
+    region: 'europe-west3',
+    cors: true 
+}, async (request: CallableRequest<any>) => {
     if (!request.auth) throw new Error("Unauthorized");
 
     const { tenantId, manifest } = request.data as { tenantId: string, manifest: BulkItem[] };
@@ -36,20 +36,16 @@ export const processBulkManifest = onCall(async (request: CallableRequest<any>) 
     let validCount = 0;
     const errors: any[] = [];
 
-    // Limit batch size in production
     const batch = db.batch();
 
     for (let i = 0; i < manifest.length; i++) {
         const item = manifest[i];
         
-        // Simple Validation
         if (!item.fileName || !item.category) {
             errors.push({ index: i, error: "Missing required fields" });
             continue;
         }
 
-        // Create Placeholder Document (Waiting for file upload)
-        // The UI will use this ID to upload the binary
         const docRef = db.collection(`tenants/${tenantId}/documents`).doc();
         batch.set(docRef, {
             tenantId,
@@ -57,7 +53,7 @@ export const processBulkManifest = onCall(async (request: CallableRequest<any>) 
             category: item.category,
             studentId: item.studentId || null,
             uploadedBy: userId,
-            status: 'pending_upload', // UI will flip this to 'uploading'
+            status: 'pending_upload', 
             jobId: jobRef.id,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
@@ -67,7 +63,6 @@ export const processBulkManifest = onCall(async (request: CallableRequest<any>) 
 
     await batch.commit();
 
-    // 3. Update Job
     await jobRef.update({
         status: 'ready_for_upload',
         validFiles: validCount,

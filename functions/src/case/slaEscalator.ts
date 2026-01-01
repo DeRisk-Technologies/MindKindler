@@ -4,14 +4,9 @@ import * as admin from 'firebase-admin';
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
-export const slaEscalator = functions.pubsub.schedule('every 60 minutes').onRun(async (context) => {
+export const slaEscalator = functions.region('europe-west3').pubsub.schedule('every 60 minutes').onRun(async (context) => {
     const now = admin.firestore.Timestamp.now();
     
-    // Scan all tenants? Or use collectionGroup query if allowed.
-    // Query: cases where status != 'resolved' AND slaDueAt < now AND status != 'escalated'
-    // Note: status 'escalated' might not be in schema, maybe use tag or priority bump.
-    // Let's assume we bump priority to Critical and add tag 'overdue'.
-
     const query = db.collectionGroup('cases')
         .where('status', 'in', ['triage', 'active', 'waiting'])
         .where('slaDueAt', '<', now);
@@ -25,17 +20,14 @@ export const slaEscalator = functions.pubsub.schedule('every 60 minutes').onRun(
 
     for (const doc of snapshot.docs) {
         const data = doc.data();
-        // Avoid re-escalating
         if (data.tags && data.tags.includes('overdue')) continue;
 
-        // 1. Mark Overdue
         batch.update(doc.ref, {
             priority: 'Critical',
             tags: admin.firestore.FieldValue.arrayUnion('overdue'),
             updatedAt: now
         });
 
-        // 2. Add Timeline Event (Must be subcollection, batch supports it)
         const timelineRef = doc.ref.collection('timeline').doc();
         batch.set(timelineRef, {
             type: 'status_change',
@@ -45,8 +37,6 @@ export const slaEscalator = functions.pubsub.schedule('every 60 minutes').onRun(
             metadata: { reason: 'sla_overdue' }
         });
 
-        // 3. Notify Tenant (Parent doc path tells us tenant)
-        // doc.ref.path = tenants/{tid}/cases/{cid}
         const pathSegments = doc.ref.path.split('/');
         const tenantId = pathSegments[1];
         
@@ -63,7 +53,6 @@ export const slaEscalator = functions.pubsub.schedule('every 60 minutes').onRun(
         if (count >= 400) {
             await batch.commit();
             count = 0;
-            // In real app, create new batch
         }
     }
 

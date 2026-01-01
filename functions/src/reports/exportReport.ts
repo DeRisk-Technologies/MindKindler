@@ -7,7 +7,10 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const storage = admin.storage();
 
-export const exportReport = onCall(async (request: CallableRequest<any>) => {
+export const exportReport = onCall({ 
+    region: 'europe-west3',
+    cors: true 
+}, async (request: CallableRequest<any>) => {
     if (!request.auth) throw new Error('unauthenticated');
 
     const { tenantId, reportId, redactionLevel, format } = request.data;
@@ -21,15 +24,13 @@ export const exportReport = onCall(async (request: CallableRequest<any>) => {
     // 2. Apply Redaction (Mock logic)
     let content = reportData?.content || {};
     if (redactionLevel === 'parent') {
-        // Simple mock redaction: Replace any text wrapped in [[redact]]...[[/redact]] or similar tags
-        // For V1, let's assume specific sections are marked 'internal' in the JSON structure
+        // Simple mock redaction
         if (content.sections) {
             content.sections = content.sections.filter((s: any) => !s.internalOnly);
         }
     }
 
     // 3. Generate PDF (Mock)
-    // In production, use 'pdfmake' or 'puppeteer' to render `content` to Buffer.
     const mockPdfBuffer = Buffer.from(`Report ID: ${reportId}\nRedaction: ${redactionLevel}\n\n${JSON.stringify(content)}`);
     
     // 4. Upload to Storage
