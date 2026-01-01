@@ -3,7 +3,6 @@
 // Mock the heavy AI libraries so tests don't initialize real GenKit / Google plugin.
 // This prevents memory bloat and network calls during unit tests.
 
-// Jest will hoist these mocks
 jest.mock('@/ai/genkit', () => ({
   ai: {
     generate: jest.fn(async () => ({ output: { text: '{}' } })),

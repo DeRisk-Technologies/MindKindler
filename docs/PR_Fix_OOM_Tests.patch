@@ -1,0 +1,75 @@
+diff --git a/jest.setup.ts b/jest.setup.ts
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/jest.setup.ts
+@@ -0,0 +1,20 @@
++// jest.setup.ts
++
++// Mock the heavy AI libraries so tests don't initialize real GenKit / Google plugin.
++// This prevents memory bloat and network calls during unit tests.
++
++jest.mock('@/ai/genkit', () => ({
++  ai: {
++    generate: jest.fn(async () => ({ output: { text: '{}' } })),
++    definePrompt: jest.fn((opts) => {
++      // Return a fake prompt function
++      return async (input: any) => ({ output: { text: '{}' } });
++    }),
++    defineFlow: jest.fn((opts, fn) => fn),
++  },
++}));
++
++jest.mock('genkit', () => ({
++  genkit: jest.fn(() => ({
++    generate: jest.fn(async () => ({ output: { text: '{}' } })),
++    defineFlow: jest.fn((opts, fn) => fn),
++    definePrompt: jest.fn(),
++  })),
++  z: require('zod'), // Use real zod for schema validaton in tests
++}));
++
++jest.mock('@genkit-ai/google-genai', () => ({
++  googleAI: jest.fn(() => ({})),
++}));
+diff --git a/src/ai/utils/transcript.ts b/src/ai/utils/transcript.ts
+index abcdef1..1234567 100644
+--- a/src/ai/utils/transcript.ts
++++ b/src/ai/utils/transcript.ts
+@@ -16,6 +16,20 @@ const CHARS_PER_TOKEN = 4;
+ 
++// Memory-Efficient Generator Implementation
++// Use this instead of `chunkTranscript` in high-volume environments or tests
++export function* chunkTranscriptGenerator(transcript: string, options: ChunkingOptions = {}): Generator<TranscriptChunk, void, unknown> {
++    const { tokensPerChunk = 400, overlapPercent = 20 } = options;
++    if (!transcript) return;
++
++    const chunkSize = tokensPerChunk * CHARS_PER_TOKEN;
++    const overlapSize = Math.floor(chunkSize * (overlapPercent / 100));
++    const stepSize = chunkSize - overlapSize;
++    if (stepSize <= 0) throw new Error("Invalid chunk/overlap settings");
++
++    let currentIndex = 0;
++    let chunkIndex = 0;
++    
++    while (currentIndex < transcript.length) {
++        let endIndex = Math.min(currentIndex + chunkSize, transcript.length);
++        // Snap to space logic (omitted for brevity, assume similar safe snapping)
++        const lastSpace = transcript.lastIndexOf(' ', endIndex);
++        if (lastSpace > currentIndex && endIndex < transcript.length) endIndex = lastSpace;
++
++        yield {
++            text: transcript.slice(currentIndex, endIndex).trim(),
++            chunkIndex: chunkIndex++,
++            totalChunks: -1, // Unknown in generator mode
++            startIndex: currentIndex,
++            endIndex: endIndex
++        };
++
++        currentIndex += stepSize;
++    }
++}
++
+ export function chunkTranscript(transcript: string, options: ChunkingOptions = {}): TranscriptChunk[] {
+     // ... (Existing array-based implementation) ...
+ }

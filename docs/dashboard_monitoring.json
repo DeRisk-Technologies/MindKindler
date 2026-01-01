@@ -1,0 +1,60 @@
+{
+  "dashboards": [
+    {
+      "displayName": "AI & Consultation Health",
+      "gridLayout": {
+        "columns": "2",
+        "widgets": [
+          {
+            "title": "AI Error Rate (Repair Failed)",
+            "xyChart": {
+              "dataSets": [{
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"cloud_function\" AND metric.type=\"logging.googleapis.com/user/ai_provenance/fatal_error\""
+                  }
+                }
+              }]
+            }
+          },
+          {
+            "title": "Average Latency (ms)",
+            "xyChart": {
+              "dataSets": [{
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"cloud_function\" AND metric.type=\"logging.googleapis.com/user/ai_provenance/latency\""
+                  }
+                }
+              }]
+            }
+          },
+          {
+            "title": "Risk Detection Events",
+            "xyChart": {
+              "dataSets": [{
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"cloud_function\" AND metric.type=\"logging.googleapis.com/user/ai_provenance/is_risk\""
+                  }
+                }
+              }]
+            }
+          },
+          {
+            "title": "Glossary Replacements",
+            "xyChart": {
+              "dataSets": [{
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"cloud_function\" AND metric.type=\"logging.googleapis.com/user/ai_provenance/glossary_count\""
+                  }
+                }
+              }]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
