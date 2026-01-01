@@ -1,7 +1,5 @@
 // functions/src/ai/__tests__/extractDocumentFlow.spec.ts
 
-import * as admin from 'firebase-admin';
-
 // Mock Dependencies
 const mockGenerate = jest.fn();
 jest.mock("genkit", () => ({

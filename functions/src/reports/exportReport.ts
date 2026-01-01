@@ -8,7 +8,7 @@ const db = admin.firestore();
 const storage = admin.storage();
 
 export const exportReport = onCall(async (request: CallableRequest<any>) => {
-    if (!request.auth) throw new admin.auth.Error('unauthenticated', 'User must be logged in.');
+    if (!request.auth) throw new Error('unauthenticated');
 
     const { tenantId, reportId, redactionLevel, format } = request.data;
     

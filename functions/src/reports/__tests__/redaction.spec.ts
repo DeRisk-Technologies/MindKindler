@@ -1,7 +1,7 @@
 // functions/src/reports/__tests__/redaction.spec.ts
 
 import { applyRedaction } from '../utils/redaction';
-import { ReportSection } from '../../../src/types/schema';
+import { ReportSection } from '../../types/schema';
 
 describe('Redaction Logic', () => {
     
@@ -31,14 +31,10 @@ describe('Redaction Logic', () => {
     });
 
     test('ANONYMIZED replaces PII', () => {
-        const result = applyRedaction(sections, 'ANONYMIZED');
-        // Check for regex replacement of Names/Dates (mock implementation)
-        // Since our mock input has "John Doe" but regex looks for title (Mr/Mrs), let's test a title case
-        
         const piiSection: ReportSection = { id: '4', title: 'PII', content: 'Dr. Smith visited on 12/12/2023.' };
-        const res2 = applyRedaction([piiSection], 'ANONYMIZED');
+        const result = applyRedaction([piiSection], 'ANONYMIZED');
         
-        expect(res2[0].content).toContain('[REDACTED NAME]');
-        expect(res2[0].content).toContain('[REDACTED DATE]');
+        expect(result[0].content).toContain('[REDACTED NAME]');
+        expect(result[0].content).toContain('[REDACTED DATE]');
     });
 });

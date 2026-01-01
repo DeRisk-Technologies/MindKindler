@@ -1,7 +1,5 @@
 // functions/src/ai/__tests__/generateClinicalReport.spec.ts (Fixed Mocks)
 
-import * as admin from 'firebase-admin';
-
 // Mock dependencies
 jest.mock("firebase-admin", () => ({
     apps: ['mockApp'],
@@ -95,15 +93,6 @@ describe("generateClinicalReport Cloud Function", () => {
             notes: "Test",
             glossary: { "Summary": "Overview" } 
         }));
-
-        // The glossary replacement logic runs POST generation on the JSON object.
-        // If glossary = { "Summary": "Overview" }, and the AI returns { title: "Summary" }
-        // The applyGlossaryToStructured function should swap it.
-        
-        // Wait, applyGlossaryToStructured usually targets *content* fields. 
-        // Let's check the handler code to see if 'title' is targeted.
-        // Handler says: applyGlossaryToStructured(..., ['sections[].content', 'sections[].title'])
-        // So yes, title should be replaced.
         
         expect(result.sections[0].title).toBe('Overview');
     });

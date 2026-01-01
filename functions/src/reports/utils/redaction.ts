@@ -1,6 +1,6 @@
 // functions/src/reports/utils/redaction.ts
 
-import { ReportSection, RedactionLevel } from "../../../src/types/schema";
+import { ReportSection, RedactionLevel } from "../../types/schema";
 
 export function applyRedaction(
     sections: ReportSection[], 
@@ -24,7 +24,7 @@ export function applyRedaction(
                 .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, '[REDACTED DATE]');
         }
         
-        // 3. Remove inline "internal" blocks if marked in text like [[internal]]...[[/internal]]
+        // 3. Remove inline \"internal\" blocks if marked in text like [[internal]]...[[/internal]]
         // (Regex for non-greedy match between tags)
         redactedContent = redactedContent.replace(/\[\[internal\]\][\s\S]*?\[\[\/internal\]\]/gi, ' [REDACTED SECTION] ');
 
