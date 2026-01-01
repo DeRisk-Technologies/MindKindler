@@ -1,0 +1,39 @@
+// firestore.rules (Snippet for EPP Upload Portal)
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function
+    function isEPP() {
+      return request.auth.token.role in ['educationalpsychologist', 'admin'];
+    }
+    
+    function isTrustedAssistant() {
+      return get(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId)/users/$(request.auth.uid)).data.isTrustedAssistant == true;
+    }
+
+    match /tenants/{tenantId}/documents/{docId} {
+      allow read: if request.auth != null; // Refine per tenant
+      
+      // Anyone can upload (create) status='uploading'
+      allow create: if request.resource.data.status == 'uploading' 
+                    && request.resource.data.uploadedBy == request.auth.uid;
+
+      // Only EPP or Trusted Assistant can publish
+      allow update: if (request.resource.data.status == 'published' 
+                        && (isEPP() || isTrustedAssistant()))
+                    || (request.resource.data.status != 'published'); 
+    }
+
+    match /tenants/{tenantId}/document_staging/{stagingId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Audit logs immutable
+    match /tenants/{tenantId}/documents/{docId}/timeline/{eventId} {
+      allow create: if request.auth != null;
+      allow update, delete: if false; 
+    }
+  }
+}

@@ -1,7 +1,8 @@
-// src/services/offline-queue.ts
+// src/services/offline-queue.ts (Updated for Uploads)
 
 import localforage from "localforage";
 import { trackEvent } from "./telemetry-service";
+import { UploadService } from "./upload-service"; // Import Upload Service
 
 // Configure dedicated store for mutation queue
 const queueStore = localforage.createInstance({
@@ -11,7 +12,7 @@ const queueStore = localforage.createInstance({
 
 export interface QueuedMutation {
     id: string; // UUID
-    type: 'createCase' | 'updateCase' | 'addTask';
+    type: 'createCase' | 'updateCase' | 'addTask' | 'uploadDocument';
     payload: any;
     timestamp: number;
     retryCount: number;
@@ -31,7 +32,6 @@ export const offlineQueue = {
         await queueStore.setItem(id, mutation);
         console.log(`[Offline] Queued mutation ${type} (${id})`);
         
-        // Register sync listener if first item
         if (typeof window !== 'undefined') {
             window.addEventListener('online', this.processQueue);
         }
@@ -50,28 +50,28 @@ export const offlineQueue = {
             if (!item) continue;
 
             try {
-                // Execute logic based on type (Dynamic import to avoid circular dep if services import this)
-                // For Stage 7, we simulate the execution or import specific handlers if feasible.
-                // Ideally, this calls `caseService.sync(item)`
-                
-                console.log(`[Sync] Replaying ${item.type}...`);
+                if (item.type === 'uploadDocument') {
+                    // Re-hydrate File object? 
+                    // Note: IndexedDB can store Blobs. Ensure payload.file is a Blob.
+                    await UploadService.uploadFile(item.payload.tenantId, item.payload.file, item.payload.metadata);
+                } else {
+                    console.log(`[Sync] Replaying ${item.type}...`);
+                    // ... other handlers
+                }
                 
                 // Track success telemetry
                 await trackEvent({
-                    eventName: 'caseUpdated', // Generic for now
+                    eventName: 'sync_success',
                     tenantId: item.payload.tenantId || 'unknown',
-                    metadata: { sync: true, mutationId: item.id }
+                    metadata: { type: item.type, mutationId: item.id }
                 });
 
-                // Remove from queue on success
                 await queueStore.removeItem(key);
             } catch (e) {
                 console.error(`[Sync] Failed ${item.type}`, e);
-                // Increment retry or keep for later
                 item.retryCount++;
                 if (item.retryCount > 5) {
-                    // Move to dead letter queue or alerting
-                    await queueStore.removeItem(key); 
+                    await queueStore.removeItem(key); // Dead Letter
                 } else {
                     await queueStore.setItem(key, item);
                 }

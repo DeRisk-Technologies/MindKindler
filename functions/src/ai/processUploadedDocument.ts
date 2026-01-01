@@ -1,79 +1,93 @@
+// functions/src/ai/processUploadedDocument.ts
+
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
+import { runExtraction } from "./flows/extractDocumentFlow";
 
-// Explicitly set region to match the rest of the app
+// Ensure admin initialized
+if (!admin.apps.length) admin.initializeApp();
+const db = admin.firestore();
+
+// Mock OCR function (Replace with Vision API / Document AI in production)
+async function performOCR(storagePath: string): Promise<string> {
+    // In real app: download file, send to Google Document AI
+    return `
+    REPORT CARD - FALL 2024
+    Student: John Doe
+    Math: A (95)
+    Science: B+ (88)
+    Attendance: 95%
+    `;
+}
+
 export const processDocumentHandler = onDocumentCreated({
-    document: "documents/{docId}",
-    region: "europe-west3"
+    document: "tenants/{tenantId}/documents/{docId}",
+    region: "europe-west3",
+    memory: "512MiB"
 }, async (event) => {
     const snapshot = event.data;
     if (!snapshot) return;
 
     const docData = snapshot.data();
-    const docId = event.params.docId;
+    const { tenantId, docId } = event.params;
 
-    // Only process if status is 'uploading' to avoid loops
+    // Idempotency check: Only process 'uploading'
     if (docData.status !== 'uploading') return;
 
     try {
         await snapshot.ref.update({ status: 'processing' });
 
-        // Simulate AI Processing Delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // 1. OCR / Text Extraction
+        const text = await performOCR(docData.storagePath);
 
-        // Mock Extraction Logic based on Category
-        let extractedData: any = {};
-        const confidence = 0.85;
+        // 2. Fetch Glossary
+        // Optimized: Could cache this
+        const glossarySnap = await db.doc(`tenants/${tenantId}/settings/glossary`).get();
+        const glossary = glossarySnap.exists ? glossarySnap.data()?.entries : {};
 
-        if (docData.category === 'academic_record') {
-            extractedData = {
-                subjects: [
-                    { name: "Mathematics", grade: "A", score: 92 },
-                    { name: "English Language", grade: "B+", score: 88 },
-                    { name: "Science", grade: "A-", score: 90 }
-                ],
-                term: "Fall 2024",
-                gpa: 3.8
-            };
-        } else if (docData.category === 'attendance_log') {
-             extractedData = {
-                 totalDays: 180,
-                 present: 172,
-                 absent: 8,
-                 tardy: 2,
-                 notes: "Good attendance record."
-             };
-        } else {
-             extractedData = {
-                 summary: "Document content extracted successfully.",
-                 keywords: ["education", "report", "2024"]
-             };
-        }
+        // 3. Run AI Extraction
+        const result = await runExtraction(
+            tenantId,
+            text,
+            docData.category,
+            glossary,
+            docData.uploadedBy
+        );
 
-        // Store Extracted Data
-        const extractionRef = await admin.firestore().collection('extraction_staging').add({
+        // 4. Create Staging Record
+        const stagingRef = await db.collection(`tenants/${tenantId}/document_staging`).add({
             documentId: docId,
-            category: docData.category,
-            rawExtraction: extractedData,
-            confidenceScore: confidence,
-            reviewedBy: null,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            status: 'review_required',
+            aiResult: {
+                data: result.data,
+                confidence: result.confidence,
+                provenanceId: result.provenanceId
+            },
+            ocrText: text,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            reviewedBy: null
         });
 
-        // Update Document Status
-        await snapshot.ref.update({ 
-            status: 'review_required', // Force human review for prototype safety
-            extractedDataRef: extractionRef.id,
-            processedAt: admin.firestore.FieldValue.serverTimestamp()
+        // 5. Update Document Status
+        await snapshot.ref.update({
+            status: 'review_required',
+            processing: {
+                stagingId: stagingRef.id,
+                attemptCount: 1,
+                completedAt: admin.firestore.FieldValue.serverTimestamp()
+            }
         });
 
-        console.log(`Document ${docId} processed successfully.`);
+        console.log(`[ProcessDocument] Success: ${docId} -> Staging: ${stagingRef.id}`);
 
     } catch (error: any) {
-        console.error("Error processing document:", error);
-        await snapshot.ref.update({ 
-            status: 'error', 
-            errorMsg: error.message 
+        console.error(`[ProcessDocument] Error: ${docId}`, error);
+        await snapshot.ref.update({
+            status: 'error',
+            processing: {
+                lastError: error.message,
+                failedAt: admin.firestore.FieldValue.serverTimestamp()
+            }
         });
     }
 });
