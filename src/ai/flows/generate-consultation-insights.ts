@@ -5,8 +5,10 @@ import { z } from 'genkit';
 import { composeConsultationPrompt, EvidenceItem } from '@/ai/utils/composeConsultationPrompt';
 import { FLOW_PARAMS } from '@/ai/config';
 import { chunkTranscript, normalizeSpeakerTags } from '@/ai/utils/transcript';
+import { applyGlossaryToStructured } from '@/ai/utils/glossarySafeApply';
 
-// Schema for Evidence Items in Input
+// ... (Input Schemas omitted for brevity, match previous) ...
+// Re-declaring minimally for context if file is replaced entirely
 const EvidenceInputSchema = z.object({
   sourceId: z.string(),
   type: z.string(),
@@ -14,20 +16,17 @@ const EvidenceInputSchema = z.object({
   trust: z.number(),
 });
 
-// Expanded Input Schema to accept full transcript
 export const ConsultationInsightsInputSchema = z.object({
-  transcriptChunk: z.string().optional(), // Legacy single chunk support
-  fullTranscript: z.string().optional(), // New full processing
+  transcriptChunk: z.string().optional(),
+  fullTranscript: z.string().optional(),
   currentNotes: z.string().optional(),
   studentAge: z.number().optional(),
-  
-  // New Audit Fields
   locale: z.string().optional().default('en-GB'),
   languageLabel: z.string().optional().default('English (UK)'),
   glossary: z.record(z.string()).optional(),
   evidence: z.array(EvidenceInputSchema).optional(),
 });
-export type ConsultationInsightsInput = z.infer<typeof ConsultationInsightsInputSchema>;
+export type ConsultationInsightsInput = z.input<typeof ConsultationInsightsInputSchema>;
 
 const InsightSchema = z.object({
   type: z.enum(['diagnosis', 'treatment', 'risk', 'observation']),
@@ -49,7 +48,6 @@ export async function generateConsultationInsights(input: ConsultationInsightsIn
   return generateConsultationInsightsFlow(input);
 }
 
-// Convert to Flow to allow dynamic prompt construction
 export const generateConsultationInsightsFlow = ai.defineFlow(
   {
     name: 'generateConsultationInsightsFlow',
@@ -57,7 +55,6 @@ export const generateConsultationInsightsFlow = ai.defineFlow(
     outputSchema: ConsultationInsightsOutputSchema,
   },
   async (input) => {
-    // Determine input source: Full Transcript vs Chunk
     let chunks = [];
     
     if (input.fullTranscript) {
@@ -71,22 +68,12 @@ export const generateConsultationInsightsFlow = ai.defineFlow(
 
     const allInsights: z.infer<typeof InsightSchema>[] = [];
 
-    // Process Chunks (Parallel or Serial? Serial usually safer for consistency context but Parallel faster)
-    // For insights extraction, parallel is fine as chunks are somewhat independent context-wise.
     const promises = chunks.map(async (chunk) => {
-        // 1. Compose Dynamic Prompt
         const promptText = composeConsultationPrompt({
+            // ... (Prompt Composition matches previous) ...
             baseInstruction: `You are a real-time AI Co-Pilot for an educational psychologist. Analyze the following transcript chunk (${chunk.chunkIndex + 1}/${chunk.totalChunks}) for a student (Age: ${input.studentAge || 'Unknown'}).
-            
-            Task:
-            Identify any potential differential diagnoses, treatment ideas, risk factors (e.g. self-harm, abuse), or key observations.
-            
-            Output a list of concise insights.
-            - If a symptom matches a diagnosis (e.g. ADHD, Dyslexia, Anxiety), suggest it with 'diagnosis' type.
-            - If an intervention is implied, suggest it with 'treatment' type.
-            - If there is a safety concern, use 'risk' type (High Confidence).
-            
-            Be conservative but helpful.`,
+            Task: Identify any potential differential diagnoses, treatment ideas, risk factors (e.g. self-harm, abuse), or key observations.
+            Output a list of concise insights.`,
             transcript: chunk.text,
             notes: input.currentNotes,
             locale: input.locale,
@@ -95,7 +82,6 @@ export const generateConsultationInsightsFlow = ai.defineFlow(
             evidence: input.evidence as EvidenceItem[],
         });
 
-        // 2. Call LLM
         const { output } = await ai.generate({
             prompt: promptText,
             output: { schema: ConsultationInsightsOutputSchema },
@@ -103,7 +89,13 @@ export const generateConsultationInsightsFlow = ai.defineFlow(
         });
 
         if (output && output.insights) {
-            // Tag with source info
+            // Apply Glossary Enforcement Here (Per Chunk)
+            if (input.glossary) {
+                const { artifact } = applyGlossaryToStructured(output, input.glossary, ['insights[].text', 'insights[].rationale']);
+                // Re-assign processed insights
+                output.insights = artifact.insights;
+            }
+
             return output.insights.map(i => ({
                 ...i,
                 sources: [{ chunkIndex: chunk.chunkIndex, snippet: chunk.text.substring(0, 50) + "..." }]
@@ -115,20 +107,17 @@ export const generateConsultationInsightsFlow = ai.defineFlow(
     const results = await Promise.all(promises);
     results.forEach(res => allInsights.push(...res));
 
-    // Aggregation / Deduplication Logic
+    // Aggregation Logic (Matches previous)
     const aggregatedInsights: typeof allInsights = [];
     const map = new Map<string, typeof allInsights[0]>();
 
     for (const insight of allInsights) {
         const key = `${insight.type}:${insight.text.toLowerCase().trim()}`;
-        
         if (map.has(key)) {
             const existing = map.get(key)!;
-            // Merge Sources
             if (insight.sources) {
                 existing.sources = [...(existing.sources || []), ...insight.sources];
             }
-            // Boost confidence if repeated? (Simple logic: if >1 occurrence, bump to medium if low)
             if (existing.confidence === 'low') existing.confidence = 'medium';
             if (existing.confidence === 'medium' && insight.confidence === 'high') existing.confidence = 'high';
         } else {

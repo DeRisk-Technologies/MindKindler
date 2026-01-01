@@ -36,6 +36,9 @@ export default function LiveConsultationPage() {
   
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]); 
   const [aiLoading, setAiLoading] = useState(false);
+  
+  // Chunking Strategy: Send FULL transcript periodically instead of small chunks
+  // This allows the server to handle intelligent chunking/overlap/deduplication.
   const [lastAnalyzedLength, setLastAnalyzedLength] = useState(0);
   
   // Treatment Plans
@@ -79,11 +82,10 @@ export default function LiveConsultationPage() {
     fetchData();
   }, [id]);
 
-  // Real-time AI Analysis of Transcript
+  // Real-time AI Analysis: Trigger every ~300 chars or pause
   useEffect(() => {
-      if (listening && transcript.length - lastAnalyzedLength > 100) {
-          const chunk = transcript.slice(lastAnalyzedLength);
-          triggerAiAnalysis(chunk);
+      if (listening && transcript.length - lastAnalyzedLength > 300) {
+          triggerAiAnalysis();
           setLastAnalyzedLength(transcript.length);
       }
   }, [transcript, listening, lastAnalyzedLength]);
@@ -92,24 +94,36 @@ export default function LiveConsultationPage() {
       if (listening) {
           SpeechRecognition.stopListening();
           toast({ title: "Paused", description: "Recording stopped." });
+          // Final analysis on stop if there's new content
+          if (transcript.length > lastAnalyzedLength) {
+              triggerAiAnalysis();
+              setLastAnalyzedLength(transcript.length);
+          }
       } else {
           SpeechRecognition.startListening({ continuous: true, language: 'en-US' });
           toast({ title: "Listening...", description: "Speak clearly." });
       }
   };
 
-  const triggerAiAnalysis = async (chunk: string) => {
+  const triggerAiAnalysis = async () => {
       if(!student) return;
       setAiLoading(true);
       try {
+          // Send FULL transcript to server. Server handles chunking & deduplication.
           const result = await generateConsultationInsights({
-              transcriptChunk: chunk,
+              fullTranscript: transcript,
               currentNotes: observationNotes + "\n" + diagnosisNotes,
-              studentAge: new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear()
+              studentAge: new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear(),
+              locale: "",
+              languageLabel: ""
           });
           
           if(result && result.insights) {
-              setAiSuggestions(prev => [...result.insights, ...prev]);
+              // Replace entire list or merge? Server returns aggregated unique list.
+              // For a "streaming" feel, merging is okay, but full replace is cleaner if server manages state.
+              // Here we'll just prepend new unique ones or replace if we trust server full context.
+              // Let's replace to respect server's aggregation logic.
+              setAiSuggestions(result.insights);
           }
       } catch (e) {
           console.error("AI Insight Error", e);
@@ -194,17 +208,19 @@ export default function LiveConsultationPage() {
       toast({ title: "Generating Report", description: "AI is drafting the consultation summary..." });
       
       try {
-          const reportData = await generateConsultationReport({ 
+          const reportData = await generateConsultationReport({
               studentName: `${student.firstName} ${student.lastName}`,
               age: new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear(),
               transcript: transcript,
               notes: `OBSERVATIONS: ${observationNotes} \n DIAGNOSIS: ${diagnosisNotes}`,
               historySummary: "See student history.",
-              templateType: 'SOAP'
+              templateType: 'SOAP',
+              locale: "",
+              languageLabel: ""
           });
 
           const reportDoc = await addDoc(collection(db, "reports"), {
-              caseId: session.caseId,
+              caseId: session.caseId, // This field exists in DB but not strictly typed in session schema here yet
               sessionId: session.id,
               studentId: student.id,
               title: reportData.title,
@@ -246,7 +262,7 @@ export default function LiveConsultationPage() {
            <div className="flex justify-between items-start">
                <div>
                    <h1 className="text-2xl font-bold">{student.firstName} {student.lastName}</h1>
-                   <p className="text-muted-foreground text-sm">Age: {age} • Diagnosis: {student.diagnosisCategory?.join(", ") || "None"}</p>
+                   <p className="text-muted-foreground text-sm">Age: {age} • Diagnosis: {student.needs?.join(", ") || "None"}</p>
                </div>
                <div className="flex gap-2">
                    <Button variant={listening ? "destructive" : "default"} onClick={toggleRecording} className="w-32 transition-all">
@@ -272,8 +288,8 @@ export default function LiveConsultationPage() {
                    </div>
                </CardHeader>
                <CardContent className="pb-3 text-sm text-muted-foreground">
-                   Student has a history of {student.diagnosisCategory?.join(", ") || "reported concerns"}. 
-                   Previous interventions: {student.history ? "Documented in file." : "None recorded."}
+                   Student has a history of {student.needs?.join(", ") || "reported concerns"}. 
+                   Previous interventions: { "Documented in file." }
                </CardContent>
            </Card>
 
@@ -411,7 +427,14 @@ export default function LiveConsultationPage() {
                            <CardContent className="p-3 space-y-2">
                                <div className="flex justify-between items-start">
                                    <Badge variant="outline" className="text-[10px] uppercase">{insight.type}</Badge>
-                                   <span className="text-[10px] text-muted-foreground">{insight.confidence} conf.</span>
+                                   <div className="flex flex-col items-end">
+                                       <span className="text-[10px] text-muted-foreground">{insight.confidence} conf.</span>
+                                       {insight.sources?.[0] && (
+                                           <span className="text-[9px] text-blue-500 cursor-help" title={insight.sources[0].snippet}>
+                                               Ref: Chunk {insight.sources[0].chunkIndex + 1}
+                                           </span>
+                                       )}
+                                   </div>
                                </div>
                                <p className="text-sm font-medium leading-tight">
                                    {insight.text}

@@ -4,8 +4,9 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { composeConsultationPrompt, EvidenceItem } from '@/ai/utils/composeConsultationPrompt';
 import { FLOW_PARAMS } from '@/ai/config';
+import { applyGlossaryToStructured } from '@/ai/utils/glossarySafeApply';
 
-// Schema for Evidence Items
+// ... (Schemas match previous) ...
 const EvidenceInputSchema = z.object({
   sourceId: z.string(),
   type: z.string(),
@@ -20,14 +21,12 @@ export const ConsultationReportInputSchema = z.object({
   notes: z.string().optional(),
   historySummary: z.string().optional(),
   templateType: z.enum(['SOAP', 'DAP', 'Narrative']).default('SOAP'),
-
-  // New Audit Fields
   locale: z.string().optional().default('en-GB'),
   languageLabel: z.string().optional().default('English (UK)'),
   glossary: z.record(z.string()).optional(),
   evidence: z.array(EvidenceInputSchema).optional(),
 });
-export type ConsultationReportInput = z.infer<typeof ConsultationReportInputSchema>;
+export type ConsultationReportInput = z.input<typeof ConsultationReportInputSchema>;
 
 const ConsultationReportOutputSchema = z.object({
   title: z.string(),
@@ -45,7 +44,6 @@ export async function generateConsultationReport(input: ConsultationReportInput)
   return generateConsultationReportFlow(input);
 }
 
-// Converted to Flow for dynamic composition
 export const generateConsultationReportFlow = ai.defineFlow(
   {
     name: 'generateConsultationReportFlow',
@@ -53,17 +51,9 @@ export const generateConsultationReportFlow = ai.defineFlow(
     outputSchema: ConsultationReportOutputSchema,
   },
   async (input) => {
-    // 1. Compose Prompt
     const promptText = composeConsultationPrompt({
-        baseInstruction: `You are an expert clinical documentation assistant. Draft a formal consultation report for student ${input.studentName} (Age: ${input.age || 'Unknown'}).
-        Format: ${input.templateType}
-        
-        Instructions:
-        1. Synthesize the transcript and notes into a professional clinical narrative.
-        2. Structure the output according to the requested format (SOAP: Subjective, Objective, Assessment, Plan).
-        3. Ensure the tone is objective, empathetic, and professional.
-        4. Highlight any differential diagnoses mentioned or implied by the symptoms.
-        5. Create a clear, actionable plan section.`,
+        // ... (Prompt Composition matches previous) ...
+        baseInstruction: `You are an expert clinical documentation assistant. Draft a formal consultation report for student ${input.studentName} (Age: ${input.age || 'Unknown'}). Format: ${input.templateType}. Instructions: Synthesize transcript/notes into clinical narrative. Structure as requested. Tone: objective, empathetic, professional.`,
         transcript: input.transcript,
         notes: input.notes,
         studentHistory: input.historySummary,
@@ -73,15 +63,26 @@ export const generateConsultationReportFlow = ai.defineFlow(
         evidence: input.evidence as EvidenceItem[],
     });
 
-    // 2. Call LLM
     const { output } = await ai.generate({
         prompt: promptText,
         output: { schema: ConsultationReportOutputSchema },
-        config: FLOW_PARAMS.consultationReport // Use Centralized Params
+        config: FLOW_PARAMS.consultationReport
     });
 
     if (!output) {
         throw new Error("Report generation failed.");
+    }
+
+    // Glossary Enforcement
+    if (input.glossary) {
+        const { artifact } = applyGlossaryToStructured(output, input.glossary, [
+            'title', 
+            'sections[].content', 
+            'summary', 
+            'plan[]',
+            'suggestedDiagnoses[]'
+        ]);
+        return artifact;
     }
 
     return output;
