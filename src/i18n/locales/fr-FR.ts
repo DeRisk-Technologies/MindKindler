@@ -41,5 +41,33 @@ export default {
     teacher: "Enseignant",
     parent: "Parent",
     student: "Élève",
+  },
+  student360: {
+    actionRequired: "Action Requise",
+    alerts: "Alertes",
+    timeline: "Chronologie",
+    allAlerts: "Toutes les alertes",
+    noAlerts: "Aucune alerte en attente.",
+    offline: "Hors ligne",
+    evidence: {
+        title: "Preuves Vérifiées",
+        trust: "Confiance",
+        noEvidence: "Aucune preuve liée trouvée."
+    },
+    actions: {
+        case: "Dossier",
+        consult: "Consulter",
+        snooze: "Reporter",
+        logNote: "Noter",
+        session: "Session",
+        upload: "Téléverser",
+        message: "Message",
+        viewDoc: "Voir Document",
+        meeting: "Réunion"
+    },
+    riskBanner: {
+        title: "Risque de Sauvegarde Détecté",
+        action: "Suivre le Protocole"
+    }
   }
 };

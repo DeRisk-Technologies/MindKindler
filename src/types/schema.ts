@@ -1,5 +1,7 @@
 // src/types/schema.ts
 
+// ... (Previous Content)
+
 export interface Notification {
   id: string;
   tenantId: string;
@@ -122,4 +124,46 @@ export interface Student {
   needs?: string[];
   diagnosisCategory?: string[];
   history?: string;
+}
+
+// Case Management Types
+export type CasePriority = 'Critical' | 'High' | 'Medium' | 'Low';
+export type CaseStatus = 'triage' | 'active' | 'waiting' | 'resolved' | 'archived';
+
+export interface Case {
+  id: string;
+  tenantId: string;
+  type: 'student' | 'school' | 'staff';
+  subjectId: string;
+  title: string;
+  description: string;
+  status: CaseStatus;
+  priority: CasePriority;
+  assignedTo?: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  sourceAlertId?: string;
+  evidence?: any[];
+  tags?: string[];
+  slaDueAt?: string;
+}
+
+export interface CaseTask {
+  id?: string;
+  title: string;
+  status: 'pending' | 'done';
+  dueAt?: string;
+  assignedTo?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CaseTimelineEvent {
+  id?: string;
+  type: 'status_change' | 'note' | 'document' | 'alert_linked' | 'task_completed' | 'assignment_change';
+  content: string;
+  metadata?: Record<string, any>;
+  actorId: string;
+  createdAt: string;
 }
