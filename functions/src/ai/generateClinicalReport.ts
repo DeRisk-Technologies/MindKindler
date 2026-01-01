@@ -6,6 +6,7 @@ import { googleAI } from "@genkit-ai/google-genai";
 import { saveAiProvenance } from "./utils/provenance";
 import { z } from "zod";
 import { applyGlossaryToStructured } from "./utils/glossarySafeApply";
+import { buildSystemPrompt } from "./utils/prompt-builder";
 
 // Ensure admin initialized
 if (!admin.apps.length) admin.initializeApp();
@@ -16,70 +17,130 @@ const ai = genkit({
     model: "googleai/gemini-1.5-flash",
 });
 
-const ReportSchema = z.object({
-    summary: z.string(),
-    recommendations: z.array(z.string()),
-    clinicalImpression: z.string(),
-    nextSteps: z.array(z.string())
+// Expanded Schema matching Editor requirements
+const EditorSectionSchema = z.object({
+    id: z.string(),
+    title: z.string(),
+    content: z.string() // Markdown/HTML compatible text
+});
+
+const ClinicalReportOutputSchema = z.object({
+    sections: z.array(EditorSectionSchema)
 });
 
 export const handler = async (request: CallableRequest<any>) => {
     if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required.');
 
-    const { notes, history, transcript, tenantId, studentId, glossary } = request.data;
-    const userId = request.auth.uid;
+    const { 
+        tenantId, 
+        studentId, 
+        studentName,
+        age,
+        templateType, // 'consultation' | 'statutory'
+        notes, 
+        history, 
+        evidence, // Array of { id, type, snippet, trust }
+        locale, 
+        glossary 
+    } = request.data;
     
+    const userId = request.auth.uid;
     const startTime = Date.now();
 
-    // Context Construction
-    // ... logic to combine notes/history ...
-    // Using simple placeholders to avoid unused var errors for now while logic is built out
-    const context = `Notes: ${JSON.stringify(notes)}. History: ${JSON.stringify(history)}. Transcript: ${transcript}`;
+    // 1. Construct System Prompt
+    const baseInstruction = `You are an expert Educational Psychologist assistant. 
+    Task: Draft a formal clinical report for student "${studentName}" (Age: ${age || 'Unknown'}).
+    Template: ${templateType || 'Standard Consultation'}.
+    
+    Output Format: strictly valid JSON matching { sections: [{ id, title, content }] }.
+    Style: Professional, Objective, Evidence-Based, Empathetic.
+    
+    Citation Rule: When making a claim supported by provided evidence, append a citation token like [[cite:evidenceId]].`;
 
-    // Use db if needed or acknowledge usage
-    if (db) { /* placeholder */ }
+    const aiContext = {
+        locale: locale || 'en-GB',
+        languageLabel: locale === 'fr-FR' ? 'French' : 'English (UK)',
+        glossary: glossary || {}
+    };
 
-    const promptText = `Generate a clinical report based on: ${context}. Return JSON.`;
+    const systemPrompt = buildSystemPrompt(baseInstruction, aiContext);
+
+    // 2. Construct User Prompt with Data
+    const evidenceBlock = evidence && evidence.length > 0 
+        ? `### Verified Evidence (Cite these using [[cite:ID]])\n` + 
+          evidence.map((e: any) => `- [${e.id}] (${e.type}): "${e.snippet}" (Trust: ${e.trust})`).join('\n')
+        : "No specific evidence items linked.";
+
+    const dataBlock = `
+    ### Clinical Notes
+    ${notes || "No notes provided."}
+
+    ### Background History
+    ${history || "No history provided."}
+
+    ${evidenceBlock}
+    `;
+
+    const fullPrompt = `${systemPrompt}\n\n${dataBlock}\n\nGenerate the JSON report structure now.`;
+
+    const config = { temperature: 0.0, maxOutputTokens: 4096 };
 
     const runGeneration = async (prompt: string) => {
-        const { output } = await ai.generate({ 
-            prompt, 
-            config: { temperature: 0.2, maxOutputTokens: 2048 } 
-        });
+        const { output } = await ai.generate({ prompt, config });
         const text = output?.text || "{}";
         const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        return { text, parsed: JSON.parse(cleanJson) }; // Simplified for now
+        return { text, parsed: JSON.parse(cleanJson) };
     };
 
     let result;
     try {
-        result = await runGeneration(promptText);
-        // Validate
-        ReportSchema.parse(result.parsed);
+        result = await runGeneration(fullPrompt);
+        // Validate Structure
+        ClinicalReportOutputSchema.parse(result.parsed);
     } catch (err: any) {
-        // Repair loop omitted for brevity
-        result = { text: "Error", parsed: { summary: "Generation Failed", recommendations: [], clinicalImpression: "", nextSteps: [] } };
+        console.warn(`Validation failed: ${err.message}. Attempting repair.`);
+        try {
+            const repairPrompt = `Previous JSON was invalid: ${err.message}. Fix the JSON structure to match { sections: [{ id, title, content }] }. Return ONLY JSON.`;
+            result = await runGeneration(repairPrompt);
+            ClinicalReportOutputSchema.parse(result.parsed);
+        } catch (finalErr) {
+             console.error("Repair failed", finalErr);
+             // Fallback to error section
+             result = { 
+                 text: result?.text || "Error", 
+                 parsed: { 
+                     sections: [{ 
+                         id: 'error', 
+                         title: 'Generation Error', 
+                         content: 'The AI could not generate a valid structure. Please review raw output in provenance logs.' 
+                     }] 
+                 } 
+            };
+        }
     }
 
-    // Glossary Apply
+    // 3. Post-Process: Glossary Enforcement
     let glossaryReplacements = 0;
     if (glossary) {
-        const { artifact, replacements } = applyGlossaryToStructured(result.parsed, glossary);
+        const { artifact, replacements } = applyGlossaryToStructured(result.parsed, glossary, ['sections[].content', 'sections[].title']);
         result.parsed = artifact;
         glossaryReplacements = replacements;
     }
 
+    // 4. Save Provenance
     await saveAiProvenance({
         tenantId: tenantId || 'global',
         studentId: studentId,
         flowName: 'generateClinicalReport',
-        prompt: promptText,
+        prompt: fullPrompt,
         model: 'googleai/gemini-1.5-flash',
         responseText: result.text,
         parsedOutput: { ...result.parsed, glossaryReplacements },
         latencyMs: Date.now() - startTime,
         createdBy: userId
     });
+
+    if (db) { /* keep linter happy */ }
 
     return result.parsed;
 };

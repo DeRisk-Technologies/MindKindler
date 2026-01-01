@@ -44,6 +44,15 @@ export function applyGlossaryToStructured(
                                new RegExp(`^.*\\.${baseKey}\\.\\d+$`).test(path);
                     }
                     
+                    // Support 'sections[].title' pattern (field inside array object)
+                    if (pattern.includes('[].')) {
+                        const [arrayKey, fieldKey] = pattern.split('[].');
+                        // path could be 'sections.0.title'
+                        // regex: ^sections\.\d+\.title$
+                        const regex = new RegExp(`^${arrayKey}\\.\\d+\\.${fieldKey}$`);
+                        return regex.test(path) || (new RegExp(`^.*\\.${arrayKey}\\.\\d+\\.${fieldKey}$`).test(path));
+                    }
+
                     // Direct key match (e.g. 'summary')
                     return path === pattern || path.endsWith(`.${pattern}`);
                 });
