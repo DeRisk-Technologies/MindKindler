@@ -55,15 +55,18 @@ export default function CasesPage() {
   );
 
   const getLinkedEntityName = (c: any) => {
-      if (c.studentId) {
-          const s = students.find(st => st.id === c.studentId);
+      // Use subjectId from new schema if available, else fallback for legacy
+      const entityId = c.subjectId || c.studentId || c.schoolId;
+      
+      if (c.type === 'student' || c.studentId) {
+          const s = students.find(st => st.id === entityId);
           return s ? `${s.firstName} ${s.lastName}` : "Unknown Student";
-      } else if (c.schoolId) {
-          const s = schools.find(sc => sc.id === c.schoolId);
+      } else if (c.type === 'school' || c.schoolId) {
+          const s = schools.find(sc => sc.id === entityId);
           return s ? s.name : "Unknown School";
-      } else if (c.parentId) {
-          const p = users.find(u => u.id === c.parentId || u.uid === c.parentId);
-          return p ? p.displayName : "Unknown Parent";
+      } else if (c.type === 'staff') {
+          const p = users.find(u => u.id === entityId || u.uid === entityId);
+          return p ? p.displayName : "Unknown Staff";
       }
       return "General Case";
   };
@@ -75,23 +78,22 @@ export default function CasesPage() {
     
     // Determine linking based on type
     const type = formData.get("type") as string;
-    const studentId = type === 'student' ? formData.get("studentId") : null;
-    const schoolId = type === 'school' ? formData.get("schoolId") : null;
-    const parentId = type === 'consultation' ? formData.get("parentId") : null;
+    let subjectId = null;
+    
+    if (type === 'student') subjectId = formData.get("studentId");
+    else if (type === 'school') subjectId = formData.get("schoolId");
+    else if (type === 'staff') subjectId = formData.get("staffId");
 
     const data = {
         title: formData.get("title"),
         type: type,
-        studentId: studentId,
-        schoolId: schoolId,
-        parentId: parentId,
+        subjectId: subjectId,
         status: formData.get("status"),
         priority: formData.get("priority"),
         description: formData.get("description"),
         // Use createdAt for new schema consistency
         ...(editingId ? {} : { createdAt: new Date().toISOString() }),
-        lastUpdated: new Date().toISOString(), // Manual update of lastUpdated string
-        // updatedAt: serverTimestamp(), // Firestore server timestamp if needed
+        updatedAt: new Date().toISOString(), 
     };
     
     try {
@@ -101,7 +103,7 @@ export default function CasesPage() {
       } else {
         await addDoc(collection(db, "cases"), { 
             ...data, 
-            activities: [], 
+            evidence: [], 
             // createdAt is already in data object
         });
         toast({ title: "Created", description: "New case file opened." });
@@ -161,7 +163,7 @@ export default function CasesPage() {
                         <SelectContent>
                             <SelectItem value="student">Student Intervention</SelectItem>
                             <SelectItem value="school">School Support</SelectItem>
-                            <SelectItem value="consultation">Parent Consultation</SelectItem>
+                            <SelectItem value="staff">Staff Consultation</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -170,7 +172,7 @@ export default function CasesPage() {
                 {caseType === 'student' && (
                     <div className="space-y-2">
                         <Label htmlFor="studentId">Select Student</Label>
-                        <Select name="studentId" defaultValue={editingId ? cases.find(c => c.id === editingId)?.studentId : ""}>
+                        <Select name="studentId" defaultValue={editingId ? (cases.find(c => c.id === editingId)?.subjectId || (cases.find(c => c.id === editingId) as any)?.studentId) : ""}>
                             <SelectTrigger><SelectValue placeholder="Search Student..." /></SelectTrigger>
                             <SelectContent>
                                 {students.map(s => <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>)}
@@ -181,7 +183,7 @@ export default function CasesPage() {
                 {caseType === 'school' && (
                     <div className="space-y-2">
                         <Label htmlFor="schoolId">Select School</Label>
-                        <Select name="schoolId" defaultValue={editingId ? cases.find(c => c.id === editingId)?.schoolId : ""}>
+                        <Select name="schoolId" defaultValue={editingId ? (cases.find(c => c.id === editingId)?.subjectId || (cases.find(c => c.id === editingId) as any)?.schoolId) : ""}>
                             <SelectTrigger><SelectValue placeholder="Search School..." /></SelectTrigger>
                             <SelectContent>
                                 {schools.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
@@ -189,13 +191,13 @@ export default function CasesPage() {
                         </Select>
                     </div>
                 )}
-                {caseType === 'consultation' && (
+                {caseType === 'staff' && (
                     <div className="space-y-2">
-                        <Label htmlFor="parentId">Select Parent</Label>
-                        <Select name="parentId" defaultValue={editingId ? cases.find(c => c.id === editingId)?.parentId : ""}>
-                            <SelectTrigger><SelectValue placeholder="Search Parent..." /></SelectTrigger>
+                        <Label htmlFor="staffId">Select Staff/Parent</Label>
+                        <Select name="staffId" defaultValue={editingId ? cases.find(c => c.id === editingId)?.subjectId : ""}>
+                            <SelectTrigger><SelectValue placeholder="Search User..." /></SelectTrigger>
                             <SelectContent>
-                                {users.filter(u => u.role === 'parent').map(p => <SelectItem key={p.id} value={p.id || p.uid}>{p.displayName}</SelectItem>)}
+                                {users.map(p => <SelectItem key={p.id} value={p.id || p.uid}>{p.displayName}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
@@ -207,6 +209,7 @@ export default function CasesPage() {
                         <Select name="priority" defaultValue={editingId ? cases.find(c => c.id === editingId)?.priority : "Medium"}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
+                                <SelectItem value="Critical">Critical</SelectItem>
                                 <SelectItem value="High">High</SelectItem>
                                 <SelectItem value="Medium">Medium</SelectItem>
                                 <SelectItem value="Low">Low</SelectItem>
@@ -215,13 +218,14 @@ export default function CasesPage() {
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="status">Status</Label>
-                        <Select name="status" defaultValue={editingId ? cases.find(c => c.id === editingId)?.status : "Open"}>
+                        <Select name="status" defaultValue={editingId ? cases.find(c => c.id === editingId)?.status : "active"}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Open">Open</SelectItem>
-                                <SelectItem value="In Progress">In Progress</SelectItem>
-                                <SelectItem value="In Review">In Review</SelectItem>
-                                <SelectItem value="Closed">Closed</SelectItem>
+                                <SelectItem value="triage">Triage</SelectItem>
+                                <SelectItem value="active">Active</SelectItem>
+                                <SelectItem value="waiting">Waiting</SelectItem>
+                                <SelectItem value="resolved">Resolved</SelectItem>
+                                <SelectItem value="archived">Archived</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -248,10 +252,10 @@ export default function CasesPage() {
             <TabsTrigger value="all">All Active Cases</TabsTrigger>
             <TabsTrigger value="student">Student Cases</TabsTrigger>
             <TabsTrigger value="school">School Cases</TabsTrigger>
-            <TabsTrigger value="consultation">Consultations</TabsTrigger>
+            <TabsTrigger value="staff">Staff/Consultations</TabsTrigger>
         </TabsList>
 
-        {['all', 'student', 'school', 'consultation'].map(tab => (
+        {['all', 'student', 'school', 'staff'].map(tab => (
             <TabsContent key={tab} value={tab}>
                 <Card>
                     <CardHeader>
@@ -292,17 +296,18 @@ export default function CasesPage() {
                                                 <div className="flex items-center gap-2">
                                                     {c.type === 'student' && <User className="h-3 w-3 text-muted-foreground" />}
                                                     {c.type === 'school' && <School className="h-3 w-3 text-muted-foreground" />}
-                                                    {c.type === 'consultation' && <MessageCircle className="h-3 w-3 text-muted-foreground" />}
+                                                    {c.type === 'staff' && <MessageCircle className="h-3 w-3 text-muted-foreground" />}
                                                     {getLinkedEntityName(c)}
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant={c.status === "Closed" ? "secondary" : "default"}>
+                                                <Badge variant={c.status === "resolved" ? "secondary" : "default"}>
                                                     {c.status}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
                                                 <Badge variant="outline" className={
+                                                    c.priority === 'Critical' ? 'text-red-600 border-red-200 bg-red-50 font-bold' : 
                                                     c.priority === 'High' ? 'text-red-500 border-red-200 bg-red-50' : 
                                                     c.priority === 'Medium' ? 'text-orange-500 border-orange-200 bg-orange-50' : ''
                                                 }>
@@ -310,9 +315,7 @@ export default function CasesPage() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-muted-foreground text-xs">
-                                                {c.activities && c.activities.length > 0 
-                                                    ? new Date(c.activities[c.activities.length-1].date).toLocaleDateString() 
-                                                    : c.createdAt ? new Date(c.createdAt).toLocaleDateString() : 'N/A'}
+                                                {c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : 'N/A'}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">

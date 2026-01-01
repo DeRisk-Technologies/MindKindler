@@ -75,13 +75,15 @@ export interface TenantLocalizationSettings {
   updatedBy: string;
 }
 
+// Extend existing settings or create new dedicated doc per tenant if not existing
 export interface TenantSettings {
   localization?: TenantLocalizationSettings;
+  // ... other existing settings would go here
 }
 
 export interface TranslationOverrideDoc {
-  id?: string;
-  locale: string;
+  id?: string; // namespace (e.g. 'common')
+  locale: string; // e.g. 'fr-FR'
   namespace: string;
   entries: Record<string, string>;
   status: 'draft' | 'published';
@@ -92,9 +94,9 @@ export interface TranslationOverrideDoc {
 }
 
 export interface GlossaryDoc {
-  id?: string;
+  id?: string; // locale (e.g. 'en-GB')
   locale: string;
-  entries: Record<string, string>;
+  entries: Record<string, string>; // canonical -> preferred
   status: 'draft' | 'published';
   updatedAt: string;
   updatedBy: string;
@@ -121,7 +123,12 @@ export interface Student {
   firstName: string;
   lastName: string;
   dateOfBirth: string;
+  gender?: string; // Added
+  schoolId?: string; // Added
+  parentId?: string; // Added
+  address?: string; // Added
   needs?: string[];
+  alerts?: any[]; // Added for compatibility with UI check
   diagnosisCategory?: string[];
   history?: string;
 }

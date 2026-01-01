@@ -120,8 +120,13 @@ export default function StudentsPage() {
     await deleteDoc(doc(db, "students", id));
   };
 
-  const getSchoolName = (id: string) => schools.find(s => s.id === id)?.name || id;
-  const getParentName = (id: string | undefined) => {
+  // Helper with safe fallback for potentially undefined IDs
+  const getSchoolName = (id?: string) => {
+      if (!id) return "Unknown School";
+      return schools.find(s => s.id === id)?.name || id;
+  };
+
+  const getParentName = (id?: string) => {
       if (!id) return "No Parent Linked";
       const p = users.find(u => u.id === id || u.uid === id); 
       return p ? p.displayName : "Unknown Parent";
