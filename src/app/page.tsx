@@ -6,16 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Users,
-  FileText,
   BrainCircuit,
   BarChart,
-  MessageSquare,
-  TabletSmartphone,
-  BookOpen,
   Globe,
   Briefcase,
   Store,
-  GraduationCap
+  GraduationCap,
+  Upload,
+  ShieldCheck,
+  FileText
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
@@ -29,7 +28,6 @@ export default function Home() {
   const [heroImageSrc, setHeroImageSrc] = useState(defaultHero?.imageUrl);
   
   useEffect(() => {
-    // Phase 6B: Fetch landing page settings
     async function fetchSettings() {
         try {
             const settingsDoc = await getDoc(doc(db, "organization_settings", "global"));
@@ -44,6 +42,16 @@ export default function Home() {
   }, []);
 
   const features = [
+    {
+      icon: <FileText className="h-8 w-8 text-primary" />,
+      title: "AI Report Writer",
+      description: "Draft clinical reports in minutes with evidence-based AI generation, role-based redaction, and secure sign-off.",
+    },
+    {
+        icon: <Upload className="h-8 w-8 text-primary" />,
+        title: "Assistant Upload Portal",
+        description: "Streamline data ingestion with AI-powered bulk uploads, mobile scanning, and human-in-the-loop verification.",
+    },
     {
       icon: <Globe className="h-8 w-8 text-primary" />,
       title: "Government Intelligence",
@@ -63,16 +71,6 @@ export default function Home() {
       icon: <GraduationCap className="h-8 w-8 text-primary" />,
       title: "Training Academy",
       description: "Continuous professional development with tracked certifications and adaptive learning paths.",
-    },
-    {
-      icon: <Users className="h-8 w-8 text-primary" />,
-      title: "Holistic Case Management",
-      description: "Seamlessly manage student cases from initial assessment to ongoing intervention and progress tracking.",
-    },
-    {
-      icon: <BarChart className="h-8 w-8 text-primary" />,
-      title: "Insightful Dashboards",
-      description: "Visualize student progress and classroom trends with role-based, interactive charts and graphs.",
     },
   ];
 
@@ -97,7 +95,7 @@ export default function Home() {
               Kindling Potential, <span className="text-primary">Globally</span>.
             </h1>
             <p className="max-w-[600px] text-lg text-muted-foreground md:text-xl">
-              MindKindler is the AI-enabled ecosystem connecting governments, schools, and clinicians to support every child's development.
+              The AI-enabled ecosystem connecting governments, schools, and clinicians. Now with advanced <strong>Report Writing</strong> and <strong>Data Ingestion</strong>.
             </p>
             <div className="flex flex-col gap-4 sm:flex-row">
               <Button size="lg" asChild>
@@ -151,41 +149,54 @@ export default function Home() {
         </section>
 
         <section className="container mx-auto px-4 py-12 md:px-6 md:py-24">
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
              <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-3">
-                <div className="md:col-span-2">
-                  <h3 className="text-2xl font-bold">
-                    For Governments & Districts
+              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-1">
+                <div className="text-center">
+                  <Globe className="h-12 w-12 text-primary/80 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold">
+                    For Governments
                   </h3>
-                  <p className="mt-2 text-muted-foreground">
-                    Simulate policy rollouts, track readiness across thousands of schools, and benchmark performance against global standards using our Government Intelligence suite.
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Simulate policy rollouts, track readiness, and benchmark performance globally.
                   </p>
-                  <Button variant="link" className="px-0 mt-4" asChild>
+                  <Button variant="link" className="px-0 mt-2" asChild>
                       <Link href="/signup">Request Demo &rarr;</Link>
                   </Button>
                 </div>
-                <div className="flex justify-center">
-                  <Globe className="h-20 w-20 text-primary/80" />
+              </CardContent>
+            </Card>
+
+            <Card className="bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800">
+              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-1">
+                <div className="text-center">
+                  <ShieldCheck className="h-12 w-12 text-indigo-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold">
+                    For Clinicians
+                  </h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Automate reports, ingest data effortlessly, and focus on student outcomes.
+                  </p>
+                   <Button variant="link" className="px-0 mt-2 text-indigo-600" asChild>
+                      <Link href="/signup">Start Free Trial &rarr;</Link>
+                  </Button>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800">
-              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-3">
-                <div className="md:col-span-2">
-                  <h3 className="text-2xl font-bold">
-                    For Partners & Experts
+              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-1">
+                <div className="text-center">
+                  <Briefcase className="h-12 w-12 text-orange-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold">
+                    For Partners
                   </h3>
-                  <p className="mt-2 text-muted-foreground">
-                    Monetize your expertise by publishing assessment templates, training packs, and policy rulebooks to our global marketplace. Track revenue and impact in real-time.
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Monetize templates, training, and expertise in our global marketplace.
                   </p>
-                   <Button variant="link" className="px-0 mt-4 text-orange-600" asChild>
-                      <Link href="/dashboard/partner-portal/apply">Apply as Partner &rarr;</Link>
+                   <Button variant="link" className="px-0 mt-2 text-orange-600" asChild>
+                      <Link href="/dashboard/partner-portal/apply">Apply Now &rarr;</Link>
                   </Button>
-                </div>
-                <div className="flex justify-center">
-                  <Briefcase className="h-20 w-20 text-orange-500" />
                 </div>
               </CardContent>
             </Card>

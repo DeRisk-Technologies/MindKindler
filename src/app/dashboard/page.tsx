@@ -27,7 +27,9 @@ import {
   Stethoscope,
   ArrowRight,
   Wifi,
-  WifiOff
+  WifiOff,
+  Upload,
+  FileCheck
 } from "lucide-react";
 import {
   Table,
@@ -79,7 +81,7 @@ export default function DashboardPage() {
 
   // Role Definitions
   const isClinician = ['educationalpsychologist', 'clinicalpsychologist', 'schoolpsychologist', 'admin'].includes(role || '');
-  const isEducator = ['teacher', 'senco', 'schooladministrator'].includes(role || '');
+  const isAssistant = role === 'assistant' || role === 'admin';
   const isGovernment = ['localeducationauthority', 'ministry', 'federal'].includes(role || '');
 
   // Mock Data for Clinical View
@@ -107,6 +109,13 @@ export default function DashboardPage() {
              <Button size="lg" className="shadow-lg bg-indigo-600 hover:bg-indigo-700 text-white" asChild>
                 <Link href="/dashboard/cases">
                     <Plus className="mr-2 h-5 w-5" /> Open New Case
+                </Link>
+             </Button>
+          )}
+          {isAssistant && (
+             <Button size="lg" variant="secondary" className="shadow-sm" asChild>
+                <Link href="/dashboard/data-ingestion">
+                    <Upload className="mr-2 h-5 w-5" /> Upload Docs
                 </Link>
              </Button>
           )}
@@ -143,15 +152,17 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Metric: Pending Reports */}
+        {/* Metric: Pending Reports / Uploads */}
         <Card className="shadow-sm border-l-4 border-l-amber-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Reports</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
             <FileText className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">4</div>
-            <p className="text-xs text-muted-foreground mt-1">AI Drafts ready for approval</p>
+            <p className="text-xs text-muted-foreground mt-1">
+                {isAssistant ? "Docs in Staging" : "Reports ready for sign-off"}
+            </p>
           </CardContent>
         </Card>
 
@@ -202,56 +213,70 @@ export default function DashboardPage() {
                 </Button>
             </div>
 
-            {/* Active Caseload Table */}
+            {/* Active Caseload Table (or Staging Queue for Assistants) */}
             <Card className="shadow-md">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                         <Activity className="h-5 w-5 text-primary" />
-                        Recent Priority Cases
+                        {isAssistant ? "Recent Uploads" : "Recent Priority Cases"}
                     </CardTitle>
-                    <CardDescription>Students requiring attention this week based on intervention tracking.</CardDescription>
+                    <CardDescription>
+                        {isAssistant ? "Status of documents ingested today." : "Students requiring attention this week based on intervention tracking."}
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-[200px]">Student</TableHead>
-                                <TableHead>Primary Concern</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="text-right">Action</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {caseload.map((c) => (
-                                <TableRow key={c.id}>
-                                    <TableCell className="font-medium">
-                                        <div className="flex items-center gap-3">
-                                            <Avatar className="h-8 w-8">
-                                                <AvatarFallback className="bg-primary/10 text-primary text-xs">{c.name.substring(0,2)}</AvatarFallback>
-                                            </Avatar>
-                                            <div>
-                                                <div className="font-semibold text-sm">{c.name}</div>
-                                                <div className="text-xs text-muted-foreground">Age {c.age}</div>
-                                            </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>{c.issue}</TableCell>
-                                    <TableCell>
-                                        <Badge variant="secondary" className="font-normal">{c.status}</Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="sm" asChild>
-                                            <Link href={`/dashboard/cases/${c.id}`}>Manage</Link>
-                                        </Button>
-                                    </TableCell>
+                    {/* Simplified Switch for Role View */}
+                    {!isAssistant ? (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[200px]">Student</TableHead>
+                                    <TableHead>Primary Concern</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {caseload.map((c) => (
+                                    <TableRow key={c.id}>
+                                        <TableCell className="font-medium">
+                                            <div className="flex items-center gap-3">
+                                                <Avatar className="h-8 w-8">
+                                                    <AvatarFallback className="bg-primary/10 text-primary text-xs">{c.name.substring(0,2)}</AvatarFallback>
+                                                </Avatar>
+                                                <div>
+                                                    <div className="font-semibold text-sm">{c.name}</div>
+                                                    <div className="text-xs text-muted-foreground">Age {c.age}</div>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>{c.issue}</TableCell>
+                                        <TableCell>
+                                            <Badge variant="secondary" className="font-normal">{c.status}</Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="sm" asChild>
+                                                <Link href={`/dashboard/cases/${c.id}`}>Manage</Link>
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                        <div className="p-8 text-center text-muted-foreground">
+                            <p className="mb-4">No recent uploads found. Start scanning documents to see progress here.</p>
+                            <Button variant="outline" asChild>
+                                <Link href="/dashboard/data-ingestion">Go to Upload Portal</Link>
+                            </Button>
+                        </div>
+                    )}
                 </CardContent>
                 <CardFooter className="bg-muted/30 p-2 flex justify-center">
                     <Button variant="link" size="sm" className="text-muted-foreground" asChild>
-                        <Link href="/dashboard/cases">View Full Caseload ({caseload.length + 9} more)</Link>
+                        <Link href={isAssistant ? "/dashboard/data-ingestion" : "/dashboard/cases"}>
+                            {isAssistant ? "View All Upload Jobs" : `View Full Caseload (${caseload.length + 9} more)`}
+                        </Link>
                     </Button>
                 </CardFooter>
             </Card>
