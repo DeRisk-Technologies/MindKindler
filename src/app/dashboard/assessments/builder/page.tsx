@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useFirestoreCollection } from "@/hooks/use-firestore";
 import { AssessmentTemplate, Question, QuestionType } from "@/types/schema";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
+import { AIGeneratorDialog } from "@/components/dashboard/assessments/ai-generator-dialog";
 
 // Predefined Categories
 const CATEGORIES = [
@@ -50,6 +51,31 @@ const QUESTION_TYPES: { type: QuestionType; label: string }[] = [
 export default function AssessmentBuilderPage({ params }: { params: { id?: string } }) { // Handle ID param for edit mode
   const router = useRouter();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'ai') {
+      setIsAiDialogOpen(true);
+    }
+  }, [searchParams]);
+
+  const handleAiDialogClose = (open: boolean) => {
+    setIsAiDialogOpen(open);
+    if (!open) {
+      router.back();
+    }
+  };
+
+  const handleAiGenerate = (generatedQuestions: Question[]) => {
+    setQuestions(prevQuestions => [...prevQuestions, ...generatedQuestions]);
+    setIsAiDialogOpen(false);
+    router.replace('/dashboard/assessments/builder'); // Remove mode=ai from URL
+    toast({
+        title: "AI Draft Generated",
+        description: "Review and edit the questions as needed."
+    });
+  };
   
   // Builder State
   const [title, setTitle] = useState("");
@@ -58,6 +84,30 @@ export default function AssessmentBuilderPage({ params }: { params: { id?: strin
   const [targetType, setTargetType] = useState<"Student" | "Parent" | "Teacher" | "School" | "Mixed">("Student");
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  const id = searchParams.get('id');
+  const isEditMode = Boolean(id);
+
+  useEffect(() => {
+    if (isEditMode && id) {
+      const fetchAssessment = async () => {
+        const docRef = doc(db, "assessment_templates", id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data() as AssessmentTemplate;
+          setTitle(data.title);
+          setDescription(data.description || "");
+          setCategory(data.category || CATEGORIES[0]);
+          setTargetType(data.targetType || "Student");
+          setQuestions(data.questions || []);
+        } else {
+          toast({ title: "Not Found", description: "Assessment template not found.", variant: "destructive" });
+          router.push("/dashboard/assessments");
+        }
+      };
+      fetchAssessment();
+    }
+  }, [id, isEditMode, router, toast]);
 
   // Helper to add a new question block
   const addQuestion = () => {
@@ -165,13 +215,19 @@ export default function AssessmentBuilderPage({ params }: { params: { id?: strin
         }
       };
       
-      await addDoc(collection(db, "assessment_templates"), {
-          ...templateData,
-          createdBy: auth.currentUser?.uid || "system",
-          createdAt: new Date().toISOString()
-      });
+      if (isEditMode && id) {
+        const docRef = doc(db, "assessment_templates", id);
+        await updateDoc(docRef, { ...templateData });
+        toast({ title: "Assessment Updated", description: "Template updated successfully." });
+      } else {
+        await addDoc(collection(db, "assessment_templates"), {
+            ...templateData,
+            createdBy: auth.currentUser?.uid || "system",
+            createdAt: new Date().toISOString()
+        });
+        toast({ title: "Assessment Saved", description: "Template published successfully." });
+      }
 
-      toast({ title: "Assessment Saved", description: "Template published successfully." });
       router.push("/dashboard/assessments");
     } catch (e: any) {
       console.error(e);
@@ -183,13 +239,18 @@ export default function AssessmentBuilderPage({ params }: { params: { id?: strin
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8 pb-20">
+      <AIGeneratorDialog
+        open={isAiDialogOpen}
+        onOpenChange={handleAiDialogClose}
+        onGenerate={handleAiGenerate}
+      />
       <div className="flex items-center gap-4 mb-6">
         <Button variant="ghost" size="icon" onClick={() => router.back()}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold text-primary">Assessment Builder</h1>
-          <p className="text-muted-foreground">Design a new assessment template.</p>
+          <h1 className="text-3xl font-bold text-primary">{isEditMode ? "Edit Assessment" : "Assessment Builder"}</h1>
+          <p className="text-muted-foreground">{isEditMode ? "Modify an existing assessment template." : "Design a new assessment template."}</p>
         </div>
       </div>
 
@@ -380,7 +441,7 @@ export default function AssessmentBuilderPage({ params }: { params: { id?: strin
       <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 z-10 flex justify-end gap-4 shadow-lg md:pl-64">
          <Button variant="secondary" onClick={() => router.back()}>Cancel</Button>
          <Button onClick={handleSave} disabled={isSaving} className="w-32">
-           {isSaving ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Publish</>}
+           {isSaving ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> {isEditMode ? 'Update' : 'Publish'}</>}
          </Button>
       </div>
     </div>
