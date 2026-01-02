@@ -1,15 +1,16 @@
+// src/components/dashboard/case/case-details.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { Case, Student, Assessment, Observation, IEP, Intervention, Report, Message } from "@/types/schema";
+// Removed unused imports causing errors
+import { Case } from "@/types/schema";
 import { useFirestore } from "@/hooks/use-firestore";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Calendar, CheckCircle2, FileText, MessageSquare, Activity, User, BookOpen, Stethoscope, Mic, BrainCircuit } from "lucide-react";
+import { AlertCircle, Calendar } from "lucide-react";
 import { CaseOverview } from "./tabs/case-overview";
 import { CaseAssessments } from "@/components/dashboard/case/tabs/case-assessments";
 import { CaseObservations } from "@/components/dashboard/case/tabs/case-observations";
@@ -97,7 +98,7 @@ export function CaseDetails({ caseId }: CaseDetailsProps) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-3xl font-bold tracking-tight">{caseData.title}</h1>
-              <Badge variant={caseData.status === 'Open' ? 'default' : 'secondary'}>
+              <Badge variant={caseData.status === 'active' ? 'default' : 'secondary'}>
                 {caseData.status}
               </Badge>
               <Badge variant="outline" className={
@@ -109,7 +110,7 @@ export function CaseDetails({ caseId }: CaseDetailsProps) {
               </Badge>
             </div>
             <p className="text-muted-foreground mt-1">
-              Case ID: {caseData.id} • Last Updated: {new Date(caseData.lastUpdated).toLocaleDateString()}
+              Case ID: {caseData.id} • Last Updated: {new Date(caseData.updatedAt || caseData.createdAt).toLocaleDateString()}
             </p>
           </div>
           <div className="flex items-center gap-2">

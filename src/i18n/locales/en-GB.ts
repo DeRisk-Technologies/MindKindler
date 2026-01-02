@@ -41,5 +41,33 @@ export default {
     teacher: "Teacher",
     parent: "Parent",
     student: "Student",
+  },
+  student360: {
+    actionRequired: "Action Required",
+    alerts: "Alerts",
+    timeline: "Timeline",
+    allAlerts: "All Alerts",
+    noAlerts: "No pending alerts.",
+    offline: "Offline",
+    evidence: {
+        title: "Verified Evidence",
+        trust: "Trust",
+        noEvidence: "No linked evidence found."
+    },
+    actions: {
+        case: "Case",
+        consult: "Consult",
+        snooze: "Snooze",
+        logNote: "Log Note",
+        session: "Session",
+        upload: "Upload",
+        message: "Message",
+        viewDoc: "View Document",
+        meeting: "Meeting"
+    },
+    riskBanner: {
+        title: "Safeguarding Risk Detected",
+        action: "Follow Protocol"
+    }
   }
 };

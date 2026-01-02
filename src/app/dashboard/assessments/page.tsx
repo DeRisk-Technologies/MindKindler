@@ -208,7 +208,7 @@ export default function AssessmentsPage() {
                           </TableCell>
                           <TableCell>{template.createdAt ? new Date(template.createdAt).toLocaleDateString() : "-"}</TableCell>
                           <TableCell className="text-right space-x-2">
-                            <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/assessments/builder/${template.id}`)}>
+                            <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/assessments/builder?id=${template.id}`)}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             

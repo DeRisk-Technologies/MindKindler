@@ -2,16 +2,31 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { composeConsultationPrompt, EvidenceItem } from '@/ai/utils/composeConsultationPrompt';
+import { FLOW_PARAMS } from '@/ai/config';
+import { applyGlossaryToStructured } from '@/ai/utils/glossarySafeApply';
 
-const ConsultationReportInputSchema = z.object({
+// ... (Schemas match previous) ...
+const EvidenceInputSchema = z.object({
+  sourceId: z.string(),
+  type: z.string(),
+  snippet: z.string(),
+  trust: z.number(),
+});
+
+export const ConsultationReportInputSchema = z.object({
   studentName: z.string(),
   age: z.number().optional(),
   transcript: z.string().optional(),
   notes: z.string().optional(),
   historySummary: z.string().optional(),
   templateType: z.enum(['SOAP', 'DAP', 'Narrative']).default('SOAP'),
+  locale: z.string().optional().default('en-GB'),
+  languageLabel: z.string().optional().default('English (UK)'),
+  glossary: z.record(z.string()).optional(),
+  evidence: z.array(EvidenceInputSchema).optional(),
 });
-export type ConsultationReportInput = z.infer<typeof ConsultationReportInputSchema>;
+export type ConsultationReportInput = z.input<typeof ConsultationReportInputSchema>;
 
 const ConsultationReportOutputSchema = z.object({
   title: z.string(),
@@ -29,40 +44,47 @@ export async function generateConsultationReport(input: ConsultationReportInput)
   return generateConsultationReportFlow(input);
 }
 
-const generateConsultationReportPrompt = ai.definePrompt({
-  name: 'generateConsultationReportPrompt',
-  input: { schema: ConsultationReportInputSchema },
-  output: { schema: ConsultationReportOutputSchema },
-  prompt: `You are an expert clinical documentation assistant. Draft a formal consultation report for student {{studentName}} (Age: {{age}}) based on the provided session data.
-  
-  Format: {{templateType}}
-  
-  Session Transcript (Raw):
-  {{transcript}}
-  
-  Clinician Notes:
-  {{notes}}
-  
-  Student History:
-  {{historySummary}}
-  
-  Instructions:
-  1. Synthesize the transcript and notes into a professional clinical narrative.
-  2. Structure the output according to the requested format (SOAP: Subjective, Objective, Assessment, Plan).
-  3. Ensure the tone is objective, empathetic, and professional.
-  4. Highlight any differential diagnoses mentioned or implied by the symptoms.
-  5. Create a clear, actionable plan section.
-  `,
-});
-
-const generateConsultationReportFlow = ai.defineFlow(
+export const generateConsultationReportFlow = ai.defineFlow(
   {
     name: 'generateConsultationReportFlow',
     inputSchema: ConsultationReportInputSchema,
     outputSchema: ConsultationReportOutputSchema,
   },
   async (input) => {
-    const { output } = await generateConsultationReportPrompt(input);
-    return output!;
+    const promptText = composeConsultationPrompt({
+        // ... (Prompt Composition matches previous) ...
+        baseInstruction: `You are an expert clinical documentation assistant. Draft a formal consultation report for student ${input.studentName} (Age: ${input.age || 'Unknown'}). Format: ${input.templateType}. Instructions: Synthesize transcript/notes into clinical narrative. Structure as requested. Tone: objective, empathetic, professional.`,
+        transcript: input.transcript,
+        notes: input.notes,
+        studentHistory: input.historySummary,
+        locale: input.locale,
+        languageLabel: input.languageLabel,
+        glossary: input.glossary,
+        evidence: input.evidence as EvidenceItem[],
+    });
+
+    const { output } = await ai.generate({
+        prompt: promptText,
+        output: { schema: ConsultationReportOutputSchema },
+        config: FLOW_PARAMS.consultationReport
+    });
+
+    if (!output) {
+        throw new Error("Report generation failed.");
+    }
+
+    // Glossary Enforcement
+    if (input.glossary) {
+        const { artifact } = applyGlossaryToStructured(output, input.glossary, [
+            'title', 
+            'sections[].content', 
+            'summary', 
+            'plan[]',
+            'suggestedDiagnoses[]'
+        ]);
+        return artifact;
+    }
+
+    return output;
   }
 );

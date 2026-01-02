@@ -1,4 +1,4 @@
-import { FirestoreEvent, DocumentSnapshot } from "firebase-functions/v2/firestore";
+import { FirestoreEvent, Change, QueryDocumentSnapshot } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 
 const getDb = () => {
@@ -8,7 +8,7 @@ const getDb = () => {
     return admin.firestore();
 };
 
-export const gradeSubmissionHandler = async (event: FirestoreEvent<DocumentSnapshot | undefined>) => {
+export const gradeSubmissionHandler = async (event: FirestoreEvent<QueryDocumentSnapshot | undefined>) => {
     const db = getDb();
     const snapshot = event.data;
     if (!snapshot) return;
@@ -22,7 +22,6 @@ export const gradeSubmissionHandler = async (event: FirestoreEvent<DocumentSnaps
     const tmplSnap = await db.collection("assessment_templates").doc(templateId).get();
     if (!tmplSnap.exists) return;
     
-    // const template = tmplSnap.data(); // Use this for actual grading
     let score = 0;
     
     await snapshot.ref.update({
@@ -31,6 +30,7 @@ export const gradeSubmissionHandler = async (event: FirestoreEvent<DocumentSnaps
     });
 };
 
-export const detectAnomaliesHandler = async (event: FirestoreEvent<DocumentSnapshot | undefined>) => {
+export const detectAnomaliesHandler = async (event: FirestoreEvent<Change<QueryDocumentSnapshot> | undefined>) => {
     // Logic for trend detection
+    console.log("Analyzing anomalies...");
 };

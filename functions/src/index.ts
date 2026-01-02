@@ -1,59 +1,81 @@
-import { onCall } from "firebase-functions/v2/https";
-import { onDocumentWritten, onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onCall, HttpsOptions } from "firebase-functions/v2/https";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { setGlobalOptions } from "firebase-functions/v2";
-import * as admin from "firebase-admin";
+import * as admin from 'firebase-admin';
 
+// Initialize Admin
+if (!admin.apps.length) admin.initializeApp();
+
+// Configuration
+const region = "europe-west3";
+const callOptions: HttpsOptions = { region, cors: true };
+
+// --- 1. AI & Core Clinical Functions ---
 import * as aiReports from "./ai/generateClinicalReport";
-import * as aiAssessments from "./ai/generateAssessmentContent";
 import * as aiInsights from "./ai/analyzeConsultationInsight";
-import * as aiDocs from "./ai/processUploadedDocument"; // Import new handler
+import * as aiAssessments from "./ai/generateAssessmentContent";
+import * as docProcessing from "./ai/processUploadedDocument";
 
-import * as scheduling from "./scheduling/scheduler";
-import * as grading from "./assessments/grading";
-import * as userMgmt from "./admin/userManagement";
-import * as maintenance from "./admin/dataMaintenance";
-import * as seed from "./admin/seedData";
-import * as clear from "./admin/clearData";
-import * as integrations from "./integrations/syncEngine";
-
-// Set Global Options for 2nd Gen and Region
-setGlobalOptions({ region: "europe-west3", maxInstances: 10 });
-
-// Ensure initializeApp is called only once
-if (admin.apps.length === 0) {
-    admin.initializeApp();
-}
-
-const callOptions = { cors: true }; 
-
-// 1. AI & Intelligence Layer
 export const generateClinicalReport = onCall(callOptions, aiReports.handler);
-export const generateAssessmentContent = onCall(callOptions, aiAssessments.handler);
 export const analyzeConsultationInsight = onCall(callOptions, aiInsights.handler);
-// New: Document Processing Trigger
-export const processUploadedDocument = aiDocs.processDocumentHandler;
+export const generateAssessmentContent = onCall(callOptions, aiAssessments.handler);
+export const processUploadedDocument = docProcessing.processDocumentHandler;
 
-// 2. Scheduling & Workflow Automation
-export const findAvailabilitySlots = onCall(callOptions, scheduling.findAvailabilityHandler);
-export const onAppointmentChange = onDocumentWritten('appointments/{apptId}', scheduling.onAppointmentChangeHandler);
-export const sendDailyReminders = onSchedule({ schedule: 'every day 06:00', timeZone: 'Europe/Berlin' }, scheduling.sendDailyRemindersHandler);
+// --- 2. Admin & Seeding ---
+import { clearDemoDataHandler } from "./admin/clearData";
+import { seedDemoDataHandler } from "./admin/seedData";
+import { setupUserProfileHandler } from "./admin/userManagement";
+import { anonymizeDataHandler } from "./admin/dataMaintenance";
 
-// 3. Assessment & Grading
-export const gradeAssessmentSubmission = onDocumentCreated('assessment_results/{resultId}', grading.gradeSubmissionHandler);
-export const detectAnomalies = onDocumentCreated('assessment_results/{resultId}', grading.detectAnomaliesHandler);
+export const clearDemoData = onCall(callOptions, clearDemoDataHandler);
+export const seedDemoData = onCall(callOptions, seedDemoDataHandler);
+export const setupUserProfile = onCall(callOptions, setupUserProfileHandler);
+export const anonymizeTrainingData = onSchedule({
+    schedule: "0 0 1 * *", // Standard cron: Midnight on the 1st of every month
+    region
+}, anonymizeDataHandler);
 
-// 4. Admin & Data Maintenance
-export const anonymizeTrainingData = onSchedule({ schedule: '0 0 1 * *', timeZone: 'Europe/Berlin' }, maintenance.anonymizeDataHandler);
-export const setupUserProfile = onCall(callOptions, userMgmt.setupUserProfileHandler);
+// --- 3. Assessments & Grading ---
+import { gradeSubmissionHandler, detectAnomaliesHandler } from "./assessments/grading";
 
-export const seedDemoData = onCall({ 
-    cors: true, 
-    timeoutSeconds: 540, 
-    memory: "1GiB" 
-}, seed.seedDemoDataHandler);
+export const gradeAssessmentSubmission = onDocumentCreated({
+    document: "assessment_results/{resultId}",
+    region
+}, gradeSubmissionHandler);
 
-export const clearDemoData = onCall(callOptions, clear.clearDemoDataHandler);
+export const detectAnomalies = onDocumentUpdated({
+    document: "assessment_results/{resultId}",
+    region
+}, detectAnomaliesHandler);
 
-// 5. Integrations
-export const syncExternalData = onCall(callOptions, integrations.syncExternalData);
+// --- 4. Scheduling & Reminders ---
+import { findAvailabilityHandler, onAppointmentChangeHandler, sendDailyRemindersHandler } from "./scheduling/scheduler";
+
+export const findAvailabilitySlots = onCall(callOptions, findAvailabilityHandler);
+export const onAppointmentChange = onDocumentUpdated({
+    document: "appointments/{appointmentId}",
+    region
+}, onAppointmentChangeHandler);
+
+export const sendDailyReminders = onSchedule({
+    schedule: "every day 08:00",
+    region
+}, sendDailyRemindersHandler);
+
+// --- 5. Case Automation & SLA ---
+import { onAlertCreated } from "./case/autoCreateFromAlerts";
+import { slaEscalator } from "./case/slaEscalator";
+
+export const autoCreateCaseFromAlert = onAlertCreated; 
+export const caseSlaEscalator = slaEscalator;
+
+// --- 6. Integrations ---
+import { syncExternalData as syncHandler } from "./integrations/syncEngine";
+export const syncExternalData = onCall(callOptions, syncHandler);
+
+// --- 7. Reports & Uploads ---
+import { exportReport as exportReportHandler } from "./reports/exportReport";
+import { processBulkManifest as bulkImportHandler } from "./upload/bulkImport";
+
+export const exportReport = exportReportHandler; 
+export const processBulkManifest = bulkImportHandler;
