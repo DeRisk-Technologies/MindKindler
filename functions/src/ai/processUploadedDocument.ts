@@ -39,7 +39,8 @@ async function performOCR(storagePath: string, mimeType: string): Promise<string
     return document.text || "";
 }
 
-export const processDocumentHandler = onDocumentCreated({
+// Export as a background function (CloudEvent trigger), NOT a callable handler
+export const processDocumentTrigger = onDocumentCreated({
     document: "tenants/{tenantId}/documents/{docId}",
     region: "europe-west3",
     memory: "1GiB", // OCR needs memory

@@ -1,4 +1,4 @@
-import { onCall, CallableRequest, HttpsError } from "firebase-functions/v2/https";
+import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { logAuditEvent } from '../audit/audit-logger';
 
@@ -11,7 +11,8 @@ interface ProcessDocumentRequest {
     studentId?: string;
 }
 
-export const processDocument = onCall(async (request: CallableRequest<ProcessDocumentRequest>) => {
+// Export raw handler, NOT onCall wrapper
+export const handler = async (request: CallableRequest<ProcessDocumentRequest>) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Auth required.');
 
     const { fileRef, mimeType } = request.data;
@@ -82,4 +83,4 @@ export const processDocument = onCall(async (request: CallableRequest<ProcessDoc
         });
         throw new HttpsError('internal', 'Document processing failed.');
     }
-});
+};

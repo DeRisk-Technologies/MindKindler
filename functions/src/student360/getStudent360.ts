@@ -1,4 +1,4 @@
-import { onCall, CallableRequest, HttpsError } from "firebase-functions/v2/https";
+import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { logAuditEvent } from './audit/audit-logger';
 
@@ -22,7 +22,8 @@ interface GetStudentRequest {
     reason?: string; // Optional reason for audit
 }
 
-export const getStudent360 = onCall(async (request: CallableRequest<GetStudentRequest>) => {
+// Export raw handler, NOT onCall wrapper
+export const handler = async (request: CallableRequest<GetStudentRequest>) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'User must be logged in.');
     }
@@ -83,7 +84,7 @@ export const getStudent360 = onCall(async (request: CallableRequest<GetStudentRe
     });
 
     return redactedData;
-});
+};
 
 
 /**

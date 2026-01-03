@@ -1,4 +1,4 @@
-import { onCall, CallableRequest, HttpsError } from "firebase-functions/v2/https";
+import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { logAuditEvent } from '../audit/audit-logger';
 
@@ -20,7 +20,8 @@ interface GuardianCheckRequest {
     };
 }
 
-export const guardianCheck = onCall(async (request: CallableRequest<GuardianCheckRequest>) => {
+// Export raw handler, NOT onCall wrapper
+export const handler = async (request: CallableRequest<GuardianCheckRequest>) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Auth required.');
 
     const { content, context } = request.data;
@@ -71,4 +72,4 @@ export const guardianCheck = onCall(async (request: CallableRequest<GuardianChec
     });
 
     return { findings, blocked };
-});
+};

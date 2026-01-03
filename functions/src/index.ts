@@ -25,8 +25,10 @@ import { handler as chatHandler } from "./ai/chatWithCopilot";
 export const generateClinicalReport = onCall(callOptions, aiReports.handler);
 export const analyzeConsultationInsight = onCall(callOptions, aiInsights.handler);
 export const generateAssessmentContent = onCall(callOptions, aiAssessments.handler);
-// Use callOptions to ensure region is europe-west3
-export const processUploadedDocument = onCall(callOptions, docProcessing.processDocumentHandler);
+
+// Correctly exporting the background trigger (not wrapping in onCall)
+export const processUploadedDocument = docProcessing.processDocumentTrigger;
+
 export const chatWithCopilot = onCall(callOptions, chatHandler);
 
 export const generatePolicyMemo = onCall(callOptions, async (req) => {
@@ -97,9 +99,9 @@ export const exportReport = exportReportHandler;
 export const processBulkManifest = bulkImportHandler;
 
 // Student 360 Secure Endpoints
-import { getStudent360 as getStudent360Handler } from "./student360/getStudent360";
-import { processDocument as processDocumentHandler } from "./student360/ocr/processDocument";
-import { guardianCheck as guardianCheckHandler } from "./student360/guardian/guardianCheck";
+import { handler as getStudent360Handler } from "./student360/getStudent360";
+import { handler as processDocumentHandler } from "./student360/ocr/processDocument";
+import { handler as guardianCheckHandler } from "./student360/guardian/guardianCheck";
 
 export const getStudent360 = onCall(callOptions, getStudent360Handler);
 export const processDocumentSecure = onCall(callOptions, processDocumentHandler);
