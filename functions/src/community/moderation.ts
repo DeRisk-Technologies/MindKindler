@@ -1,3 +1,4 @@
+// functions/src/community/moderation.ts
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from 'firebase-admin';
 
@@ -48,8 +49,11 @@ function scanContent(content: string): ModerationResult {
 
 const region = "europe-west3";
 
+// Updated paths to match odd number of segments structure
+// tenants/{tenantId}/community/forum/threads/{threadId}/posts/{postId}
+
 export const onPostCreated = onDocumentCreated({
-    document: "tenants/{tenantId}/forum/threads/{threadId}/posts/{postId}",
+    document: "tenants/{tenantId}/community/forum/threads/{threadId}/posts/{postId}",
     region
 }, async (event) => {
     const snap = event.data;
@@ -77,7 +81,8 @@ export const onPostCreated = onDocumentCreated({
         await snap.ref.update(updates);
     }
 
-    const threadRef = db.doc(`tenants/${tenantId}/forum/threads/${threadId}`);
+    // Path must match community structure
+    const threadRef = db.doc(`tenants/${tenantId}/community/forum/threads/${threadId}`);
     await threadRef.update({
       'metrics.replies': admin.firestore.FieldValue.increment(1),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -87,7 +92,7 @@ export const onPostCreated = onDocumentCreated({
 });
 
 export const onThreadCreated = onDocumentCreated({
-    document: "tenants/{tenantId}/forum/threads/{threadId}",
+    document: "tenants/{tenantId}/community/forum/threads/{threadId}",
     region
 }, async (event) => {
       const snap = event.data;

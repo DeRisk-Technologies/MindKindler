@@ -18,11 +18,21 @@ import { ForumThread, ForumPost, WikiPage, BlogPost } from '@/types/mindkindler'
 
 const TENANT_ID = 'default-tenant'; // TODO: Get from context/auth
 
+// Helper to construct paths with correct depth
+// Pattern: tenants/{tenantId}/community/{feature}/{collection}
+// 1. tenants
+// 2. {tenantId}
+// 3. community (collection)
+// 4. {feature} (document)
+// 5. {collection} (subcollection)
+const getCollectionPath = (feature: string, subCollection: string) => 
+  `tenants/${TENANT_ID}/community/${feature}/${subCollection}`;
+
 export const communityService = {
   // --- Forum ---
   
   async getThreads(categoryId?: string, lastSnapshot?: DocumentSnapshot): Promise<ForumThread[]> {
-    const threadsRef = collection(db, `tenants/${TENANT_ID}/forum/threads`);
+    const threadsRef = collection(db, getCollectionPath('forum', 'threads'));
     let q = query(threadsRef, orderBy('createdAt', 'desc'), limit(50));
     
     if (categoryId) {
@@ -38,13 +48,13 @@ export const communityService = {
   },
 
   async getThread(threadId: string): Promise<ForumThread | null> {
-    const docRef = doc(db, `tenants/${TENANT_ID}/forum/threads`, threadId);
+    const docRef = doc(db, getCollectionPath('forum', 'threads'), threadId);
     const docSnap = await getDoc(docRef);
     return docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as ForumThread) : null;
   },
 
   async createThread(thread: Omit<ForumThread, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    const threadsRef = collection(db, `tenants/${TENANT_ID}/forum/threads`);
+    const threadsRef = collection(db, getCollectionPath('forum', 'threads'));
     const docRef = await addDoc(threadsRef, {
       ...thread,
       createdAt: serverTimestamp(),
@@ -55,42 +65,40 @@ export const communityService = {
   },
 
   async getPosts(threadId: string): Promise<ForumPost[]> {
-    const postsRef = collection(db, `tenants/${TENANT_ID}/forum/threads/${threadId}/posts`);
+    // Path: tenants/.../community/forum/threads/{threadId}/posts
+    const postsRef = collection(db, getCollectionPath('forum', 'threads'), threadId, 'posts');
     const q = query(postsRef, orderBy('createdAt', 'asc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ForumPost));
   },
 
   async createPost(threadId: string, post: Omit<ForumPost, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    const postsRef = collection(db, `tenants/${TENANT_ID}/forum/threads/${threadId}/posts`);
+    const postsRef = collection(db, getCollectionPath('forum', 'threads'), threadId, 'posts');
     const docRef = await addDoc(postsRef, {
       ...post,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
-    
-    // Note: Thread metric updates are handled by Cloud Function 'onPostCreated'
     return docRef.id;
   },
 
   // --- Wiki ---
 
   async getWikiPages(): Promise<WikiPage[]> {
-    const pagesRef = collection(db, `tenants/${TENANT_ID}/wiki/pages`);
-    // Filter for published or draft depending on permissions (simplified here)
+    const pagesRef = collection(db, getCollectionPath('wiki', 'pages'));
     const q = query(pagesRef, orderBy('updatedAt', 'desc'), limit(20));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WikiPage));
   },
   
   async getWikiPage(pageId: string): Promise<WikiPage | null> {
-      const docRef = doc(db, `tenants/${TENANT_ID}/wiki/pages`, pageId);
+      const docRef = doc(db, getCollectionPath('wiki', 'pages'), pageId);
       const docSnap = await getDoc(docRef);
       return docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as WikiPage) : null;
   },
 
   async createWikiPage(page: Omit<WikiPage, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    const pagesRef = collection(db, `tenants/${TENANT_ID}/wiki/pages`);
+    const pagesRef = collection(db, getCollectionPath('wiki', 'pages'));
     const docRef = await addDoc(pagesRef, {
       ...page,
       createdAt: serverTimestamp(),
@@ -102,7 +110,7 @@ export const communityService = {
   // --- Blog ---
 
   async getBlogPosts(): Promise<BlogPost[]> {
-    const postsRef = collection(db, `tenants/${TENANT_ID}/blog/posts`);
+    const postsRef = collection(db, getCollectionPath('blog', 'posts'));
     const q = query(postsRef, where('status', '==', 'published'), orderBy('publishedAt', 'desc'), limit(10));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost));

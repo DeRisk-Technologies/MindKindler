@@ -17,20 +17,19 @@ service cloud.firestore {
        return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'global_admin';
     }
 
-    // Existing rules...
-    
     // --- MindKindler Community Rules ---
+    // Updated Path Structure: tenants/{tenantId}/community/{feature}/{collection}
 
-    // Tenant-specific Forum
-    match /tenants/{tenantId}/forum/categories/{categoryId} {
+    // Forum
+    match /tenants/{tenantId}/community/forum/categories/{categoryId} {
       allow read: if isTenantMember(tenantId);
-      allow write: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin()); // Simplified for MVP
+      allow write: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin());
     }
 
-    match /tenants/{tenantId}/forum/threads/{threadId} {
+    match /tenants/{tenantId}/community/forum/threads/{threadId} {
       allow read: if isTenantMember(tenantId);
       allow create: if isTenantMember(tenantId) && request.resource.data.authorId == request.auth.uid;
-      allow update: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin()); // Add moderation checks later
+      allow update: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin());
       
       match /posts/{postId} {
         allow read: if isTenantMember(tenantId);
@@ -39,22 +38,22 @@ service cloud.firestore {
       }
     }
 
-    // Tenant-specific Wiki
-    match /tenants/{tenantId}/wiki/pages/{pageId} {
+    // Wiki
+    match /tenants/{tenantId}/community/wiki/pages/{pageId} {
        allow read: if isTenantMember(tenantId);
-       allow create: if isTenantMember(tenantId); // Refine to specific roles later
+       allow create: if isTenantMember(tenantId); 
        allow update: if isTenantMember(tenantId);
     }
 
-    // Tenant-specific Blog
-    match /tenants/{tenantId}/blog/posts/{postId} {
-       allow read: if isTenantMember(tenantId); // Or public if configured
-       allow write: if isTenantMember(tenantId); // Restrict to editors later
+    // Blog
+    match /tenants/{tenantId}/community/blog/posts/{postId} {
+       allow read: if isTenantMember(tenantId); 
+       allow write: if isTenantMember(tenantId); 
     }
 
-    // Global Public Forum (Read-only for now for most, write for global members)
+    // Global Public Forum
     match /global/forum/{document=**} {
-      allow read: if isAuthenticated(); // Or true for public
+      allow read: if isAuthenticated();
       allow write: if isGlobalAdmin(); 
     }
     
