@@ -1,14 +1,8 @@
 // functions/src/ai/flows/grading.ts
 
-import { genkit } from "genkit";
-import { googleAI } from "@genkit-ai/google-genai";
 import { saveAiProvenance } from "../utils/provenance";
 import { z } from "zod";
-
-const ai = genkit({
-    plugins: [googleAI()],
-    model: "googleai/gemini-1.5-flash", 
-});
+import { getGenkitInstance, getModelForFeature } from "../utils/model-selector";
 
 // Output Schema
 const GradingOutputSchema = z.object({
@@ -27,6 +21,10 @@ export async function scoreOpenTextResponseFlow(
     userId: string
 ) {
     const startTime = Date.now();
+
+    // 0. Initialize AI
+    const ai = await getGenkitInstance('assessmentGrading');
+    const modelName = await getModelForFeature('assessmentGrading');
 
     // 1. Construct Prompt
     const prompt = `
@@ -81,7 +79,7 @@ export async function scoreOpenTextResponseFlow(
         studentId: 'system', // grading is often done in batch, linking to specific student ID happens at call site if needed
         flowName: 'gradeOpenText',
         prompt,
-        model: 'googleai/gemini-1.5-flash',
+        model: modelName,
         responseText: rawText,
         parsedOutput: parsed,
         latencyMs: Date.now() - startTime,

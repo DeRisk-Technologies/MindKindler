@@ -1,99 +1,30 @@
-// src/types/schema.ts (Updated for Report Writing Phase)
+// src/types/schema.ts (Updated for Feedback)
 
-// ... (Previous Content maintained, appending Report types)
+// ... (Previous Content)
 
-export type RedactionLevel = 'FULL' | 'PARENT_SAFE' | 'ANONYMIZED';
-
-export interface Citation {
-    id: string; // The citation token ID used in text, e.g. obs-1
-    evidenceId: string; // Link to actual evidence doc
-    sourceType: string; // observation, assessment
-    label: string;
-    trustScore?: number;
-    snippet?: string;
-    locationIndex?: number;
-}
-
-export interface ReportSection {
-    id: string;
-    title: string;
-    content: string; // HTML or Markdown
-    lastAiGeneratedAt?: string;
-    internalOnly?: boolean; // If true, redacted in PARENT_SAFE level
-}
-
-export interface Report {
+export interface AiFeedback {
     id: string;
     tenantId: string;
-    studentId: string;
-    caseId?: string;
-    title: string;
-    type: 'consultation' | 'statutory' | 'ehcp_review';
-    templateType?: string;
-    
-    status: 'draft' | 'review' | 'signed' | 'archived';
-    version: number;
-    
-    content: {
-        sections: ReportSection[];
-    };
-    
-    citations?: Citation[]; // Or stored in subcollection
-    
-    // Metadata
-    createdBy: string;
-    createdAt: any; // Timestamp
-    updatedAt: any; // Timestamp
-    
-    // Finalization
-    signedBy?: string;
-    signedAt?: any;
-    signatureHash?: string;
-    locked?: boolean;
-
-    // AI Provenance
-    aiProvenanceId?: string;
-}
-
-export interface ReportVersion {
-    id?: string;
-    reportId: string;
-    versionNumber: number;
-    content: { sections: ReportSection[] };
-    changeSummary?: string;
-    committedBy: string;
-    createdAt: any;
-    
-    // If signed
-    type?: 'draft' | 'signed_final';
-    signedBy?: string;
-    signatureHash?: string;
-}
-
-export interface ReportShare {
-    id: string;
-    reportId: string;
-    sharedWithEmail?: string;
-    sharedWithUserId?: string;
-    redactionLevel: RedactionLevel;
-    permissions: 'view' | 'comment' | 'download';
-    expiresAt?: string;
+    userId: string;
+    traceId: string; // Links to ai_provenanceId
+    feature: string; // e.g. 'consultationReport', 'grading'
+    rating: 'positive' | 'negative';
+    reason?: 'hallucination' | 'style' | 'missed_fact' | 'unsafe' | 'other';
+    comment?: string;
+    correctedValue?: string; // If user provided a correction
     createdAt: string;
-    createdBy: string;
-    accessKey?: string; // For public link access if implemented
 }
 
-export interface ReportExport {
-    id: string;
-    reportId: string;
-    versionId?: string;
-    path: string; // Storage path
-    redactionLevel: RedactionLevel;
-    requestedBy: string;
-    createdAt: any;
+export interface AssessmentRecommendation {
+    templateId: string;
+    title: string;
+    category: string;
+    reasoning: string; // Why this test?
+    confidence: 'high' | 'medium' | 'low';
+    isAvailable: boolean; // Do we have this template installed?
 }
 
-// ... (Previous Interfaces)
+// ... (Rest of existing interfaces)
 export interface Notification {
   id: string;
   tenantId: string;
@@ -341,4 +272,95 @@ export interface RecommendationTemplate {
     description: string;
     impactScore: number; // 0-1 (Evidence based)
     tags: string[];
+}
+
+export type RedactionLevel = 'FULL' | 'PARENT_SAFE' | 'ANONYMIZED';
+
+export interface Citation {
+    id: string; // The citation token ID used in text, e.g. obs-1
+    evidenceId: string; // Link to actual evidence doc
+    sourceType: string; // observation, assessment
+    label: string;
+    trustScore?: number;
+    snippet?: string;
+    locationIndex?: number;
+}
+
+export interface ReportSection {
+    id: string;
+    title: string;
+    content: string; // HTML or Markdown
+    lastAiGeneratedAt?: string;
+    internalOnly?: boolean; // If true, redacted in PARENT_SAFE level
+}
+
+export interface Report {
+    id: string;
+    tenantId: string;
+    studentId: string;
+    caseId?: string;
+    title: string;
+    type: 'consultation' | 'statutory' | 'ehcp_review';
+    templateType?: string;
+    
+    status: 'draft' | 'review' | 'signed' | 'archived';
+    version: number;
+    
+    content: {
+        sections: ReportSection[];
+    };
+    
+    citations?: Citation[]; // Or stored in subcollection
+    
+    // Metadata
+    createdBy: string;
+    createdAt: any; // Timestamp
+    updatedAt: any; // Timestamp
+    
+    // Finalization
+    signedBy?: string;
+    signedAt?: any;
+    signatureHash?: string;
+    locked?: boolean;
+
+    // AI Provenance
+    aiProvenanceId?: string;
+}
+
+export interface ReportVersion {
+    id?: string;
+    reportId: string;
+    versionNumber: number;
+    content: { sections: ReportSection[] };
+    changeSummary?: string;
+    committedBy: string;
+    createdAt: any;
+    
+    // If signed
+    type?: 'draft' | 'signed_final';
+    signedBy?: string;
+    signatureHash?: string;
+}
+
+export interface ReportShare {
+    id: string;
+    reportId: string;
+    sharedWithEmail?: string;
+    sharedWithUserId?: string;
+    redactionLevel: RedactionLevel;
+    permissions: 'view' | 'comment' | 'download';
+    expiresAt?: string;
+    createdAt: string;
+    createdBy: string;
+    accessKey?: string; // For public link access if implemented
+}
+
+export interface ReportExport {
+    id: string;
+    reportId: string;
+    versionId?: string;
+    path: string; // Storage path
+    redactionLevel: RedactionLevel;
+    requestedBy: string;
+    createdAt: any;
 }

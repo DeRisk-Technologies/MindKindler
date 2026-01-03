@@ -1,21 +1,17 @@
+// functions/src/ai/generateClinicalReport.ts
+
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
 import * as admin from 'firebase-admin';
-import { genkit } from "genkit";
-import { googleAI } from "@genkit-ai/google-genai";
 import { saveAiProvenance } from "./utils/provenance";
 import { z } from "zod";
 import { applyGlossaryToStructured } from "./utils/glossarySafeApply";
 import { buildSystemPrompt } from "./utils/prompt-builder";
+import { getGenkitInstance } from "./utils/model-selector"; // Updated Import
 
 // Ensure admin initialized
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
-
-const ai = genkit({
-    plugins: [googleAI()],
-    model: "googleai/gemini-1.5-flash",
-});
 
 // Expanded Schema matching Editor requirements
 const EditorSectionSchema = z.object({
@@ -46,6 +42,9 @@ export const handler = async (request: CallableRequest<any>) => {
     
     const userId = request.auth.uid;
     const startTime = Date.now();
+
+    // 0. Initialize AI with Configured Model
+    const ai = await getGenkitInstance('consultationReport');
 
     // 1. Construct System Prompt
     const baseInstruction = `You are an expert Educational Psychologist assistant. 
@@ -128,12 +127,17 @@ export const handler = async (request: CallableRequest<any>) => {
     }
 
     // 4. Save Provenance
+    // Note: We need to know WHICH model was actually selected for the log.
+    // Ideally getGenkitInstance returns the model name too, or we re-fetch it.
+    // For now logging 'configured-model' placeholder or re-fetching.
+    const usedModel = await import("./utils/model-selector").then(m => m.getModelForFeature('consultationReport'));
+    
     await saveAiProvenance({
         tenantId: tenantId || 'global',
         studentId: studentId,
         flowName: 'generateClinicalReport',
         prompt: fullPrompt,
-        model: 'googleai/gemini-1.5-flash',
+        model: usedModel,
         responseText: result.text,
         parsedOutput: { ...result.parsed, glossaryReplacements },
         latencyMs: Date.now() - startTime,

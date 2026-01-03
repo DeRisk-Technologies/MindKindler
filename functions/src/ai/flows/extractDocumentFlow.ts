@@ -1,15 +1,9 @@
 // functions/src/ai/flows/extractDocumentFlow.ts
 
-import { genkit } from "genkit";
-import { googleAI } from "@genkit-ai/google-genai";
 import { saveAiProvenance } from "../utils/provenance";
 import { applyGlossaryToStructured } from "../utils/glossarySafeApply";
 import { z } from "zod";
-
-const ai = genkit({
-    plugins: [googleAI()],
-    model: "googleai/gemini-1.5-flash",
-});
+import { getGenkitInstance, getModelForFeature } from "../utils/model-selector";
 
 // Schemas
 const AcademicRecordSchema = z.object({
@@ -77,6 +71,11 @@ export async function runExtraction(
     Return valid JSON strictly matching the schema.
     `;
 
+    // 0. Initialize AI
+    // Use 'documentExtraction' feature key which defaults to Flash (faster/cheaper)
+    const ai = await getGenkitInstance('documentExtraction');
+    const modelName = await getModelForFeature('documentExtraction');
+
     const { output } = await ai.generate({ 
         prompt, 
         config: { temperature: 0.0 } 
@@ -104,7 +103,7 @@ export async function runExtraction(
         studentId: 'unknown', // Linked later
         flowName: 'extractDocumentFlow',
         prompt,
-        model: 'googleai/gemini-1.5-flash',
+        model: modelName,
         responseText: rawText,
         parsedOutput: { ...artifact, glossaryReplacements: replacements },
         latencyMs: Date.now() - startTime,

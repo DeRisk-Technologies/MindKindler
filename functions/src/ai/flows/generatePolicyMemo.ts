@@ -1,15 +1,9 @@
 // functions/src/ai/flows/generatePolicyMemo.ts
 
-import { genkit } from "genkit";
-import { googleAI } from "@genkit-ai/google-genai";
 import { retrieveContext } from "../knowledge/retrieve";
 import { saveAiProvenance } from "../utils/provenance";
 import { z } from "zod";
-
-const ai = genkit({
-    plugins: [googleAI()],
-    model: "googleai/gemini-1.5-pro", // Pro for better reasoning on policy
-});
+import { getGenkitInstance, getModelForFeature } from "../utils/model-selector";
 
 // Output Schema
 const PolicyMemoSchema = z.object({
@@ -35,6 +29,10 @@ export async function generatePolicyMemoFlow(
     userId: string
 ) {
     const startTime = Date.now();
+
+    // 0. Initialize AI
+    const ai = await getGenkitInstance('govIntel');
+    const modelName = await getModelForFeature('govIntel');
 
     // 1. RAG Retrieval
     // Search for guidelines relevant to the focus area and snapshot anomalies
@@ -91,7 +89,7 @@ export async function generatePolicyMemoFlow(
         studentId: 'system',
         flowName: 'generatePolicyMemo',
         prompt,
-        model: 'googleai/gemini-1.5-pro',
+        model: modelName,
         responseText: rawText,
         parsedOutput: parsed,
         latencyMs: Date.now() - startTime,
