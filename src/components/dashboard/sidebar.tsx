@@ -35,7 +35,8 @@ import {
   Users,
   MessageSquare,
   Sparkles,
-  Clock
+  Clock,
+  BookOpen
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -69,9 +70,10 @@ export function DashboardSidebar() {
   // Helper to check active state
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
 
-  // Assistant Logic
+  // Role Logic
   const isAssistant = role === 'assistant' || role === 'admin' || isTrustedAssistant;
   const isEPP = role === 'EPP' || role === 'admin' || role === 'SuperAdmin';
+  const isAdmin = role === 'admin' || role === 'SuperAdmin';
 
   return (
     <>
@@ -80,7 +82,7 @@ export function DashboardSidebar() {
       </SidebarHeader>
       <SidebarContent className="px-2 py-4">
         
-        {/* === 1. Core Clinical Workspace === */}
+        {/* === 1. Core Clinical Workspace (EPP & Admin) === */}
         <SidebarGroup>
           <SidebarGroupLabel>Clinical Workspace</SidebarGroupLabel>
           <SidebarMenu>
@@ -90,7 +92,7 @@ export function DashboardSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
             
-            {/* Students & Cases */}
+            {/* Caseload */}
             <Collapsible defaultOpen={isActive("/dashboard/students") || isActive("/dashboard/cases")} className="group/collapsible">
               <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
@@ -155,7 +157,7 @@ export function DashboardSidebar() {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 2. Communication & Scheduling (NEW) === */}
+        {/* === 2. Communication & Scheduling === */}
         <SidebarGroup>
             <SidebarGroupLabel>Communication</SidebarGroupLabel>
             <SidebarMenu>
@@ -168,7 +170,7 @@ export function DashboardSidebar() {
                </SidebarMenuItem>
                
                <SidebarMenuItem>
-                   <SidebarMenuButton asChild isActive={isActive("/dashboard/appointments/calendar")} tooltip="Calendar">
+                   <SidebarMenuButton asChild isActive={isActive("/dashboard/appointments")} tooltip="Calendar">
                        <Link href="/dashboard/appointments/calendar">
                            <Calendar className="text-green-600" /><span>Calendar & Booking</span>
                        </Link>
@@ -188,8 +190,8 @@ export function DashboardSidebar() {
             </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 3. Data & Uploads === */}
-        {(role === 'admin' || isAssistant) && (
+        {/* === 3. Data Ingestion (Admins & Assistants) === */}
+        {(isAdmin || isAssistant) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Data Ingestion</SidebarGroupLabel>
                 <SidebarMenu>
@@ -221,7 +223,8 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* === 4. Government Intelligence === */}
+        {/* === 4. Government Intelligence (Admins & Policy Leads) === */}
+        {/* Logic for visibility can be refined, showing to all for now as per previous structure */}
         <SidebarGroup>
            <SidebarGroupLabel>GovIntel</SidebarGroupLabel>
            <SidebarMenu>
@@ -254,18 +257,14 @@ export function DashboardSidebar() {
                       </CollapsibleContent>
                   </SidebarMenuItem>
               </Collapsible>
-               <SidebarMenuItem>
-                 <SidebarMenuButton asChild isActive={isActive("/dashboard/intelligence")} tooltip="Knowledge Vault">
-                    <Link href="/dashboard/intelligence"><Database /><span>Knowledge Vault</span></Link>
-                 </SidebarMenuButton>
-              </SidebarMenuItem>
            </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 5. Training & Ecosystem === */}
+        {/* === 5. Community & Growth (MindKindler Core) === */}
         <SidebarGroup>
             <SidebarGroupLabel>Community & Growth</SidebarGroupLabel>
             <SidebarMenu>
+                {/* MindKindler Community Hub */}
                 <Collapsible defaultOpen={isActive("/dashboard/community")} className="group/collapsible">
                   <SidebarMenuItem>
                       <CollapsibleTrigger asChild>
@@ -286,10 +285,23 @@ export function DashboardSidebar() {
                                       <Link href="/dashboard/community/wiki"><span>Wiki & Knowledge</span></Link>
                                   </SidebarMenuSubButton>
                               </SidebarMenuSubItem>
+                              <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton asChild isActive={isActive("/dashboard/community/blog")}>
+                                      <Link href="/dashboard/community/blog"><span>Blog & News</span></Link>
+                                  </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
                           </SidebarMenuSub>
                       </CollapsibleContent>
                   </SidebarMenuItem>
               </Collapsible>
+
+              {/* Knowledge Vault (Now linked to Wiki) */}
+               <SidebarMenuItem>
+                 <SidebarMenuButton asChild isActive={isActive("/dashboard/intelligence")} tooltip="Global Knowledge Vault">
+                    <Link href="/dashboard/intelligence"><Database /><span>Knowledge Vault</span></Link>
+                 </SidebarMenuButton>
+              </SidebarMenuItem>
+
                 <SidebarMenuItem>
                     <SidebarMenuButton asChild isActive={isActive("/dashboard/training/library")} tooltip="Academy">
                         <Link href="/dashboard/training/library"><GraduationCap /><span>Training Academy</span></Link>
@@ -318,7 +330,7 @@ export function DashboardSidebar() {
                     </SidebarMenuButton>
                 </SidebarMenuItem>
                 
-                {role === 'admin' && (
+                {isAdmin && (
                     <Collapsible defaultOpen={isActive("/dashboard/admin")} className="group/collapsible">
                         <SidebarMenuItem>
                             <CollapsibleTrigger asChild>

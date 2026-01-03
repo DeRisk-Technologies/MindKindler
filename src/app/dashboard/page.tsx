@@ -8,37 +8,27 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter
 } from "@/components/ui/card";
 import {
-  Activity,
   Brain,
   Calendar as CalendarIcon,
   ClipboardList,
   FileText,
   FolderKanban,
   Heart,
-  LineChart,
   Plus,
   Users,
-  AlertTriangle,
-  Stethoscope,
   Wifi,
   WifiOff,
   Upload,
   MessageSquare,
   Sparkles,
   Clock,
-  CheckCircle2
+  Globe,
+  Database,
+  Search,
+  BookOpen
 } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { DashboardAlerts } from "@/components/dashboard/dashboard-alerts";
@@ -78,9 +68,9 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const isClinician = ['educationalpsychologist', 'clinicalpsychologist', 'schoolpsychologist', 'admin', 'EPP'].includes(role || '');
-  const isAssistant = role === 'assistant' || role === 'admin';
-  const isGov = ['localeducationauthority', 'ministry', 'federal'].includes(role || '');
+  const isClinician = ['educationalpsychologist', 'clinicalpsychologist', 'schoolpsychologist', 'admin', 'EPP', 'SuperAdmin'].includes(role || '');
+  const isAssistant = role === 'assistant' || role === 'admin' || role === 'SuperAdmin';
+  // const isGov = ['localeducationauthority', 'ministry', 'federal'].includes(role || ''); // Logic available if needed
 
   // Mock Data
   const appointments = [
@@ -153,7 +143,7 @@ export default function DashboardPage() {
           </div>
       )}
 
-      {/* 2. Clinician Dashboard */}
+      {/* 2. Clinician / Admin / EPP Dashboard */}
       {isClinician && (
         <>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -223,9 +213,9 @@ export default function DashboardPage() {
                             </Link>
                         </Button>
                         <Button variant="outline" className="h-24 flex flex-col gap-2 border-dashed border-2 hover:bg-blue-50 hover:border-blue-200" asChild>
-                            <Link href="/dashboard/students">
-                                <Users className="h-6 w-6 text-blue-600" />
-                                <span className="font-semibold text-xs">Directory</span>
+                            <Link href="/dashboard/community/wiki">
+                                <Search className="h-6 w-6 text-blue-600" />
+                                <span className="font-semibold text-xs">Knowledge Base</span>
                             </Link>
                         </Button>
                     </div>
@@ -259,6 +249,34 @@ export default function DashboardPage() {
                             </div>
                         </CardContent>
                     </Card>
+
+                    {/* Community & Knowledge Highlight (New) */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-lg flex items-center gap-2">
+                                <Globe className="h-5 w-5 text-gray-500" /> Community Highlights
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid gap-4 md:grid-cols-2">
+                            <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors" role="button">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Badge variant="secondary">Hot Topic</Badge>
+                                    <span className="text-xs text-muted-foreground">Forum</span>
+                                </div>
+                                <h4 className="font-medium text-sm mb-1">Adapting Assessment X for remote delivery</h4>
+                                <p className="text-xs text-muted-foreground">12 new replies today</p>
+                            </div>
+                             <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors" role="button">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Badge variant="outline" className="border-green-500 text-green-600">Vetted</Badge>
+                                    <span className="text-xs text-muted-foreground">Wiki</span>
+                                </div>
+                                <h4 className="font-medium text-sm mb-1">Updated SEN Policy Template 2024</h4>
+                                <p className="text-xs text-muted-foreground">Published by Ministry of Education</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                 </div>
 
                 {/* Right Column: AI & Comms */}
