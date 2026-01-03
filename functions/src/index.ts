@@ -1,4 +1,4 @@
-// functions/src/index.ts (Snippet to register Grading function)
+// functions/src/index.ts (Snippet to register Chat function)
 
 import { onCall, HttpsOptions, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
@@ -20,11 +20,14 @@ import * as docProcessing from "./ai/processUploadedDocument";
 import { generatePolicyMemoFlow } from "./ai/flows/generatePolicyMemo";
 // Import Grading Flow
 import { scoreOpenTextResponseFlow } from "./ai/flows/grading";
+import { handler as chatHandler } from "./ai/chatWithCopilot";
 
 export const generateClinicalReport = onCall(callOptions, aiReports.handler);
 export const analyzeConsultationInsight = onCall(callOptions, aiInsights.handler);
 export const generateAssessmentContent = onCall(callOptions, aiAssessments.handler);
-export const processUploadedDocument = docProcessing.processDocumentHandler;
+// Use callOptions to ensure region is europe-west3
+export const processUploadedDocument = onCall(callOptions, docProcessing.processDocumentHandler);
+export const chatWithCopilot = onCall(callOptions, chatHandler);
 
 export const generatePolicyMemo = onCall(callOptions, async (req) => {
     if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required');
@@ -98,6 +101,6 @@ import { getStudent360 as getStudent360Handler } from "./student360/getStudent36
 import { processDocument as processDocumentHandler } from "./student360/ocr/processDocument";
 import { guardianCheck as guardianCheckHandler } from "./student360/guardian/guardianCheck";
 
-export const getStudent360 = getStudent360Handler;
-export const processDocumentSecure = processDocumentHandler; // Renamed to avoid conflict if any, or replace existing
-export const guardianCheck = guardianCheckHandler;
+export const getStudent360 = onCall(callOptions, getStudent360Handler);
+export const processDocumentSecure = onCall(callOptions, processDocumentHandler);
+export const guardianCheck = onCall(callOptions, guardianCheckHandler);
