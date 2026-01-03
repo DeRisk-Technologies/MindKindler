@@ -1,5 +1,4 @@
-// functions/src/index.ts (Snippet to register Chat function)
-
+// functions/src/index.ts
 import { onCall, HttpsOptions, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -106,3 +105,8 @@ import { handler as guardianCheckHandler } from "./student360/guardian/guardianC
 export const getStudent360 = onCall(callOptions, getStudent360Handler);
 export const processDocumentSecure = onCall(callOptions, processDocumentHandler);
 export const guardianCheck = onCall(callOptions, guardianCheckHandler);
+
+// --- Community Features ---
+import { onPostCreated, onThreadCreated } from './community/moderation';
+export const onCommunityPostCreated = onPostCreated;
+export const onCommunityThreadCreated = onThreadCreated;

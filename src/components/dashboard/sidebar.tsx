@@ -21,9 +21,7 @@ import {
   Calendar,
   ClipboardList,
   Database,
-  FolderKanban,
   LayoutDashboard,
-  Link2,
   Settings,
   ShieldAlert,
   Stethoscope,
@@ -31,18 +29,13 @@ import {
   GraduationCap,
   Globe,
   Briefcase,
-  Handshake,
-  FileText,
-  Map,
-  Languages,
-  BookA,
   FilePlus,
   Upload,
-  Files,
-  Activity,
-  Heart,
-  File,
   Lock,
+  Users,
+  MessageSquare,
+  Sparkles,
+  Clock
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -78,6 +71,7 @@ export function DashboardSidebar() {
 
   // Assistant Logic
   const isAssistant = role === 'assistant' || role === 'admin' || isTrustedAssistant;
+  const isEPP = role === 'EPP' || role === 'admin' || role === 'SuperAdmin';
 
   return (
     <>
@@ -158,16 +152,43 @@ export function DashboardSidebar() {
                 <Link href="/dashboard/consultations"><Stethoscope /><span>Consultations</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            
-            <SidebarMenuItem>
-               <SidebarMenuButton asChild isActive={isActive("/dashboard/appointments")} tooltip="Calendar">
-                 <Link href="/dashboard/appointments"><Calendar /><span>Schedule</span></Link>
-               </SidebarMenuButton>
-            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 2. Data & Uploads (New Phase) === */}
+        {/* === 2. Communication & Scheduling (NEW) === */}
+        <SidebarGroup>
+            <SidebarGroupLabel>Communication</SidebarGroupLabel>
+            <SidebarMenu>
+               <SidebarMenuItem>
+                   <SidebarMenuButton asChild isActive={isActive("/dashboard/messages")} tooltip="Secure Chat">
+                       <Link href="/dashboard/messages">
+                           <MessageSquare className="text-blue-500" /><span>Messages</span>
+                       </Link>
+                   </SidebarMenuButton>
+               </SidebarMenuItem>
+               
+               <SidebarMenuItem>
+                   <SidebarMenuButton asChild isActive={isActive("/dashboard/appointments/calendar")} tooltip="Calendar">
+                       <Link href="/dashboard/appointments/calendar">
+                           <Calendar className="text-green-600" /><span>Calendar & Booking</span>
+                       </Link>
+                   </SidebarMenuButton>
+               </SidebarMenuItem>
+
+               {/* AI Co-Pilot (EPP Only) */}
+               {isEPP && (
+                   <SidebarMenuItem>
+                       <SidebarMenuButton asChild isActive={isActive("/dashboard/govintel/copilot")} tooltip="AI Co-Pilot">
+                           <Link href="/dashboard/govintel/copilot">
+                               <Sparkles className="text-purple-600" /><span>AI Co-Pilot</span>
+                           </Link>
+                       </SidebarMenuButton>
+                   </SidebarMenuItem>
+               )}
+            </SidebarMenu>
+        </SidebarGroup>
+
+        {/* === 3. Data & Uploads === */}
         {(role === 'admin' || isAssistant) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Data Ingestion</SidebarGroupLabel>
@@ -183,18 +204,13 @@ export function DashboardSidebar() {
                             <CollapsibleContent>
                                 <SidebarMenuSub>
                                     <SidebarMenuSubItem>
-                                        <SidebarMenuSubButton asChild isActive={pathname === "/dashboard/data-ingestion"}>
-                                            <Link href="/dashboard/data-ingestion"><span>Upload & Scan</span></Link>
+                                        <SidebarMenuSubButton asChild isActive={pathname === "/dashboard/data-ingestion/import"}>
+                                            <Link href="/dashboard/data-ingestion/import"><span>Import & Scan</span></Link>
                                         </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
                                     <SidebarMenuSubItem>
                                         <SidebarMenuSubButton asChild isActive={pathname.includes("/staging")}>
                                             <Link href="/dashboard/data-ingestion/staging"><span>Review Queue</span></Link>
-                                        </SidebarMenuSubButton>
-                                    </SidebarMenuSubItem>
-                                    <SidebarMenuSubItem>
-                                        <SidebarMenuSubButton asChild isActive={pathname.includes("/jobs")}>
-                                            <Link href="/dashboard/data-ingestion/jobs"><span>Bulk Jobs</span></Link>
                                         </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
                                 </SidebarMenuSub>
@@ -205,7 +221,7 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* === 3. Government Intelligence === */}
+        {/* === 4. Government Intelligence === */}
         <SidebarGroup>
            <SidebarGroupLabel>GovIntel</SidebarGroupLabel>
            <SidebarMenu>
@@ -246,10 +262,34 @@ export function DashboardSidebar() {
            </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 4. Training & Ecosystem === */}
+        {/* === 5. Training & Ecosystem === */}
         <SidebarGroup>
-            <SidebarGroupLabel>Professional Growth</SidebarGroupLabel>
+            <SidebarGroupLabel>Community & Growth</SidebarGroupLabel>
             <SidebarMenu>
+                <Collapsible defaultOpen={isActive("/dashboard/community")} className="group/collapsible">
+                  <SidebarMenuItem>
+                      <CollapsibleTrigger asChild>
+                          <SidebarMenuButton tooltip="MindKindler Community">
+                              <Users /><span>Community</span>
+                              <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                          </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                          <SidebarMenuSub>
+                              <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton asChild isActive={isActive("/dashboard/community/forum")}>
+                                      <Link href="/dashboard/community/forum"><span>Forum</span></Link>
+                                  </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                              <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton asChild isActive={isActive("/dashboard/community/wiki")}>
+                                      <Link href="/dashboard/community/wiki"><span>Wiki & Knowledge</span></Link>
+                                  </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                          </SidebarMenuSub>
+                      </CollapsibleContent>
+                  </SidebarMenuItem>
+              </Collapsible>
                 <SidebarMenuItem>
                     <SidebarMenuButton asChild isActive={isActive("/dashboard/training/library")} tooltip="Academy">
                         <Link href="/dashboard/training/library"><GraduationCap /><span>Training Academy</span></Link>
@@ -268,7 +308,7 @@ export function DashboardSidebar() {
             </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 5. Admin & Settings === */}
+        {/* === 6. Admin & Settings === */}
         <SidebarGroup className="mt-auto">
             <SidebarGroupLabel>System</SidebarGroupLabel>
             <SidebarMenu>
@@ -296,12 +336,7 @@ export function DashboardSidebar() {
                                     </SidebarMenuSubItem>
                                     <SidebarMenuSubItem>
                                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/localization")}>
-                                            <Link href="/dashboard/settings/localization"><Map className="h-4 w-4 mr-2"/><span>Localization</span></Link>
-                                        </SidebarMenuSubButton>
-                                    </SidebarMenuSubItem>
-                                    <SidebarMenuSubItem>
-                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/glossary")}>
-                                            <Link href="/dashboard/settings/glossary"><BookA className="h-4 w-4 mr-2"/><span>Glossary</span></Link>
+                                            <Link href="/dashboard/settings/localization"><span>Localization</span></Link>
                                         </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
                                 </SidebarMenuSub>
