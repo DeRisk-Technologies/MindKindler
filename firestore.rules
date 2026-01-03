@@ -1,39 +1,49 @@
-// firestore.rules (Snippet for EPP Upload Portal)
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function
-    function isEPP() {
-      return request.auth.token.role in ['educationalpsychologist', 'admin'];
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
     }
     
-    function isTrustedAssistant() {
-      return get(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId)/users/$(request.auth.uid)).data.isTrustedAssistant == true;
+    function isSuperAdmin() {
+       return request.auth.token.role == 'SuperAdmin';
     }
 
-    match /tenants/{tenantId}/documents/{docId} {
-      allow read: if request.auth != null; // Refine per tenant
+    // Students Collection
+    // DENY direct read for students to force usage of 'getStudent360' Cloud Function
+    // for sensitive data redaction.
+    // ALLOW write for authorized staff only.
+    match /students/{studentId} {
+      allow read: if false; // Block direct reads! Use the Cloud Function.
       
-      // Anyone can upload (create) status='uploading'
-      allow create: if request.resource.data.status == 'uploading' 
-                    && request.resource.data.uploadedBy == request.auth.uid;
-
-      // Only EPP or Trusted Assistant can publish
-      allow update: if (request.resource.data.status == 'published' 
-                        && (isEPP() || isTrustedAssistant()))
-                    || (request.resource.data.status != 'published'); 
+      // Exception: Allow reading metadata or less sensitive index fields if needed for list views?
+      // Better approach: Use a dedicated 'student_summaries' collection for list views.
+      
+      allow write: if isAuthenticated() && (request.auth.token.role == 'EPP' || request.auth.token.role == 'SchoolAdmin');
+      
+      // Subcollections
+      match /family_members/{memberId} {
+        allow read: if false; // Force Cloud Function
+        allow write: if isAuthenticated();
+      }
+      
+      match /verification_tasks/{taskId} {
+         allow read, write: if isAuthenticated();
+      }
     }
 
-    match /tenants/{tenantId}/document_staging/{stagingId} {
-      allow read, write: if request.auth != null;
+    // Document Staging
+    match /document_staging/{docId} {
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && resource.data.tenantId == request.auth.token.tenantId;
+      allow update: if isAuthenticated(); // Refine to owner
     }
 
-    // Audit logs immutable
-    match /tenants/{tenantId}/documents/{docId}/timeline/{eventId} {
-      allow create: if request.auth != null;
-      allow update, delete: if false; 
+    // ... other rules
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

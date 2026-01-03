@@ -1,140 +1,234 @@
 // src/services/student360-service.ts
+import { 
+  StudentRecord, 
+  ParentRecord, 
+  VerificationTask, 
+  ProvenanceMetadata,
+  ProvenanceField
+} from '@/types/schema';
+import { db } from '@/lib/firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  updateDoc, 
+  query, 
+  where, 
+  getDocs, 
+  runTransaction,
+  serverTimestamp,
+  addDoc
+} from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
-import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { Student } from "@/types/schema";
-import { AlertData } from "@/components/student360/AlertCard";
-import { EvidenceDoc } from "@/components/student360/EvidencePanel";
-import { offlineStorage } from "./offline-storage";
+export class Student360Service {
+  private static STUDENT_COLLECTION = 'students';
+  private static PARENT_COLLECTION = 'family_members'; // Subcollection
+  private static TASK_COLLECTION = 'verification_tasks'; // Subcollection
 
-interface FetchOptions {
-    onlineOnly?: boolean;
-}
+  /**
+   * Securely fetch student data via Cloud Function to ensure redaction.
+   */
+  static async getStudent(studentId: string, reason?: string): Promise<StudentRecord> {
+      const functions = getFunctions();
+      const getStudent360 = httpsCallable(functions, 'getStudent360');
+      
+      try {
+          const result = await getStudent360({ studentId, reason });
+          return result.data as StudentRecord;
+      } catch (error) {
+          console.error("Failed to fetch secure student record:", error);
+          throw error;
+      }
+  }
 
-export async function getStudentProfile(tenantId: string, studentId: string, opts: FetchOptions = {}): Promise<Student | null> {
-    const key = `student_${studentId}`;
+  /**
+   * Create a Student and associated Parents in a single atomic transaction.
+   */
+  static async createStudentWithParents(
+    tenantId: string,
+    studentData: Omit<StudentRecord, 'id' | 'meta' | 'tenantId'>,
+    parentsData: Omit<ParentRecord, 'id' | 'tenantId'>[],
+    createdBy: string
+  ): Promise<string> {
+    const studentId = crypto.randomUUID();
+    const studentRef = doc(db, this.STUDENT_COLLECTION, studentId);
     
-    // 1. Try Cache First if not forcing online
-    if (!opts.onlineOnly) {
-        const cached = await offlineStorage.getItem<Student>(key);
-        if (cached) {
-            console.log(`[Cache Hit] Student ${studentId}`);
-            // Background revalidation
-            fetchAndCacheStudent(tenantId, studentId, key); 
-            return cached;
-        }
+    // Calculate initial scores
+    const trustScore = this.calculateTrustScore(studentData);
+    
+    const now = new Date().toISOString();
+
+    const studentRecord: StudentRecord = {
+      ...studentData,
+      id: studentId,
+      tenantId,
+      meta: {
+        createdAt: now,
+        createdBy,
+        updatedAt: now,
+        updatedBy: createdBy,
+        trustScore,
+        completenessScore: 0, // Todo: Implement completeness logic
+        privacyLevel: 'standard'
+      }
+    };
+
+    await runTransaction(db, async (transaction) => {
+      // 1. Create Student
+      transaction.set(studentRef, studentRecord);
+
+      // 2. Create Parents (as subcollection)
+      for (const parent of parentsData) {
+        const parentId = crypto.randomUUID();
+        const parentRef = doc(db, this.STUDENT_COLLECTION, studentId, this.PARENT_COLLECTION, parentId);
+        
+        const parentRecord: ParentRecord = {
+          ...parent,
+          id: parentId,
+          tenantId,
+        };
+        
+        transaction.set(parentRef, parentRecord);
+      }
+
+      // 3. Generate Initial Verification Tasks
+      const tasks = this.generateInitialVerificationTasks(studentId, studentRecord, parentsData);
+      for (const task of tasks) {
+        const taskRef = doc(collection(db, this.STUDENT_COLLECTION, studentId, this.TASK_COLLECTION));
+        transaction.set(taskRef, task);
+      }
+    });
+
+    return studentId;
+  }
+
+  /**
+   * Updates a specific field's verification status and logs provenance.
+   */
+  static async verifyField(
+    studentId: string, 
+    fieldPath: string, 
+    verifierId: string,
+    evidenceRef?: string
+  ): Promise<void> {
+    const studentRef = doc(db, this.STUDENT_COLLECTION, studentId);
+    
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(studentRef);
+      if (!snapshot.exists()) throw new Error("Student not found");
+      
+      const data = snapshot.data() as StudentRecord;
+      
+      // Update the specific field's metadata
+      // Note: Deep updates in Firestore require dot notation string keys if using update(),
+      // but in a transaction we read, modify object, and set back.
+      
+      // Helper to traverse path and update
+      // Logic simplified for brevity; real impl needs to handle nested paths like 'identity.dateOfBirth'
+      const parts = fieldPath.split('.');
+      let current: any = data;
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = current[parts[i]];
+      }
+      
+      const field = current[parts[parts.length - 1]];
+      if (field && field.metadata) {
+        field.metadata.verified = true;
+        field.metadata.verifiedBy = verifierId;
+        field.metadata.verifiedAt = new Date().toISOString();
+        if (evidenceRef) field.metadata.sourceId = evidenceRef; // Or add to a separate evidence list
+      }
+
+      // Recalculate trust score
+      data.meta.trustScore = this.calculateTrustScore(data);
+      data.meta.updatedAt = new Date().toISOString();
+      data.meta.updatedBy = verifierId;
+
+      transaction.set(studentRef, data);
+    });
+  }
+
+  /**
+   * Calculate a Trust Score (0-100) based on verified critical fields.
+   */
+  private static calculateTrustScore(student: Partial<StudentRecord>): number {
+    let score = 0;
+    let totalWeight = 0;
+
+    const checkField = (field: ProvenanceField<any> | undefined, weight: number) => {
+      totalWeight += weight;
+      if (field?.metadata?.verified) {
+        score += weight;
+      } else if (field?.metadata?.confidence && field.metadata.confidence > 0.8) {
+        // Give partial credit for high-confidence AI/OCR
+        score += weight * 0.5;
+      }
+    };
+
+    // Identity (High weight)
+    checkField(student.identity?.firstName, 10);
+    checkField(student.identity?.lastName, 10);
+    checkField(student.identity?.dateOfBirth, 20);
+    checkField(student.identity?.nationalId, 20);
+
+    // Education (Medium)
+    checkField(student.education?.currentSchoolId, 15);
+
+    // Normalize
+    if (totalWeight === 0) return 0;
+    return Math.round((score / totalWeight) * 100);
+  }
+
+  /**
+   * Generates a list of tasks for unverified critical fields.
+   */
+  private static generateInitialVerificationTasks(
+    studentId: string, 
+    student: StudentRecord,
+    parents: Omit<ParentRecord, 'id' | 'tenantId'>[]
+  ): VerificationTask[] {
+    const tasks: VerificationTask[] = [];
+    const now = new Date().toISOString();
+
+    // Check DOB
+    if (!student.identity.dateOfBirth.metadata.verified) {
+      tasks.push({
+        id: crypto.randomUUID(),
+        studentId,
+        fieldPath: 'identity.dateOfBirth',
+        description: 'Verify Date of Birth against Birth Certificate or Passport',
+        status: 'pending',
+        createdAt: now
+      });
     }
 
-    return await fetchAndCacheStudent(tenantId, studentId, key);
-}
-
-async function fetchAndCacheStudent(tenantId: string, studentId: string, key: string) {
-    if (!navigator.onLine) return null;
-    
-    try {
-        const ref = doc(db, "students", studentId);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-            const data = { id: snap.id, ...snap.data() } as Student;
-            await offlineStorage.setItem(key, data);
-            return data;
-        }
-        return null;
-    } catch (e) {
-        console.error("Failed to fetch student", e);
-        return null;
-    }
-}
-
-export async function getStudentAlerts(tenantId: string, studentId: string, opts: FetchOptions = {}): Promise<AlertData[]> {
-    const key = `alerts_${studentId}`;
-    
-    if (!opts.onlineOnly) {
-        const cached = await offlineStorage.getItem<AlertData[]>(key);
-        if (cached) {
-            fetchAndCacheAlerts(tenantId, studentId, key);
-            return cached;
-        }
-    }
-    return await fetchAndCacheAlerts(tenantId, studentId, key) || [];
-}
-
-async function fetchAndCacheAlerts(tenantId: string, studentId: string, key: string) {
-    if (!navigator.onLine) return null;
-    // Mock Implementation for Stage 4/6
-    const data: AlertData[] = [
-        {
-            id: 'a1',
-            type: 'risk',
-            severity: 'critical',
-            title: 'Attendance Drop detected',
-            description: 'Student has missed 3 consecutive sessions without notice.',
-            date: new Date().toISOString(),
-            evidence: [
-                { sourceId: 'd1', snippet: "Absent from Math (3rd time)", trustScore: 0.95 },
-                { sourceId: 'd2', snippet: "Teacher note: Parent unreachable", trustScore: 0.8 }
-            ]
-        },
-        {
-            id: 'a2',
-            type: 'academic',
-            severity: 'medium',
-            title: 'Reading score fluctuation',
-            description: 'Latest assessment shows divergent scores compared to baseline.',
-            date: new Date(Date.now() - 86400000).toISOString(),
-            evidence: []
-        }
-    ];
-    await offlineStorage.setItem(key, data);
-    return data;
-}
-
-export async function getStudentEvidence(tenantId: string, studentId: string, opts: FetchOptions = {}): Promise<EvidenceDoc[]> {
-    const key = `evidence_${studentId}`;
-    
-    if (!opts.onlineOnly) {
-        const cached = await offlineStorage.getItem<EvidenceDoc[]>(key);
-        if (cached) {
-            fetchAndCacheEvidence(tenantId, studentId, key);
-            return cached;
-        }
-    }
-    return await fetchAndCacheEvidence(tenantId, studentId, key) || [];
-}
-
-async function fetchAndCacheEvidence(tenantId: string, studentId: string, key: string) {
-    if (!navigator.onLine) return null;
-    // Mock
-    const data: EvidenceDoc[] = [
-        {
-            id: 'e1',
-            title: 'Psychological Assessment Report',
-            type: 'PDF',
-            date: new Date(Date.now() - 100000000).toISOString(),
-            trustScore: 0.98
-        },
-        {
-            id: 'e2',
-            title: 'Teacher Observation Log (Q1)',
-            type: 'Note',
-            date: new Date(Date.now() - 50000000).toISOString(),
-            trustScore: 0.85
-        }
-    ];
-    await offlineStorage.setItem(key, data);
-    return data;
-}
-
-// Optimistic Action Handler
-export async function performOptimisticAction(actionName: string, payload: any) {
-    if (navigator.onLine) {
-        // Execute immediately (mocked)
-        console.log(`[Online] Executing ${actionName}`);
-        return true;
+    // Check Parents
+    if (parents.length === 0) {
+      tasks.push({
+        id: crypto.randomUUID(),
+        studentId,
+        fieldPath: 'family.parents',
+        description: 'Add at least one parent/guardian contact',
+        status: 'pending',
+        createdAt: now
+      });
     } else {
-        // Queue
-        console.log(`[Offline] Queuing ${actionName}`);
-        await offlineStorage.queueAction({ type: actionName, payload, id: crypto.randomUUID() });
-        return false; // Indicating queued
+        // Check if any parent has PR
+        const hasPr = parents.some(p => p.hasParentalResponsibility);
+        if (!hasPr) {
+             tasks.push({
+                id: crypto.randomUUID(),
+                studentId,
+                fieldPath: 'family.parents.pr',
+                description: 'Confirm which parent has Parental Responsibility',
+                status: 'pending',
+                createdAt: now
+            });
+        }
     }
+
+    return tasks;
+  }
 }

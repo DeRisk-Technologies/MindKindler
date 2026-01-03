@@ -92,3 +92,12 @@ import { processBulkManifest as bulkImportHandler } from "./upload/bulkImport";
 
 export const exportReport = exportReportHandler; 
 export const processBulkManifest = bulkImportHandler;
+
+// Student 360 Secure Endpoints
+import { getStudent360 as getStudent360Handler } from "./student360/getStudent360";
+import { processDocument as processDocumentHandler } from "./student360/ocr/processDocument";
+import { guardianCheck as guardianCheckHandler } from "./student360/guardian/guardianCheck";
+
+export const getStudent360 = getStudent360Handler;
+export const processDocumentSecure = processDocumentHandler; // Renamed to avoid conflict if any, or replace existing
+export const guardianCheck = guardianCheckHandler;
