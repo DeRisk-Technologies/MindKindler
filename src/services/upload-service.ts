@@ -1,16 +1,16 @@
-// src/services/upload-service.ts
+// src/services/upload-service.ts (Updated with Compression)
 
 import { db, storage } from "@/lib/firebase";
 import { collection, doc, setDoc, addDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import imageCompression from 'browser-image-compression';
 
 export const UploadService = {
     async uploadFile(tenantId: string, file: File, metadata: any): Promise<string> {
         // 1. Calculate Hash (Dedupe check)
         const hash = await this.calculateHash(file);
         
-        // 2. Check Dedupe (Simple query)
-        // In production, this might be a cloud function to check cross-tenant or secure hashes
+        // 2. Check Dedupe
         const dupCheck = query(
             collection(db, `tenants/${tenantId}/documents`), 
             where('hash', '==', hash),
@@ -21,10 +21,18 @@ export const UploadService = {
             throw new Error(`Duplicate file detected (ID: ${dupSnap.docs[0].id})`);
         }
 
-        // 3. Compress if Image (Mobile Optimization)
+        // 3. Compress if Image (Real Logic)
         let fileToUpload = file;
         if (file.type.startsWith('image/')) {
-            fileToUpload = await this.compressImage(file);
+             try {
+                fileToUpload = await imageCompression(file, {
+                    maxSizeMB: 1,
+                    maxWidthOrHeight: 1920,
+                    useWebWorker: true
+                });
+             } catch (e) {
+                 console.warn("Compression failed, using original", e);
+             }
         }
 
         // 4. Upload to Storage
@@ -64,8 +72,11 @@ export const UploadService = {
             createdAt: serverTimestamp()
         });
 
-        // In real impl, we'd loop uploadFile here or delegate to a worker.
-        // For prototype, we'll assume the UI calls uploadFile per item and links jobId.
+        // Trigger Cloud Function (already implemented)
+        // Here we could also manually trigger 'processBulkManifest' via httpsCallable if we wanted client-driven logic,
+        // but the Phase 7 implementation uses a server-side handler.
+        // We assume the manifest file is uploaded first or passed as JSON.
+        
         return jobRef.id;
     },
 
@@ -74,11 +85,5 @@ export const UploadService = {
         const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    },
-
-    async compressImage(file: File): Promise<File> {
-        // Simple canvas resize mock for prototype
-        // In production, use 'browser-image-compression'
-        return file; 
     }
 };

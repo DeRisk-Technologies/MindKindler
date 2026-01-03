@@ -1,4 +1,6 @@
-import { onCall, HttpsOptions } from "firebase-functions/v2/https";
+// functions/src/index.ts (Snippet to register Grading function)
+
+import { onCall, HttpsOptions, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from 'firebase-admin';
@@ -15,13 +17,29 @@ import * as aiReports from "./ai/generateClinicalReport";
 import * as aiInsights from "./ai/analyzeConsultationInsight";
 import * as aiAssessments from "./ai/generateAssessmentContent";
 import * as docProcessing from "./ai/processUploadedDocument";
+import { generatePolicyMemoFlow } from "./ai/flows/generatePolicyMemo";
+// Import Grading Flow
+import { scoreOpenTextResponseFlow } from "./ai/flows/grading";
 
 export const generateClinicalReport = onCall(callOptions, aiReports.handler);
 export const analyzeConsultationInsight = onCall(callOptions, aiInsights.handler);
 export const generateAssessmentContent = onCall(callOptions, aiAssessments.handler);
 export const processUploadedDocument = docProcessing.processDocumentHandler;
 
-// --- 2. Admin & Seeding ---
+export const generatePolicyMemo = onCall(callOptions, async (req) => {
+    if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required');
+    const { tenantId, snapshotData, focusArea } = req.data;
+    return await generatePolicyMemoFlow(tenantId, snapshotData, focusArea, req.auth.uid);
+});
+
+// NEW: Grading AI
+export const gradeOpenText = onCall(callOptions, async (req) => {
+    if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required');
+    const { tenantId, question, studentAnswer, rubric, maxPoints } = req.data;
+    return await scoreOpenTextResponseFlow(tenantId, question, studentAnswer, rubric, maxPoints, req.auth.uid);
+});
+
+// ... (Rest of existing exports)
 import { clearDemoDataHandler } from "./admin/clearData";
 import { seedDemoDataHandler } from "./admin/seedData";
 import { setupUserProfileHandler } from "./admin/userManagement";
@@ -31,11 +49,10 @@ export const clearDemoData = onCall(callOptions, clearDemoDataHandler);
 export const seedDemoData = onCall(callOptions, seedDemoDataHandler);
 export const setupUserProfile = onCall(callOptions, setupUserProfileHandler);
 export const anonymizeTrainingData = onSchedule({
-    schedule: "0 0 1 * *", // Standard cron: Midnight on the 1st of every month
+    schedule: "0 0 1 * *", 
     region
 }, anonymizeDataHandler);
 
-// --- 3. Assessments & Grading ---
 import { gradeSubmissionHandler, detectAnomaliesHandler } from "./assessments/grading";
 
 export const gradeAssessmentSubmission = onDocumentCreated({
@@ -48,7 +65,6 @@ export const detectAnomalies = onDocumentUpdated({
     region
 }, detectAnomaliesHandler);
 
-// --- 4. Scheduling & Reminders ---
 import { findAvailabilityHandler, onAppointmentChangeHandler, sendDailyRemindersHandler } from "./scheduling/scheduler";
 
 export const findAvailabilitySlots = onCall(callOptions, findAvailabilityHandler);
@@ -62,18 +78,15 @@ export const sendDailyReminders = onSchedule({
     region
 }, sendDailyRemindersHandler);
 
-// --- 5. Case Automation & SLA ---
 import { onAlertCreated } from "./case/autoCreateFromAlerts";
 import { slaEscalator } from "./case/slaEscalator";
 
 export const autoCreateCaseFromAlert = onAlertCreated; 
 export const caseSlaEscalator = slaEscalator;
 
-// --- 6. Integrations ---
 import { syncExternalData as syncHandler } from "./integrations/syncEngine";
 export const syncExternalData = onCall(callOptions, syncHandler);
 
-// --- 7. Reports & Uploads ---
 import { exportReport as exportReportHandler } from "./reports/exportReport";
 import { processBulkManifest as bulkImportHandler } from "./upload/bulkImport";
 
