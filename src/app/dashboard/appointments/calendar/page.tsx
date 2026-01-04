@@ -1,18 +1,17 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, parseISO } from 'date-fns';
 import { Appointment } from '@/types/schema';
+import { CreateAppointmentDialog } from '@/components/dashboard/appointments/create-dialog';
 
 // Placeholder for full calendar library like 'react-big-calendar'
 // Building a custom simple weekly view for prototype
 
 export default function CalendarPage() {
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [view, setView] = useState<'week' | 'month'>('week');
 
     const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday
     const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
@@ -58,9 +57,7 @@ export default function CalendarPage() {
                         </Button>
                     </div>
                 </div>
-                <Button className="gap-2">
-                    <Plus className="h-4 w-4" /> New Appointment
-                </Button>
+                <CreateAppointmentDialog />
             </div>
 
             <div className="grid grid-cols-7 gap-px bg-gray-200 border rounded-lg overflow-hidden flex-1 min-h-[600px]">
@@ -70,12 +67,15 @@ export default function CalendarPage() {
                             {format(day, 'EEE')} <span className="text-gray-500">{format(day, 'd')}</span>
                         </div>
                         <div className="flex-1 p-2 space-y-2">
-                            {getAppointmentsForDay(day).map(appt => (
-                                <div key={appt.id} className="p-2 text-xs rounded border bg-blue-50 border-blue-100 text-blue-700 cursor-pointer hover:bg-blue-100 transition-colors">
-                                    <div className="font-bold">{format(new Date(appt.startAt!), 'HH:mm')}</div>
-                                    <div className="truncate">{appt.title}</div>
-                                </div>
-                            ))}
+                            {getAppointmentsForDay(day).map(appt => {
+                                const startTime = appt.startAt ? parseISO(appt.startAt) : new Date();
+                                return (
+                                    <div key={appt.id} className="p-2 text-xs rounded border bg-blue-50 border-blue-100 text-blue-700 cursor-pointer hover:bg-blue-100 transition-colors">
+                                        <div className="font-bold">{format(startTime, 'HH:mm')}</div>
+                                        <div className="truncate">{appt.title}</div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 ))}
