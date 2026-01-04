@@ -1,23 +1,29 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, parseISO } from 'date-fns';
 import { Appointment } from '@/types/schema';
 import { CreateAppointmentDialog } from '@/components/dashboard/appointments/create-dialog';
 
-// Placeholder for full calendar library like 'react-big-calendar'
-// Building a custom simple weekly view for prototype
-
 export default function CalendarPage() {
-    const [currentDate, setCurrentDate] = useState(new Date());
+    // Initialize with null to prevent hydration mismatch (server time vs client time)
+    const [currentDate, setCurrentDate] = useState<Date | null>(null);
+
+    useEffect(() => {
+        setCurrentDate(new Date());
+    }, []);
+
+    if (!currentDate) {
+        return <div className="p-8 text-center text-muted-foreground">Loading calendar...</div>;
+    }
 
     const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday
     const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
     const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-    // Mock Appointments
+    // Mock Appointments (simulating data fetching)
     const appointments: Partial<Appointment>[] = [
         { 
             id: '1', 
@@ -46,13 +52,13 @@ export default function CalendarPage() {
                 <div className="flex items-center gap-4">
                     <h1 className="text-2xl font-bold">Calendar</h1>
                     <div className="flex items-center border rounded-md bg-white">
-                        <Button variant="ghost" size="icon" onClick={() => setCurrentDate(d => addDays(d, -7))}>
+                        <Button variant="ghost" size="icon" onClick={() => setCurrentDate(d => d ? addDays(d, -7) : new Date())}>
                             <ChevronLeft className="h-4 w-4" />
                         </Button>
                         <span className="w-32 text-center font-medium text-sm">
                             {format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d')}
                         </span>
-                         <Button variant="ghost" size="icon" onClick={() => setCurrentDate(d => addDays(d, 7))}>
+                         <Button variant="ghost" size="icon" onClick={() => setCurrentDate(d => d ? addDays(d, 7) : new Date())}>
                             <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
