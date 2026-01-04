@@ -110,3 +110,9 @@ export const guardianCheck = onCall(callOptions, guardianCheckHandler);
 import { onPostCreated, onThreadCreated } from './community/moderation';
 export const onCommunityPostCreated = onPostCreated;
 export const onCommunityThreadCreated = onThreadCreated;
+
+// --- Integrations & Compliance ---
+import { securelyCreateMeeting as secureMeetingHandler, fetchAndPurgeRecordings as purgeHandler } from './integrations/meeting-compliance';
+// Note: using onCall v1 style for compatibility if defined that way in the file, or wrapping
+export const securelyCreateMeeting = secureMeetingHandler;
+export const meetingComplianceWorker = purgeHandler;

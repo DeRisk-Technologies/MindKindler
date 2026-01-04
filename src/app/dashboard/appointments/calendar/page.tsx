@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, parseISO } from 'date-fns';
 import { Appointment } from '@/types/schema';
 import { CreateAppointmentDialog } from '@/components/dashboard/appointments/create-dialog';
+import { AvailabilitySettingsDialog } from '@/components/dashboard/settings/availability-settings';
 
 export default function CalendarPage() {
     // Initialize with null to prevent hydration mismatch (server time vs client time)
@@ -62,6 +63,7 @@ export default function CalendarPage() {
                             <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
+                    <AvailabilitySettingsDialog />
                 </div>
                 <CreateAppointmentDialog />
             </div>
