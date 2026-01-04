@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
+  CardDescription
 } from "@/components/ui/card";
 import {
   Brain,
@@ -21,13 +21,13 @@ import {
   Wifi,
   WifiOff,
   Upload,
-  MessageSquare,
   Sparkles,
   Clock,
   Globe,
-  Database,
   Search,
-  BookOpen
+  Building,
+  TrendingUp,
+  CreditCard
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
@@ -50,7 +50,7 @@ export default function DashboardPage() {
 
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
-        setDisplayName(user.displayName || "Professional");
+        setDisplayName(user.displayName || "User");
         try {
           const snap = await getDoc(doc(db, "users", user.uid));
           if (snap.exists()) {
@@ -68,11 +68,13 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const isClinician = ['educationalpsychologist', 'clinicalpsychologist', 'schoolpsychologist', 'admin', 'EPP', 'SuperAdmin'].includes(role || '');
-  const isAssistant = role === 'assistant' || role === 'admin' || role === 'SuperAdmin';
-  // const isGov = ['localeducationauthority', 'ministry', 'federal'].includes(role || ''); // Logic available if needed
+  const isSuperAdmin = role === 'SuperAdmin';
+  const isTenantAdmin = role === 'TenantAdmin' || role === 'SchoolAdmin';
+  const isClinician = ['educationalpsychologist', 'clinicalpsychologist', 'schoolpsychologist', 'EPP'].includes(role || '');
+  const isAssistant = role === 'Assistant' || role === 'admin'; // Legacy mapping
+  const isGov = ['localeducationauthority', 'ministry', 'federal', 'GovAnalyst'].includes(role || '');
 
-  // Mock Data
+  // Mock Appointments
   const appointments = [
       { id: '1', time: '10:00 AM', title: 'Initial Consultation - Leo M.', type: 'Video', link: '#' },
       { id: '2', time: '02:00 PM', title: 'School Visit - West High', type: 'In-Person', link: '#' }
@@ -99,10 +101,10 @@ export default function DashboardPage() {
                 </Link>
              </Button>
           )}
-          {isAssistant && (
-             <Button size="lg" variant="secondary" className="shadow-sm gap-2" asChild>
-                <Link href="/dashboard/data-ingestion/import">
-                    <Upload className="h-5 w-5" /> Import Docs
+          {(isSuperAdmin) && (
+             <Button size="lg" variant="destructive" className="shadow-sm gap-2" asChild>
+                <Link href="/dashboard/admin/enterprise/new">
+                    <Building className="h-5 w-5" /> Provision Tenant
                 </Link>
              </Button>
           )}
@@ -111,40 +113,58 @@ export default function DashboardPage() {
 
       <DashboardAlerts />
 
-      {/* === Role Specific Views === */}
-
-      {/* 1. Assistant Dashboard */}
-      {isAssistant && !isClinician && (
+      {/* === 1. SuperAdmin / Owner View === */}
+      {isSuperAdmin && (
           <div className="grid gap-6 md:grid-cols-3">
-              <Card className="border-l-4 border-l-blue-500">
-                  <CardHeader><CardTitle>Ingestion Queue</CardTitle></CardHeader>
+              <Card className="border-l-4 border-l-red-600">
+                  <CardHeader><CardTitle>Global Tenants</CardTitle></CardHeader>
                   <CardContent>
-                      <div className="text-3xl font-bold">12</div>
-                      <p className="text-xs text-muted-foreground">Documents pending review</p>
-                      <Button variant="link" asChild className="px-0"><Link href="/dashboard/data-ingestion/staging">Review Staging &rarr;</Link></Button>
+                      <div className="text-3xl font-bold">142</div>
+                      <p className="text-xs text-muted-foreground">Active Organizations</p>
+                      <Button variant="link" asChild className="px-0"><Link href="/dashboard/govintel/hierarchy">View Hierarchy &rarr;</Link></Button>
                   </CardContent>
               </Card>
-              <Card className="border-l-4 border-l-amber-500">
-                  <CardHeader><CardTitle>Verification Tasks</CardTitle></CardHeader>
+              <Card className="border-l-4 border-l-green-600">
+                  <CardHeader><CardTitle>Total MRR</CardTitle></CardHeader>
                   <CardContent>
-                      <div className="text-3xl font-bold">5</div>
-                      <p className="text-xs text-muted-foreground">Missing DOB proofs</p>
-                      <Button variant="link" asChild className="px-0"><Link href="/dashboard/students">Go to Directory &rarr;</Link></Button>
+                      <div className="text-3xl font-bold">$48.2k</div>
+                      <p className="text-xs text-muted-foreground">+12% this month</p>
+                      <Button variant="link" asChild className="px-0"><Link href="/dashboard/settings/billing">Billing Admin &rarr;</Link></Button>
                   </CardContent>
               </Card>
-              <Card className="border-l-4 border-l-green-500">
-                  <CardHeader><CardTitle>Scheduling</CardTitle></CardHeader>
+              <Card className="border-l-4 border-l-blue-600">
+                  <CardHeader><CardTitle>System Health</CardTitle></CardHeader>
                   <CardContent>
-                      <div className="text-3xl font-bold">8</div>
-                      <p className="text-xs text-muted-foreground">Appts to confirm today</p>
-                      <Button variant="link" asChild className="px-0"><Link href="/dashboard/appointments/calendar">Manage Calendar &rarr;</Link></Button>
+                      <div className="text-3xl font-bold text-green-600">99.9%</div>
+                      <p className="text-xs text-muted-foreground">All regions operational</p>
                   </CardContent>
               </Card>
           </div>
       )}
 
-      {/* 2. Clinician / Admin / EPP Dashboard */}
-      {isClinician && (
+      {/* === 2. Gov / State / LEA View === */}
+      {isGov && (
+          <div className="grid gap-6 md:grid-cols-3">
+              <Card>
+                  <CardHeader><CardTitle>District Overview</CardTitle></CardHeader>
+                  <CardContent>
+                      <div className="text-3xl font-bold">45</div>
+                      <p className="text-xs text-muted-foreground">Schools Monitored</p>
+                      <Button variant="link" asChild className="px-0"><Link href="/dashboard/govintel/hierarchy">Drill Down &rarr;</Link></Button>
+                  </CardContent>
+              </Card>
+              <Card>
+                  <CardHeader><CardTitle>At-Risk Students</CardTitle></CardHeader>
+                  <CardContent>
+                      <div className="text-3xl font-bold text-red-600">120</div>
+                      <p className="text-xs text-muted-foreground">Critical Interventions Needed</p>
+                  </CardContent>
+              </Card>
+          </div>
+      )}
+
+      {/* === 3. Clinician / EPP View === */}
+      {(isClinician || isTenantAdmin) && !isSuperAdmin && (
         <>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="shadow-sm border-l-4 border-l-indigo-500">
@@ -250,7 +270,7 @@ export default function DashboardPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Community & Knowledge Highlight (New) */}
+                    {/* Community Highlight */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-lg flex items-center gap-2">
@@ -281,7 +301,6 @@ export default function DashboardPage() {
 
                 {/* Right Column: AI & Comms */}
                 <div className="space-y-6">
-                    {/* Co-Pilot Teaser */}
                     <Card className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white border-none shadow-lg">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-white">
@@ -302,7 +321,6 @@ export default function DashboardPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Messages */}
                     <Card>
                         <CardHeader className="pb-2">
                             <CardTitle className="text-base">Unread Messages</CardTitle>

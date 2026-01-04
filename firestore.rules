@@ -2,65 +2,91 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper functions
+    // --- Helper Functions ---
     function isAuthenticated() {
       return request.auth != null;
     }
     
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isSystemAdmin() {
+      return isAuthenticated() && getUserData().role == 'SuperAdmin';
+    }
+
     function isTenantMember(tenantId) {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'global_admin');
+        (getUserData().tenantId == tenantId || isSystemAdmin());
+    }
+    
+    function isTenantAdmin(tenantId) {
+      return isTenantMember(tenantId) && 
+        (getUserData().role in ['TenantAdmin', 'SchoolAdmin', 'SuperAdmin']);
     }
 
-    function isGlobalAdmin() {
-       return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'global_admin';
+    // --- Core User Management ---
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isTenantMember(resource.data.tenantId));
+      allow write: if isSystemAdmin() || request.auth.uid == userId;
     }
 
-    // --- MindKindler Community Rules ---
-    // Updated Path Structure: tenants/{tenantId}/community/{feature}/{collection}
+    // --- Enterprise & GovIntel (New) ---
+    match /organizations/{orgId} {
+      // Public read might be needed for login/lookup, but restrict to auth for now
+      allow read: if isAuthenticated(); 
+      // Only SuperAdmins can create top-level orgs; TenantAdmins can update their own
+      allow create: if isSystemAdmin();
+      allow update: if isSystemAdmin() || (isAuthenticated() && getUserData().tenantId == orgId && isTenantAdmin(orgId));
+    }
 
-    // Forum
+    // --- Commercial & Billing (New) ---
+    match /tenants/{tenantId}/billing/{document=**} {
+      // Only Tenant Admins can see/manage billing
+      allow read, write: if isTenantAdmin(tenantId);
+    }
+
+    // --- Community (Existing) ---
     match /tenants/{tenantId}/community/forum/categories/{categoryId} {
       allow read: if isTenantMember(tenantId);
-      allow write: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin());
+      allow write: if isTenantMember(tenantId); // Refine to moderators later
     }
 
     match /tenants/{tenantId}/community/forum/threads/{threadId} {
       allow read: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId) && request.resource.data.authorId == request.auth.uid;
-      allow update: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin());
+      allow create: if isTenantMember(tenantId);
+      allow update: if isTenantMember(tenantId);
       
       match /posts/{postId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && request.resource.data.authorId == request.auth.uid;
-        allow update: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin());
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId);
       }
     }
 
-    // Wiki
     match /tenants/{tenantId}/community/wiki/pages/{pageId} {
        allow read: if isTenantMember(tenantId);
-       allow create: if isTenantMember(tenantId); 
-       allow update: if isTenantMember(tenantId);
+       allow create, update: if isTenantMember(tenantId);
     }
 
-    // Blog
     match /tenants/{tenantId}/community/blog/posts/{postId} {
        allow read: if isTenantMember(tenantId); 
        allow write: if isTenantMember(tenantId); 
     }
 
-    // Global Public Forum
     match /global/forum/{document=**} {
       allow read: if isAuthenticated();
-      allow write: if isGlobalAdmin(); 
+      allow write: if isSystemAdmin(); 
     }
     
-    // Global Wiki
     match /global/wiki/pages/{pageId} {
       allow read: if isAuthenticated();
-      allow write: if isGlobalAdmin();
+      allow write: if isSystemAdmin();
+    }
+
+    // --- Default Deny ---
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
