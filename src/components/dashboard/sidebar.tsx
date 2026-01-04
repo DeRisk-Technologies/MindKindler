@@ -16,11 +16,6 @@ import { Logo } from "../logo";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
-  BarChart,
-  BookUser,
-  Calendar,
-  ClipboardList,
-  Database,
   LayoutDashboard,
   Settings,
   ShieldAlert,
@@ -31,14 +26,18 @@ import {
   Briefcase,
   FilePlus,
   Upload,
-  Lock,
   Users,
   MessageSquare,
   Sparkles,
-  Clock,
-  BookOpen,
+  Calendar,
+  Database,
   Building2,
-  Network
+  Network,
+  List,
+  User,
+  FileText,
+  ClipboardList,
+  BookUser
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -49,7 +48,6 @@ import { ChevronRight } from "lucide-react";
 export function DashboardSidebar() {
   const pathname = usePathname();
   const [role, setRole] = useState<string | null>(null);
-  const [orgType, setOrgType] = useState<string | null>(null);
   const [isTrustedAssistant, setIsTrustedAssistant] = useState(false);
 
   useEffect(() => {
@@ -61,13 +59,6 @@ export function DashboardSidebar() {
             const data = userSnap.data();
             setRole(data.role);
             setIsTrustedAssistant(data.isTrustedAssistant === true);
-            
-            // Fetch Org Type if available
-            if (data.tenantId) {
-                // In a real app, we might cache this or fetch from user claims
-                // For MVP, we assume role implies context or fetch separately
-                // setOrgType(...) 
-            }
           }
         } catch (e) {
           console.error("Error fetching role", e);
@@ -77,14 +68,25 @@ export function DashboardSidebar() {
     return () => unsubscribe();
   }, []);
 
-  // Helper to check active state
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
 
-  // Role Logic
+  // --- Role Definitions ---
+  
+  // Super User
   const isSuperAdmin = role === 'SuperAdmin';
+  
+  // Administrators (Organization Level)
+  // Independent EPPs act as their own TenantAdmin
   const isTenantAdmin = role === 'TenantAdmin' || role === 'SchoolAdmin' || isSuperAdmin;
-  const isClinician = role === 'EPP' || role === 'SchoolPsychologist' || isTenantAdmin;
+  
+  // Clinical Practitioners (EPPs, Psychologists)
+  // Note: Independent EPPs usually hold this role AND TenantAdmin, or just EPP if managed.
+  const isClinician = role === 'EPP' || role === 'SchoolPsychologist' || role === 'ClinicalPsychologist' || isTenantAdmin;
+  
+  // Support Staff
   const isAssistant = role === 'Assistant' || role === 'TrustedAssistant' || isTenantAdmin;
+  
+  // Government / Policy
   const isGov = role === 'GovAnalyst' || role === 'StateOfficial' || isSuperAdmin;
 
   return (
@@ -94,19 +96,24 @@ export function DashboardSidebar() {
       </SidebarHeader>
       <SidebarContent className="px-2 py-4">
         
-        {/* === 1. Core Clinical Workspace (Clinicians & Admins) === */}
+        {/* =========================================
+            1. CORE CLINICAL WORKSPACE
+            (Visible to EPPs, School Admins, Tenant Admins)
+           ========================================= */}
         <SidebarGroup>
           <SidebarGroupLabel>Clinical Workspace</SidebarGroupLabel>
           <SidebarMenu>
+            
+            {/* Dashboard Overview */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === "/dashboard"} tooltip="Overview">
                 <Link href="/dashboard"><LayoutDashboard /><span>Overview</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             
-            {/* Caseload (Clinicians) */}
+            {/* Caseload Management - PRIMARY ANCHOR */}
             {isClinician && (
-                <Collapsible defaultOpen={isActive("/dashboard/students") || isActive("/dashboard/cases")} className="group/collapsible">
+                <Collapsible defaultOpen={true} className="group/collapsible">
                 <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
                     <SidebarMenuButton tooltip="Caseload">
@@ -126,13 +133,19 @@ export function DashboardSidebar() {
                             <Link href="/dashboard/cases"><span>Active Cases</span></Link>
                         </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
+                        {/* Added Parents link for completeness */}
+                        <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/students/parents")}>
+                            <Link href="/dashboard/students"><span>Parents & Guardians</span></Link>
+                        </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
                     </SidebarMenuSub>
                     </CollapsibleContent>
                 </SidebarMenuItem>
                 </Collapsible>
             )}
 
-            {/* Assessment & Reports */}
+            {/* Assessment & Reporting */}
             {isClinician && (
                 <Collapsible defaultOpen={isActive("/dashboard/assessments") || isActive("/dashboard/reports")} className="group/collapsible">
                 <SidebarMenuItem>
@@ -146,12 +159,12 @@ export function DashboardSidebar() {
                     <SidebarMenuSub>
                         <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/assessments")}>
-                            <Link href="/dashboard/assessments"><span>Assessments</span></Link>
+                            <Link href="/dashboard/assessments"><span>Assessments Library</span></Link>
                         </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                         <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/reports") && !pathname.includes('builder')}>
-                            <Link href="/dashboard/reports"><span>Reports Library</span></Link>
+                            <Link href="/dashboard/reports"><span>Reports Archive</span></Link>
                         </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                         <SidebarMenuSubItem>
@@ -173,7 +186,9 @@ export function DashboardSidebar() {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 2. Communication & Scheduling === */}
+        {/* =========================================
+            2. COMMUNICATION & SCHEDULING
+           ========================================= */}
         <SidebarGroup>
             <SidebarGroupLabel>Communication</SidebarGroupLabel>
             <SidebarMenu>
@@ -206,12 +221,14 @@ export function DashboardSidebar() {
             </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 3. Enterprise & GovIntel (NEW) === */}
+        {/* =========================================
+            3. ENTERPRISE & GOVINTEL 
+            (Gov, State, SuperAdmin, Large LEA Admins)
+           ========================================= */}
         {(isGov || isTenantAdmin) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Organization & Strategy</SidebarGroupLabel>
                 <SidebarMenu>
-                    {/* Organization Hierarchy (Gov/State/SuperAdmin) */}
                     <SidebarMenuItem>
                         <SidebarMenuButton asChild isActive={isActive("/dashboard/govintel/hierarchy")} tooltip="Org Hierarchy">
                             <Link href="/dashboard/govintel/hierarchy">
@@ -220,7 +237,6 @@ export function DashboardSidebar() {
                         </SidebarMenuButton>
                     </SidebarMenuItem>
 
-                    {/* GovIntel Analytics */}
                     <Collapsible defaultOpen={isActive("/dashboard/govintel")} className="group/collapsible">
                         <SidebarMenuItem>
                             <CollapsibleTrigger asChild>
@@ -254,7 +270,10 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* === 4. Data Ingestion (Assistants & Admins) === */}
+        {/* =========================================
+            4. DATA OPERATIONS
+            (Admins, Assistants - and Independent EPPs for Import)
+           ========================================= */}
         {(isTenantAdmin || isAssistant) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Data Operations</SidebarGroupLabel>
@@ -287,11 +306,12 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* === 5. Community & Growth === */}
+        {/* =========================================
+            5. COMMUNITY & GROWTH (All Users)
+           ========================================= */}
         <SidebarGroup>
             <SidebarGroupLabel>Community & Growth</SidebarGroupLabel>
             <SidebarMenu>
-                {/* MindKindler Community Hub */}
                 <Collapsible defaultOpen={isActive("/dashboard/community")} className="group/collapsible">
                   <SidebarMenuItem>
                       <CollapsibleTrigger asChild>
@@ -322,7 +342,6 @@ export function DashboardSidebar() {
                   </SidebarMenuItem>
               </Collapsible>
 
-              {/* Knowledge Vault */}
                <SidebarMenuItem>
                  <SidebarMenuButton asChild isActive={isActive("/dashboard/intelligence")} tooltip="Global Knowledge Vault">
                     <Link href="/dashboard/intelligence"><Database /><span>Knowledge Vault</span></Link>
@@ -347,7 +366,9 @@ export function DashboardSidebar() {
             </SidebarMenu>
         </SidebarGroup>
 
-        {/* === 6. Admin & Settings === */}
+        {/* =========================================
+            6. SYSTEM & ADMIN
+           ========================================= */}
         <SidebarGroup className="mt-auto">
             <SidebarGroupLabel>System</SidebarGroupLabel>
             <SidebarMenu>
@@ -370,13 +391,18 @@ export function DashboardSidebar() {
                             <CollapsibleContent>
                                 <SidebarMenuSub>
                                     <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/tenants")}>
+                                            <Link href="/dashboard/admin/tenants"><List className="h-4 w-4 mr-2"/><span>All Tenants</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
                                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/enterprise/new")}>
                                             <Link href="/dashboard/admin/enterprise/new"><Building2 className="h-4 w-4 mr-2"/><span>Provision Tenant</span></Link>
                                         </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
                                     <SidebarMenuSubItem>
                                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/users")}>
-                                            <Link href="/dashboard/admin/users"><Users className="h-4 w-4 mr-2"/><span>User Management</span></Link>
+                                            <Link href="/dashboard/admin/users"><Users className="h-4 w-4 mr-2"/><span>Global Users</span></Link>
                                         </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
                                     <SidebarMenuSubItem>

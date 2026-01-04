@@ -7,7 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { enterpriseService } from '@/services/enterprise/org-service';
+// import { enterpriseService } from '@/services/enterprise/org-service'; // REPLACED by Cloud Function call
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 import { Loader2, Building, Globe } from 'lucide-react';
 import { DataRegion, OrgType } from '@/types/enterprise';
 
@@ -29,30 +31,34 @@ export default function CreateOrgPage() {
         setLoading(true);
 
         try {
-            await enterpriseService.createOrganization({
+            // Updated: Call the Provisioning Cloud Function
+            const provisionFn = httpsCallable(functions, 'provisionEnterpriseTenant');
+            const result = await provisionFn({
                 name: formData.name,
                 type: formData.type,
                 region: formData.region,
-                primaryContact: {
-                    name: formData.contactName,
-                    email: formData.contactEmail,
-                    roleTitle: 'Admin'
-                },
-                address: {
-                    street: '', city: '', state: '', postalCode: '', country: '' // Simplified for MVP
-                },
-                planTier: formData.plan as any,
-                settings: {
-                    features: {},
-                    security: { mfaRequired: true }
-                }
+                contactName: formData.contactName,
+                contactEmail: formData.contactEmail,
+                planTier: formData.plan
             });
 
-            toast({ title: "Organization Created", description: "The entity has been provisioned." });
-            // Reset or Redirect
-        } catch (error) {
+            const response = result.data as any;
+
+            toast({ 
+                title: "Provisioning Successful", 
+                description: response.message || "Tenant created and invite sent." 
+            });
+            
+            // Clear Form
+            setFormData({ ...formData, name: '', contactName: '', contactEmail: '' });
+
+        } catch (error: any) {
             console.error(error);
-            toast({ title: "Error", description: "Failed to create organization.", variant: "destructive" });
+            toast({ 
+                title: "Provisioning Failed", 
+                description: error.message || "Failed to create organization.", 
+                variant: "destructive" 
+            });
         } finally {
             setLoading(false);
         }
@@ -62,7 +68,7 @@ export default function CreateOrgPage() {
         <div className="max-w-2xl mx-auto space-y-6 py-8">
             <div className="space-y-2">
                 <h1 className="text-3xl font-bold">Register New Organization</h1>
-                <p className="text-muted-foreground">Provision a new tenant environment with strict data residency.</p>
+                <p className="text-muted-foreground">Provision a new tenant environment via the Cloud Orchestrator.</p>
             </div>
 
             <Card>
@@ -70,6 +76,9 @@ export default function CreateOrgPage() {
                     <CardTitle className="flex items-center gap-2">
                         <Building className="h-5 w-5 text-primary"/> Organization Details
                     </CardTitle>
+                    <CardDescription>
+                        This will create the tenant database, set up billing, and email the administrator.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSubmit} className="space-y-4">
@@ -115,7 +124,7 @@ export default function CreateOrgPage() {
 
                         <div className="grid grid-cols-2 gap-4">
                              <div className="space-y-2">
-                                <Label>Primary Contact Name</Label>
+                                <Label>Primary Contact Name (Admin)</Label>
                                 <Input 
                                     placeholder="Jane Doe" 
                                     value={formData.contactName}
@@ -124,7 +133,7 @@ export default function CreateOrgPage() {
                                 />
                             </div>
                              <div className="space-y-2">
-                                <Label>Contact Email (Admin)</Label>
+                                <Label>Contact Email</Label>
                                 <Input 
                                     type="email"
                                     placeholder="admin@school.edu" 
@@ -133,6 +142,18 @@ export default function CreateOrgPage() {
                                     required
                                 />
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Subscription Plan</Label>
+                            <Select value={formData.plan} onValueChange={(v) => setFormData({...formData, plan: v})}>
+                                <SelectTrigger><SelectValue/></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="essential">Essential (Small School)</SelectItem>
+                                    <SelectItem value="professional">Professional (Standard)</SelectItem>
+                                    <SelectItem value="enterprise">Enterprise (National/State)</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div className="pt-4 flex justify-end">

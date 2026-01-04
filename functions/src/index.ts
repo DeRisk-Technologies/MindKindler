@@ -116,3 +116,11 @@ import { securelyCreateMeeting as secureMeetingHandler, fetchAndPurgeRecordings 
 // Note: using onCall v1 style for compatibility if defined that way in the file, or wrapping
 export const securelyCreateMeeting = secureMeetingHandler;
 export const meetingComplianceWorker = purgeHandler;
+
+// --- Enterprise Provisioning ---
+import { provisionTenant } from './enterprise/provisioning';
+export const provisionEnterpriseTenant = provisionTenant;
+
+// --- Email Infrastructure ---
+import { processEmailQueue as emailQueueHandler } from './services/email';
+export const processEmailQueue = emailQueueHandler;

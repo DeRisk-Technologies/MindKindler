@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Plus, Trash2, Pencil, Search, KeyRound, UploadCloud, User, Mail } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Search, KeyRound, UploadCloud, User, Mail, ShieldAlert, Building } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,6 @@ import { db, auth } from "@/lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface UserData {
   id: string;
@@ -36,19 +35,27 @@ interface UserData {
   phone?: string;
   address?: string;
   createdAt: string;
+  tenantId?: string; // To distinguish Internal vs External
 }
 
-const roles = [
-  "Admin",
+// Internal Staff Roles
+const STAFF_ROLES = [
+    "SuperAdmin",
+    "Developer",
+    "SupportAgent",
+    "BillingAdmin"
+];
+
+// Customer Roles
+const CUSTOMER_ROLES = [
+  "TenantAdmin",
+  "SchoolAdmin",
   "EducationalPsychologist",
+  "ClinicalPsychologist",
   "Teacher",
   "Parent",
   "Student",
-  "SchoolAdministrator",
-  "LocalEducationAuthority",
-  "ClinicalPsychologist",
-  "TrainingDesigner",
-  "HR",
+  "GovAnalyst"
 ];
 
 export default function AdminUsersPage() {
@@ -61,28 +68,43 @@ export default function AdminUsersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUserForPassword, setSelectedUserForPassword] = useState<UserData | null>(null);
+  const [activeTab, setActiveTab] = useState("customers");
 
   const { toast } = useToast();
   
-  // Filter users
-  const filteredUsers = users.filter(u => 
-      u.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.role?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter logic: Separate Staff from Customers
+  const filteredUsers = users.filter(u => {
+      const matchesSearch = 
+        u.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.role?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      if (!matchesSearch) return false;
+
+      if (activeTab === "staff") {
+          return STAFF_ROLES.includes(u.role) || u.email.endsWith("@mindkindler.com");
+      } else {
+          return !STAFF_ROLES.includes(u.role) && !u.email.endsWith("@mindkindler.com");
+      }
+  });
 
   const handleSaveUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
     
+    const role = formData.get("role") as string;
+    // Auto-assign tenantId based on role
+    const tenantId = STAFF_ROLES.includes(role) ? "mindkindler-hq" : (formData.get("tenantId") || "default-tenant");
+
     const data = {
         displayName: formData.get("name"),
         email: formData.get("email"),
-        role: formData.get("role"),
+        role: role,
         departmentId: formData.get("departmentId"),
         phone: formData.get("phone"),
         address: formData.get("address"),
+        tenantId: tenantId,
         updatedAt: serverTimestamp(),
     };
     
@@ -91,14 +113,13 @@ export default function AdminUsersPage() {
          await updateDoc(doc(db, "users", editingId), data);
          toast({ title: "User Updated", description: "Profile details saved." });
       } else {
-         // Note: Creating Auth user server-side is required for real login. 
-         // Here we simulate the Firestore profile creation.
+         // Create dummy placeholder for now
          await addDoc(collection(db, "users"), {
             ...data,
-            uid: "generated_by_admin_" + Math.random().toString(36),
+            uid: "generated_" + Math.random().toString(36),
             createdAt: new Date().toISOString(), 
          });
-         toast({ title: "User Added", description: "User record created in database." });
+         toast({ title: "User Added", description: "User record created." });
       }
       setIsDialogOpen(false);
       setEditingId(null);
@@ -112,27 +133,19 @@ export default function AdminUsersPage() {
   const handleSendResetEmail = async () => {
       if (!selectedUserForPassword?.email) return;
       setIsSubmitting(true);
-      
       try {
           await sendPasswordResetEmail(auth, selectedUserForPassword.email);
-          toast({ 
-              title: "Email Sent", 
-              description: `Password reset link sent to ${selectedUserForPassword.email}.` 
-          });
+          toast({ title: "Email Sent", description: `Reset link sent to ${selectedUserForPassword.email}.` });
           setIsPasswordDialogOpen(false);
       } catch (error: any) {
-          toast({ 
-              title: "Error", 
-              description: error.message, 
-              variant: "destructive" 
-          });
+          toast({ title: "Error", description: error.message, variant: "destructive" });
       } finally {
           setIsSubmitting(false);
       }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure? This removes the profile from the database.")) return;
+    if (!confirm("Are you sure? This removes the profile.")) return;
     try {
       await deleteDoc(doc(db, "users", id));
       toast({ title: "Deleted", description: "User removed." });
@@ -145,173 +158,197 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">User Management</h1>
-        <p className="text-muted-foreground">
-          Administer users, roles, departments, and permissions.
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+            <h1 className="text-3xl font-bold tracking-tight text-primary">Global User Directory</h1>
+            <p className="text-muted-foreground">Manage internal staff and customer accounts.</p>
+        </div>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) setEditingId(null); }}>
+            <DialogTrigger asChild>
+                <Button>
+                <Plus className="mr-2 h-4 w-4" /> Add User
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                <DialogTitle>{editingId ? "Edit Profile" : "Create User"}</DialogTitle>
+                <DialogDescription>Provision access for staff or customers.</DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSaveUser} className="space-y-4">
+                <Tabs defaultValue="account" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="account">Account</TabsTrigger>
+                        <TabsTrigger value="profile">Profile</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="account" className="space-y-4 pt-4">
+                            <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="name">Full Name</Label>
+                                <Input id="name" name="name" required defaultValue={editingId ? users.find(u => u.id === editingId)?.displayName : ""} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="email">Email</Label>
+                                <Input id="email" name="email" type="email" required defaultValue={editingId ? users.find(u => u.id === editingId)?.email : ""} />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Role Category</Label>
+                                <Select name="role" defaultValue={editingId ? users.find(u => u.id === editingId)?.role : "Teacher"}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <div className="px-2 py-1 text-xs font-bold text-muted-foreground">Internal Staff</div>
+                                        {STAFF_ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                                        <div className="px-2 py-1 text-xs font-bold text-muted-foreground border-t mt-1">Customers</div>
+                                        {CUSTOMER_ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Department</Label>
+                                <Select name="departmentId" defaultValue={editingId ? users.find(u => u.id === editingId)?.departmentId : "none"}>
+                                    <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">None</SelectItem>
+                                        {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="profile" className="space-y-4 pt-4">
+                            <div className="flex items-center gap-4 mb-2">
+                            <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center border-2 border-dashed">
+                                <User className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <Button size="sm" variant="secondary" type="button">Upload Photo</Button>
+                            </div>
+                            <div className="space-y-2">
+                            <Label htmlFor="phone">Phone</Label>
+                            <Input id="phone" name="phone" defaultValue={editingId ? users.find(u => u.id === editingId)?.phone : ""} />
+                            </div>
+                            <div className="space-y-2">
+                            <Label htmlFor="address">Address</Label>
+                            <Textarea id="address" name="address" defaultValue={editingId ? users.find(u => u.id === editingId)?.address : ""} />
+                            </div>
+                    </TabsContent>
+                </Tabs>
+
+                <DialogFooter>
+                    <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save
+                    </Button>
+                </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
       </div>
 
-      <Card>
-        <CardHeader>
-           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="relative w-full md:w-96">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                      placeholder="Search users..." 
-                      className="pl-8"
-                      value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)}
-                  />
-              </div>
-              <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) setEditingId(null); }}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" /> Add User
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl">
-                  <DialogHeader>
-                    <DialogTitle>{editingId ? "Edit User Profile" : "Add New User"}</DialogTitle>
-                    <DialogDescription>
-                      Manage comprehensive user details.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleSaveUser} className="space-y-4">
-                    <Tabs defaultValue="account" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="account">Account & Role</TabsTrigger>
-                            <TabsTrigger value="profile">Personal Profile</TabsTrigger>
-                        </TabsList>
-                        
-                        <TabsContent value="account" className="space-y-4 pt-4">
-                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Full Name</Label>
-                                    <Input id="name" name="name" required defaultValue={editingId ? users.find(u => u.id === editingId)?.displayName : ""} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="email">Email</Label>
-                                    <Input id="email" name="email" type="email" required defaultValue={editingId ? users.find(u => u.id === editingId)?.email : ""} />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Role</Label>
-                                    <Select name="role" defaultValue={editingId ? users.find(u => u.id === editingId)?.role : "teacher"}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                        {roles.map((r) => (
-                                            <SelectItem key={r} value={r.toLowerCase()}>{r.replace(/([A-Z])/g, " $1")}</SelectItem>
-                                        ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Department</Label>
-                                    <Select name="departmentId" defaultValue={editingId ? users.find(u => u.id === editingId)?.departmentId : "none"}>
-                                        <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">None</SelectItem>
-                                            {departments.map(d => (
-                                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                        </TabsContent>
+      <Tabs defaultValue="customers" value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent">
+            <TabsTrigger 
+                value="customers" 
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 py-3"
+            >
+                Customer Users
+            </TabsTrigger>
+            <TabsTrigger 
+                value="staff" 
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 py-3 flex items-center gap-2"
+            >
+                <ShieldAlert className="h-4 w-4"/> MindKindler Staff
+            </TabsTrigger>
+        </TabsList>
 
-                        <TabsContent value="profile" className="space-y-4 pt-4">
-                             <div className="flex items-center gap-4 mb-2">
-                                <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center border-2 border-dashed">
-                                    <User className="h-8 w-8 text-muted-foreground" />
-                                </div>
-                                <Button size="sm" variant="secondary" type="button">Upload Photo</Button>
-                             </div>
-                             <div className="space-y-2">
-                                <Label htmlFor="phone">Phone Number</Label>
-                                <Input id="phone" name="phone" type="tel" defaultValue={editingId ? users.find(u => u.id === editingId)?.phone : ""} />
-                             </div>
-                             <div className="space-y-2">
-                                <Label htmlFor="address">Address</Label>
-                                <Textarea id="address" name="address" defaultValue={editingId ? users.find(u => u.id === editingId)?.address : ""} />
-                             </div>
-                             <div className="space-y-2">
-                                <Label>Documents</Label>
-                                <div className="border-2 border-dashed rounded p-4 text-center text-sm text-muted-foreground cursor-pointer hover:bg-muted/50">
-                                    <UploadCloud className="h-6 w-6 mx-auto mb-1" />
-                                    Upload CV / Certificates
-                                </div>
-                             </div>
-                        </TabsContent>
-                    </Tabs>
-
-                    <DialogFooter>
-                      <Button type="submit" disabled={isSubmitting}>
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Save Changes
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
-           </div>
-        </CardHeader>
-        <CardContent>
-          {loadingUsers ? (
-             <div className="flex justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="mt-6">
+            <div className="flex items-center gap-4 mb-4">
+                <div className="relative w-full md:w-96">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="Search..." 
+                        className="pl-8"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                </div>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                                {user.displayName ? user.displayName.substring(0,2).toUpperCase() : "U"}
-                            </div>
-                            {user.displayName || "N/A"}
-                        </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {user.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{getDeptName(user.departmentId)}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell className="text-right">
-                       <div className="flex justify-end gap-2">
-                           <Button variant="ghost" size="icon" onClick={() => { setSelectedUserForPassword(user); setIsPasswordDialogOpen(true); }}>
-                               <KeyRound className="h-4 w-4 text-orange-500" />
-                           </Button>
-                           <Button variant="ghost" size="icon" onClick={() => { setEditingId(user.id); setIsDialogOpen(true); }}>
-                               <Pencil className="h-4 w-4" />
-                           </Button>
-                           <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)}>
-                               <Trash2 className="h-4 w-4 text-destructive" />
-                           </Button>
-                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+
+            <Card>
+                <CardContent className="p-0">
+                {loadingUsers ? (
+                    <div className="flex justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                ) : (
+                    <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead>User</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Organization</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredUsers.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                    No users found in this category.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            filteredUsers.map((user) => (
+                            <TableRow key={user.id}>
+                                <TableCell className="font-medium">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${activeTab === 'staff' ? 'bg-purple-100 text-purple-700' : 'bg-primary/10 text-primary'}`}>
+                                            {user.displayName ? user.displayName.substring(0,2).toUpperCase() : "U"}
+                                        </div>
+                                        <div>
+                                            <div className="font-semibold">{user.displayName}</div>
+                                            {user.uid && <div className="text-[10px] text-muted-foreground font-mono">{user.uid.slice(0,8)}...</div>}
+                                        </div>
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                <Badge variant={activeTab === 'staff' ? 'default' : 'outline'} className="capitalize">
+                                    {user.role}
+                                </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex items-center gap-2">
+                                        {activeTab === 'staff' ? <ShieldAlert className="h-3 w-3 text-purple-600"/> : <Building className="h-3 w-3 text-slate-500"/>}
+                                        <span className="text-sm">{activeTab === 'staff' ? 'MindKindler HQ' : (user.tenantId || 'Unknown Org')}</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell>{user.email}</TableCell>
+                                <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedUserForPassword(user); setIsPasswordDialogOpen(true); }}>
+                                        <KeyRound className="h-4 w-4 text-orange-500" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingId(user.id); setIsDialogOpen(true); }}>
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                </div>
+                                </TableCell>
+                            </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                    </Table>
+                )}
+                </CardContent>
+            </Card>
+        </div>
+      </Tabs>
 
       {/* Password Reset Dialog */}
       <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
@@ -322,9 +359,6 @@ export default function AdminUsersPage() {
                       Send a password reset email to <b>{selectedUserForPassword?.email}</b>.
                   </DialogDescription>
               </DialogHeader>
-              <div className="py-4 text-sm text-muted-foreground">
-                  <p>For security reasons, administrators cannot set passwords directly. This action will send an automated email to the user with a link to choose a new password securely.</p>
-              </div>
               <DialogFooter>
                   <Button variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>Cancel</Button>
                   <Button onClick={handleSendResetEmail} disabled={isSubmitting}>
