@@ -15,6 +15,11 @@
   "dependencies": {
     "@faker-js/faker": "^10.1.0",
     "@genkit-ai/google-genai": "^1.1.0",
+    "@google-cloud/aiplatform": "^6.0.0",
+    "@google-cloud/documentai": "^9.5.0",
+    "@google-cloud/vertexai": "^1.10.0",
+    "@types/uuid": "^10.0.0",
+    "axios": "^1.13.2",
     "cors": "^2.8.5",
     "date-fns": "^3.3.1",
     "firebase-admin": "^11.8.0",
@@ -22,9 +27,14 @@
     "firebase-tools": "^15.0.0",
     "genkit": "^1.1.0",
     "nodemailer": "^6.9.9",
+    "pdfmake": "^0.3.0",
+    "pdfmake-lite": "^0.1.73",
+    "twilio": "^5.11.1",
+    "uuid": "^13.0.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@types/pdfmake": "^0.2.12",
     "firebase-functions-test": "^3.1.0",
     "typescript": "^5.9.3"
   },

@@ -2,9 +2,8 @@ import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { getAuth, Auth } from "firebase/auth";
 import { getAnalytics, isSupported, Analytics } from "firebase/analytics";
+import { getFunctions, Functions } from "firebase/functions";
 
-// Hardcoded configuration to resolve build-time environment variable issues.
-// These are public keys and safe to be in the client bundle.
 const firebaseConfig = {
   apiKey: "AIzaSyAkJ361VYVMDylVhaOog164OxKR6PVHbJw",
   authDomain: "mindkindler-84fcf.firebaseapp.com",
@@ -18,13 +17,14 @@ const firebaseConfig = {
 let app: FirebaseApp;
 let db: Firestore;
 let auth: Auth;
+let functions: Functions;
 let analytics: Analytics | undefined;
 
 try {
-    // Initialize Firebase
     app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
     db = getFirestore(app);
     auth = getAuth(app);
+    functions = getFunctions(app, "europe-west3");
 
     if (typeof window !== "undefined") {
         isSupported().then((supported) => {
@@ -35,10 +35,10 @@ try {
     }
 } catch (error) {
     console.error("Firebase initialization failed:", error);
-    // Fallback to prevent app crash if something goes wrong, though unlikely with hardcoded keys
     app = {} as any;
     db = {} as any;
     auth = {} as any;
+    functions = {} as any;
 }
 
-export { app, db, auth, analytics };
+export { app, db, auth, functions, analytics };

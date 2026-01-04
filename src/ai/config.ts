@@ -1,5 +1,54 @@
 // src/ai/config.ts
 
+export const AVAILABLE_MODELS = [
+    { value: 'googleai/gemini-1.5-flash', label: 'Gemini 1.5 Flash', tags: ['Fast', 'Low Cost'], tier: 'basic' },
+    { value: 'googleai/gemini-1.5-pro', label: 'Gemini 1.5 Pro', tags: ['Balanced', 'Reasoning'], tier: 'standard' },
+    { value: 'googleai/gemini-2.5-flash', label: 'Gemini 2.5 Flash', tags: ['Next-Gen Fast', 'Low Cost'], tier: 'basic' },
+    { value: 'googleai/gemini-2.5-pro', label: 'Gemini 2.5 Pro', tags: ['Advanced Reasoning', 'High Cost'], tier: 'advanced' },
+];
+
+export const FEATURE_MODEL_DEFAULTS: Record<string, string> = {
+    consultationInsights: 'googleai/gemini-1.5-pro',
+    consultationReport: 'googleai/gemini-1.5-pro',
+    assessmentGrading: 'googleai/gemini-1.5-pro',
+    govIntel: 'googleai/gemini-1.5-pro',
+    documentExtraction: 'googleai/gemini-1.5-flash', // Exception for high volume
+    general: 'googleai/gemini-1.5-pro'
+};
+
+export const FEATURE_METADATA: Record<string, { label: string, description: string, recommended: string }> = {
+    consultationInsights: {
+        label: "Consultation Insights",
+        description: "Analyzes real-time transcripts for clinical risks and patterns.",
+        recommended: 'googleai/gemini-1.5-pro'
+    },
+    consultationReport: {
+        label: "Report Generation",
+        description: "Drafts formal clinical documents and letters.",
+        recommended: 'googleai/gemini-1.5-pro'
+    },
+    assessmentGrading: {
+        label: "Assessment Grading",
+        description: "Evaluates open-text student responses against rubrics.",
+        recommended: 'googleai/gemini-1.5-pro'
+    },
+    govIntel: {
+        label: "GovIntel Policy",
+        description: "Synthesizes regional data into policy memos.",
+        recommended: 'googleai/gemini-2.5-pro' // Advanced recommendation
+    },
+    documentExtraction: {
+        label: "Document Extraction",
+        description: "Extracts structured data from uploaded PDFs/Images.",
+        recommended: 'googleai/gemini-1.5-flash'
+    },
+    general: {
+        label: "General Tasks",
+        description: "Summarization, translation, and helper chat.",
+        recommended: 'googleai/gemini-1.5-pro'
+    }
+};
+
 export const DEFAULT_MODEL = 'googleai/gemini-1.5-flash';
 
 // Standardized Parameters for different AI Tasks

@@ -11,19 +11,22 @@ import { CitationSidebar } from './CitationSidebar';
 import { ReportService } from '@/services/report-service';
 import { useToast } from '@/hooks/use-toast';
 import { Report } from '@/types/schema';
+import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; // Integration
 
 interface ReportEditorProps {
     reportId: string;
     tenantId: string;
     studentId: string; // Used for context fetching
     initialContent?: any;
+    userId: string; // Added for feedback
 }
 
-export function ReportEditor({ reportId, tenantId, studentId, initialContent }: ReportEditorProps) {
+export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId }: ReportEditorProps) {
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
+    const [provenanceId, setProvenanceId] = useState<string | null>(null); // Track AI run
 
     const editor = useEditor({
         extensions: [
@@ -92,6 +95,9 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent }: 
             });
             editor.commands.setContent(html);
             
+            // Assuming result includes provenance ID in V2 service response
+            // setProvenanceId(result.provenanceId); 
+
             toast({ title: 'Draft Generated', description: 'AI content inserted.' });
         } catch (e) {
             console.error(e);
@@ -115,11 +121,21 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent }: 
             <div className="flex-1 flex flex-col">
                 {/* Toolbar */}
                 <div className="border-b p-2 flex items-center justify-between bg-white dark:bg-card">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                         <Button variant="outline" size="sm" onClick={handleAiDraft} disabled={isGenerating}>
                             {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4 text-indigo-500"/>}
                             AI Draft
                         </Button>
+                        
+                        {provenanceId && (
+                            <FeedbackWidget 
+                                tenantId={tenantId} 
+                                userId={userId} 
+                                traceId={provenanceId} 
+                                feature="consultationReport" 
+                            />
+                        )}
+
                         <Button variant="ghost" size="sm">
                             <History className="mr-2 h-4 w-4" /> Versions
                         </Button>

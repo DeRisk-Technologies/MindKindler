@@ -1,12 +1,12 @@
+// functions/src/ai/analyzeConsultationInsight.ts
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
 import * as admin from 'firebase-admin';
-import { genkit } from "genkit";
-import { googleAI } from "@genkit-ai/google-genai";
 import { runRiskRegex } from "./utils/risk";
 import { saveAiProvenance } from "./utils/provenance";
 import { z } from "zod";
 import { applyGlossaryToStructured } from "./utils/glossarySafeApply";
+import { getGenkitInstance, getModelForFeature } from "./utils/model-selector";
 
 // Ensure admin initialized
 if (!admin.apps.length) admin.initializeApp();
@@ -21,11 +21,6 @@ const FLOW_PARAMS = {
         topP: 0.1
     }
 };
-
-const ai = genkit({
-    plugins: [googleAI()],
-    model: "googleai/gemini-1.5-flash",
-});
 
 // Validation Schema
 const InsightSchema = z.object({
@@ -45,12 +40,15 @@ export const handler = async (request: CallableRequest<any>) => {
     
     const startTime = Date.now();
 
+    // 0. Initialize AI
+    const ai = await getGenkitInstance('consultationInsights');
+    const modelName = await getModelForFeature('consultationInsights');
+
     // 1. Deterministic Risk Check
     const riskCheck = runRiskRegex(transcriptChunk);
     
     if (riskCheck.found) {
         // ... (Risk Case Creation - Omitted for brevity, logic unchanged)
-        // If logic is uncommented, use db. For now, acknowledge usage to satisfy linter.
         if (db) { 
             // placeholder usage
         }
@@ -106,7 +104,7 @@ export const handler = async (request: CallableRequest<any>) => {
         studentId: studentId,
         flowName: 'analyzeConsultationInsight',
         prompt: promptText,
-        model: 'googleai/gemini-1.5-flash',
+        model: modelName,
         responseText: result.text,
         parsedOutput: { ...result.parsed, glossaryReplacements }, // Log replacement count
         latencyMs: Date.now() - startTime,

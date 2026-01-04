@@ -1,191 +1,233 @@
 "use client";
 
-import { useFirestoreCollection } from "@/hooks/use-firestore";
-import { GovSnapshot } from "@/analytics/govSnapshots";
-import { generatePolicyMemo, CopilotOutput } from "@/govintel/copilot";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Citations } from "@/components/ui/citations";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, Sparkles, Save, FileText, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
-import { addDoc, collection } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
-import { useToast } from "@/hooks/use-toast";
-import { GovMemo, GovAction } from "@/types/schema";
+import React, { useState, useEffect } from 'react';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Bot, User, Sparkles, BookOpen, ThumbsUp, ThumbsDown, RefreshCcw, History, Plus, FileText } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CopilotService, ChatMessage } from '@/services/copilot-service';
+import { BotSession } from '@/types/schema';
+import { format } from 'date-fns';
 
-export default function PolicyCopilotPage() {
-    const { data: snapshots } = useFirestoreCollection<GovSnapshot>("govSnapshots", "createdAt", "desc");
-    const { data: actions } = useFirestoreCollection<GovAction>("govActions", "createdAt", "desc");
-    const { toast } = useToast();
+export default function CopilotPage() {
+    const [sessions, setSessions] = useState<BotSession[]>([]);
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     
-    // State
-    const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
-    const [memoType, setMemoType] = useState<"briefing"|"policy"|"safeguarding">("briefing");
-    const [generating, setGenerating] = useState(false);
-    const [output, setOutput] = useState<CopilotOutput | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
+    const [input, setInput] = useState('');
+    const [isTyping, setIsTyping] = useState(false);
+    const [contextMode, setContextMode] = useState<'general' | 'student' | 'case'>('general');
 
-    // Action Tracker
-    const [actionTitle, setActionTitle] = useState("");
+    // 1. Load History
+    useEffect(() => {
+        // In real app, get user ID from auth context
+        CopilotService.getSessions('user-1').then(setSessions);
+    }, []);
 
-    const handleGenerate = async () => {
-        const snap = snapshots.find(s => s.id === selectedSnapshotId);
-        if (!snap) return;
+    // 2. Subscribe to Active Session
+    useEffect(() => {
+        if (!activeSessionId) {
+            setMessages([{
+                id: 'intro', role: 'assistant', content: 'Hello! I am your Policy & Clinical Co-Pilot. Start a new chat to begin.', createdAt: new Date()
+            }]);
+            return;
+        }
 
-        setGenerating(true);
+        const unsubscribe = CopilotService.subscribeToMessages(activeSessionId, (msgs) => {
+            setMessages(msgs);
+            setIsTyping(false); // Stop typing if new message arrives
+        });
+        return () => unsubscribe();
+    }, [activeSessionId]);
+
+    const handleSend = async () => {
+        if (!input.trim()) return;
+        
+        const txt = input;
+        setInput('');
+        setIsTyping(true);
+
         try {
-            const res = await generatePolicyMemo(snap, { scopeType: snap.scopeType, scopeId: snap.scopeId }, memoType);
-            setOutput(res);
-        } catch (e) {
-            toast({ title: "Error", variant: "destructive" });
-        } finally {
-            setGenerating(false);
+            // Optimistic UI Update (optional, but subscription handles it fast usually)
+            
+            const result = await CopilotService.sendMessage(
+                txt, 
+                contextMode, 
+                undefined, // contextId
+                activeSessionId || undefined
+            );
+
+            if (!activeSessionId) {
+                setActiveSessionId(result.sessionId);
+                // Refresh sessions list
+                CopilotService.getSessions('user-1').then(setSessions);
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Failed to send message. See console.");
+            setIsTyping(false);
         }
     };
 
-    const handleSaveMemo = async () => {
-        if (!output || !selectedSnapshotId) return;
-        setIsSaving(true);
-        const snap = snapshots.find(s => s.id === selectedSnapshotId);
-        try {
-            const memo: Omit<GovMemo, 'id'> = {
-                tenantId: "default",
-                scopeType: snap?.scopeType || "council",
-                scopeId: snap?.scopeId || "unknown",
-                period: snap?.period || "unknown",
-                memoType,
-                contentHtml: output.html,
-                citations: output.citations,
-                confidence: output.confidence,
-                status: "final",
-                createdAt: new Date().toISOString()
-            };
-            await addDoc(collection(db, "govMemos"), memo);
-            toast({ title: "Memo Saved", description: "Archived in system." });
-        } catch (e) {
-            toast({ title: "Error", variant: "destructive" });
-        } finally {
-            setIsSaving(false);
-        }
+    const startNewChat = () => {
+        setActiveSessionId(null);
+        setMessages([{
+            id: 'intro', role: 'assistant', content: 'Hello! I am your Policy & Clinical Co-Pilot. How can I assist with your casework today?', createdAt: new Date()
+        }]);
     };
-
-    const handleCreateAction = async () => {
-        if (!actionTitle) return;
-        try {
-            const action: Omit<GovAction, 'id'> = {
-                title: actionTitle,
-                category: "policy",
-                status: "proposed",
-                ownerUserId: auth.currentUser?.uid || "unknown",
-                createdAt: new Date().toISOString()
-            };
-            await addDoc(collection(db, "govActions"), action);
-            setActionTitle("");
-            toast({ title: "Action Created" });
-        } catch (e) {
-            console.error(e);
-        }
-    }
 
     return (
-        <div className="p-8 space-y-8">
-            <div>
-                <h1 className="text-3xl font-bold flex items-center gap-2">
-                    <Sparkles className="h-8 w-8 text-indigo-600"/> Policy Co-Pilot
-                </h1>
-                <p className="text-muted-foreground">Generate data-driven briefings and policy actions.</p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Configuration */}
-                <div className="space-y-6">
-                    <Card>
-                        <CardHeader><CardTitle>Context</CardTitle></CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Data Snapshot</label>
-                                <Select value={selectedSnapshotId} onValueChange={setSelectedSnapshotId}>
-                                    <SelectTrigger><SelectValue placeholder="Select period..."/></SelectTrigger>
-                                    <SelectContent>
-                                        {snapshots.map(s => <SelectItem key={s.id} value={s.id}>{s.scopeType.toUpperCase()} - {s.period}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Output Type</label>
-                                <Select value={memoType} onValueChange={(v:any) => setMemoType(v)}>
-                                    <SelectTrigger><SelectValue/></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="briefing">Briefing Note</SelectItem>
-                                        <SelectItem value="policy">Policy Recommendation</SelectItem>
-                                        <SelectItem value="safeguarding">Safeguarding Review</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <Button className="w-full" onClick={handleGenerate} disabled={generating || !selectedSnapshotId}>
-                                {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Generate Draft
-                            </Button>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader><CardTitle>Action Tracker</CardTitle></CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex gap-2">
-                                <input 
-                                    className="flex-1 text-sm border rounded px-2" 
-                                    placeholder="New action item..." 
-                                    value={actionTitle}
-                                    onChange={e => setActionTitle(e.target.value)}
-                                />
-                                <Button size="sm" onClick={handleCreateAction}><CheckCircle2 className="h-4 w-4"/></Button>
-                            </div>
-                            <div className="space-y-2">
-                                {actions.slice(0, 5).map(a => (
-                                    <div key={a.id} className="text-sm border p-2 rounded flex justify-between">
-                                        <span>{a.title}</span>
-                                        <Badge variant="outline">{a.status}</Badge>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
+        <div className="h-[calc(100vh-80px)] flex border rounded-lg overflow-hidden bg-white shadow-sm">
+            
+            {/* Sidebar */}
+            <div className="w-64 border-r flex flex-col bg-gray-50/50">
+                <div className="p-4 border-b space-y-4">
+                    <Button className="w-full justify-start gap-2" variant="default" onClick={startNewChat}>
+                        <Plus className="h-4 w-4" /> New Chat
+                    </Button>
+                    
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Context</label>
+                        <Select value={contextMode} onValueChange={(v: any) => setContextMode(v)}>
+                            <SelectTrigger className="w-full bg-white">
+                                <SelectValue placeholder="Select Context" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="general">General Policy</SelectItem>
+                                <SelectItem value="student">Active Student</SelectItem>
+                                <SelectItem value="case">Current Case</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
 
-                {/* Output */}
-                <div className="lg:col-span-2">
-                    {output ? (
-                        <div className="space-y-6">
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <CardTitle>Generated Draft</CardTitle>
-                                    <div className="flex gap-2">
-                                        <Badge variant={output.confidence === 'high' ? 'default' : 'secondary'}>
-                                            Confidence: {output.confidence.toUpperCase()}
-                                        </Badge>
-                                        <Button size="sm" variant="outline" onClick={handleSaveMemo} disabled={isSaving}>
-                                            <Save className="mr-2 h-3 w-3"/> Save
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div 
-                                        className="prose prose-sm max-w-none p-4 bg-slate-50 rounded border"
-                                        dangerouslySetInnerHTML={{ __html: output.html }}
-                                    />
-                                </CardContent>
-                            </Card>
+                <ScrollArea className="flex-1">
+                    <div className="p-2 space-y-1">
+                        <label className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block mt-2">History</label>
+                        {sessions.map(session => (
+                            <Button 
+                                key={session.id} 
+                                variant={activeSessionId === session.id ? 'secondary' : 'ghost'} 
+                                className="w-full justify-start text-sm h-auto py-2 px-3 truncate"
+                                onClick={() => setActiveSessionId(session.id)}
+                            >
+                                <div className="flex flex-col items-start truncate">
+                                    <span className="truncate w-full">Session {session.id.substring(0,6)}</span>
+                                    <span className="text-[10px] text-muted-foreground font-normal">
+                                        {/* session.updatedAt is Firestore timestamp, need conversion in real app */}
+                                        Recent
+                                    </span>
+                                </div>
+                            </Button>
+                        ))}
+                    </div>
+                </ScrollArea>
+                
+                <div className="p-4 border-t text-xs text-center text-muted-foreground">
+                    MindKindler AI v2.1
+                </div>
+            </div>
 
-                            <Citations citations={output.citations.map(c => ({ chunk: c, score: 1 }))} />
-                        </div>
-                    ) : (
-                        <div className="h-full flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-12 text-muted-foreground bg-slate-50/50">
-                            <FileText className="h-12 w-12 mb-4 opacity-20"/>
-                            <p>Select context and click Generate to draft a policy memo.</p>
-                        </div>
-                    )}
+            {/* Chat Area */}
+            <div className="flex-1 flex flex-col min-w-0 bg-white">
+                <div className="h-14 border-b flex items-center justify-between px-6 bg-white">
+                    <div className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-purple-600" />
+                        <h2 className="font-semibold text-sm">Policy & Clinical Co-Pilot</h2>
+                        <Badge variant="outline" className="ml-2 text-[10px] font-normal text-purple-600 border-purple-200 bg-purple-50">
+                            {contextMode === 'student' ? 'Student Context Active' : 'General Mode'}
+                        </Badge>
+                    </div>
+                </div>
+
+                <ScrollArea className="flex-1 p-6">
+                    <div className="space-y-6 max-w-3xl mx-auto">
+                        {messages.map((msg) => (
+                            <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                                <Avatar className={`h-8 w-8 mt-1 border ${
+                                    msg.role === 'assistant' ? 'bg-purple-100 border-purple-200' : 'bg-gray-100'
+                                }`}>
+                                    <AvatarFallback>
+                                        {msg.role === 'assistant' ? <Bot className="h-4 w-4 text-purple-600" /> : <User className="h-4 w-4 text-gray-600" />}
+                                    </AvatarFallback>
+                                </Avatar>
+
+                                <div className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                    <div className="flex items-center gap-2 mb-1 px-1">
+                                        <span className="text-xs font-semibold text-gray-700">
+                                            {msg.role === 'assistant' ? 'MindKindler AI' : 'You'}
+                                        </span>
+                                    </div>
+
+                                    <div className={`p-4 rounded-lg text-sm shadow-sm whitespace-pre-wrap leading-relaxed ${
+                                        msg.role === 'user' 
+                                            ? 'bg-blue-600 text-white rounded-tr-none' 
+                                            : 'bg-white border border-gray-100 text-gray-800 rounded-tl-none'
+                                    }`}>
+                                        {msg.content}
+                                    </div>
+                                    
+                                    {msg.citations && msg.citations.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mt-2 ml-1">
+                                            {msg.citations.map((cite, i) => (
+                                                <TooltipProvider key={i}>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div className="flex items-center gap-1.5 text-[10px] bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full border border-purple-100 cursor-help hover:bg-purple-100 transition-colors">
+                                                                <BookOpen className="h-3 w-3" />
+                                                                {cite.label}
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        {cite.snippet && <TooltipContent className="max-w-xs text-xs">{cite.snippet}</TooltipContent>}
+                                                    </Tooltip>
+                                                </TooltipProvider>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+
+                        {isTyping && (
+                            <div className="flex gap-4">
+                                 <Avatar className="h-8 w-8 bg-purple-100 border border-purple-200"><AvatarFallback><Bot className="h-4 w-4 text-purple-600" /></AvatarFallback></Avatar>
+                                 <div className="flex gap-1 items-center p-4 bg-white border border-gray-100 rounded-lg rounded-tl-none shadow-sm h-12">
+                                     <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce"></span>
+                                     <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce delay-75"></span>
+                                     <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce delay-150"></span>
+                                 </div>
+                            </div>
+                        )}
+                    </div>
+                </ScrollArea>
+
+                <div className="p-4 bg-white border-t">
+                    <div className="max-w-3xl mx-auto">
+                        <form 
+                            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+                            className="flex gap-3 relative items-end"
+                        >
+                            <Input 
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder="Ask Co-Pilot..." 
+                                className="bg-gray-50 border-gray-200 focus:bg-white pr-10 min-h-[48px] py-3"
+                            />
+                            <Button 
+                                type="submit" 
+                                size="icon" 
+                                disabled={!input.trim() || isTyping} 
+                                className="absolute right-1.5 top-1.5 h-9 w-9 bg-purple-600 hover:bg-purple-700 transition-all"
+                            >
+                                <Sparkles className="h-4 w-4" />
+                            </Button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

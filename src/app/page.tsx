@@ -208,7 +208,7 @@ export default function Home() {
         <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 py-8 md:flex-row md:px-6">
           <Logo />
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} MindKindler. All rights reserved.
+            &copy; {new Date().getFullYear()} MindKindler, a product of DeRisk Technologies Group. All rights reserved.
           </p>
           <nav className="flex gap-4">
             <Link

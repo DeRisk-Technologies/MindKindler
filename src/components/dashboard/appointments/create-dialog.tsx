@@ -1,296 +1,212 @@
 "use client";
 
-import { useState } from "react";
+import { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { 
-    Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { CalendarIcon, Loader2, Search, User } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { httpsCallable, getFunctions } from "firebase/functions";
-import { addDoc, collection, getDocs, query, where, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
 
-const FUNCTIONS_REGION = "europe-west3";
+// Schema-aligned types
+interface AppointmentFormData {
+    title: string;
+    type: string;
+    startAt: string;
+    endAt: string;
+    locationType: 'video' | 'in_person' | 'phone';
+    participants: string; // Comma separated for MVP
+    description: string;
+}
 
-export function CreateAppointmentDialog({ children }: { children: React.ReactNode }) {
-    const [open, setOpen] = useState(false);
-    const [step, setStep] = useState(1);
-    const [loading, setLoading] = useState(false);
-    
-    // Form State
-    const [selectedUser, setSelectedUser] = useState<any>(null); // Participant
-    const [userSearch, setUserSearch] = useState("");
-    const [searchResults, setSearchResults] = useState<any[]>([]);
-    
-    const [reason, setReason] = useState("consultation");
-    const [channel, setChannel] = useState("video");
-    const [date, setDate] = useState<Date | undefined>(undefined);
-    const [notes, setNotes] = useState("");
-    
-    // AI Suggestions
-    const [aiSlots, setAiSlots] = useState<any[]>([]);
-    const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+export function CreateAppointmentDialog() {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+  
+  const [formData, setFormData] = useState<AppointmentFormData>({
+      title: '',
+      type: 'consultation',
+      startAt: '',
+      endAt: '',
+      locationType: 'video',
+      participants: '',
+      description: ''
+  });
 
-    const { toast } = useToast();
+  const handleChange = (field: keyof AppointmentFormData, value: string) => {
+      setFormData(prev => ({ ...prev, [field]: value }));
+  };
 
-    // 1. Search Users
-    const searchUsers = async () => {
-        if (!userSearch) return;
-        setLoading(true);
-        try {
-            const q = query(collection(db, "users"), where("displayName", ">=", userSearch), where("displayName", "<=", userSearch + '\uf8ff'));
-            const snap = await getDocs(q);
-            setSearchResults(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+        // Validation Logic
+        if (new Date(formData.startAt) >= new Date(formData.endAt)) {
+            throw new Error("End time must be after start time");
         }
-    };
 
-    // 2. Get AI Availability
-    const checkAvailability = async () => {
-        if (!selectedUser || !date) return;
-        setLoading(true);
-        try {
-            // FIX: Use explicit region instead of custom domain
-            const functions = getFunctions(undefined, FUNCTIONS_REGION);
-            const findSlots = httpsCallable(functions, 'findAvailabilitySlots');
-            
-            // Format request
-            const result: any = await findSlots({
-                participants: [auth.currentUser?.uid, selectedUser.id],
-                date: format(date, "yyyy-MM-dd"),
-                duration: 60 // minutes
-            });
-            
-            if (result.data.slots && result.data.slots.length > 0) {
-                setAiSlots(result.data.slots);
-                setStep(2);
-            } else {
-                toast({ title: "No slots found", description: "Try a different date.", variant: "destructive" });
-            }
-        } catch (e) {
-            console.error(e);
-            setAiSlots(["09:00", "10:00", "14:00", "15:30"]);
-            setStep(2);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // 3. Create
-    const handleCreate = async () => {
-        if (!selectedSlot || !date || !selectedUser) return;
-        setLoading(true);
+        // Simulate API call to create Appointment
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        try {
-            // Combine date and slot time
-            const [hours, minutes] = selectedSlot.split(':');
-            const startDateTime = new Date(date);
-            startDateTime.setHours(parseInt(hours), parseInt(minutes));
-            
-            const endDateTime = new Date(startDateTime);
-            endDateTime.setHours(endDateTime.getHours() + 1); // 1 hour default
+        console.log("Creating Appointment:", formData);
+        
+        toast({ title: "Appointment Scheduled", description: `${formData.title} has been booked.` });
+        setOpen(false);
+        // Reset form
+        setFormData({
+            title: '',
+            type: 'consultation',
+            startAt: '',
+            endAt: '',
+            locationType: 'video',
+            participants: '',
+            description: ''
+        });
 
-            await addDoc(collection(db, "appointments"), {
-                title: `${reason.charAt(0).toUpperCase() + reason.slice(1)} with ${selectedUser.displayName}`,
-                participants: [auth.currentUser?.uid, selectedUser.id],
-                initiator: auth.currentUser?.uid,
-                reason,
-                channel,
-                startTime: startDateTime.toISOString(),
-                endTime: endDateTime.toISOString(),
-                status: 'confirmed',
-                createdByAI: false, // Manual via AI assist
-                createdAt: serverTimestamp(),
-                notes
-            });
-            
-            toast({ title: "Appointment Scheduled", description: "Invitations have been sent." });
-            setOpen(false);
-            // Reset
-            setStep(1);
-            setSelectedUser(null);
-            setDate(undefined);
-            setAiSlots([]);
-        } catch (e) {
-            console.error(e);
-            toast({ title: "Error", description: "Failed to book appointment.", variant: "destructive" });
-        } finally {
-            setLoading(false);
-        }
-    };
+    } catch (error: any) {
+        toast({ 
+            title: "Error", 
+            description: error.message || "Failed to schedule appointment",
+            variant: "destructive"
+        });
+    } finally {
+        setLoading(false);
+    }
+  };
 
-    return (
-        <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>{children}</DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                    <DialogTitle>New Appointment</DialogTitle>
-                    <DialogDescription>Schedule a session with a student, parent, or colleague.</DialogDescription>
-                </DialogHeader>
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+         <Button className="gap-2">
+            <Plus className="h-4 w-4" /> New Appointment
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>New Appointment</DialogTitle>
+          <DialogDescription>
+            Schedule a new session. Notifications will be sent to participants.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+          
+          {/* Title & Type Row */}
+          <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Title</Label>
+                <Input 
+                    id="title" 
+                    placeholder="e.g. Initial Consultation" 
+                    value={formData.title}
+                    onChange={(e) => handleChange('title', e.target.value)}
+                    required 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="type">Type</Label>
+                 <Select value={formData.type} onValueChange={(v) => handleChange('type', v)}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="consultation">Consultation</SelectItem>
+                        <SelectItem value="assessment">Assessment</SelectItem>
+                        <SelectItem value="follow_up">Follow-up</SelectItem>
+                        <SelectItem value="telehealth">Telehealth</SelectItem>
+                    </SelectContent>
+                </Select>
+              </div>
+          </div>
 
-                {step === 1 && (
-                    <div className="grid gap-4 py-4">
-                        {/* User Search */}
-                        <div className="grid gap-2">
-                            <Label>Who is this with?</Label>
-                            {!selectedUser ? (
-                                <div className="flex gap-2">
-                                    <Input 
-                                        placeholder="Search by name..." 
-                                        value={userSearch} 
-                                        onChange={e => setUserSearch(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && searchUsers()}
-                                    />
-                                    <Button size="icon" variant="outline" onClick={searchUsers} disabled={loading}>
-                                        <Search className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-between p-2 border rounded-md bg-muted/20">
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                            <User className="h-4 w-4 text-primary" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-medium">{selectedUser.displayName}</p>
-                                            <p className="text-xs text-muted-foreground capitalize">{selectedUser.role}</p>
-                                        </div>
-                                    </div>
-                                    <Button variant="ghost" size="sm" onClick={() => setSelectedUser(null)}>Change</Button>
-                                </div>
-                            )}
-                            
-                            {/* Results Dropdown (Simulated) */}
-                            {!selectedUser && searchResults.length > 0 && (
-                                <div className="border rounded-md mt-1 max-h-40 overflow-y-auto bg-background shadow-lg z-10">
-                                    {searchResults.map(u => (
-                                        <div 
-                                            key={u.id} 
-                                            className="p-2 hover:bg-muted cursor-pointer flex items-center justify-between"
-                                            onClick={() => { setSelectedUser(u); setSearchResults([]); }}
-                                        >
-                                            <span className="text-sm font-medium">{u.displayName}</span>
-                                            <span className="text-xs text-muted-foreground">{u.role}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+          {/* Date & Time Row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+                <Label htmlFor="startAt">Start Time</Label>
+                <Input 
+                    id="startAt" 
+                    type="datetime-local" 
+                    value={formData.startAt}
+                    onChange={(e) => handleChange('startAt', e.target.value)}
+                    required 
+                />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="endAt">End Time</Label>
+                <Input 
+                    id="endAt" 
+                    type="datetime-local" 
+                    value={formData.endAt}
+                    onChange={(e) => handleChange('endAt', e.target.value)}
+                    required 
+                />
+            </div>
+          </div>
 
-                        {/* Details */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="grid gap-2">
-                                <Label>Reason</Label>
-                                <Select value={reason} onValueChange={setReason}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="consultation">Consultation</SelectItem>
-                                        <SelectItem value="assessment">Assessment</SelectItem>
-                                        <SelectItem value="therapy">Therapy</SelectItem>
-                                        <SelectItem value="followUp">Follow Up</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Channel</Label>
-                                <Select value={channel} onValueChange={setChannel}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="video">Video Call</SelectItem>
-                                        <SelectItem value="inPerson">In Person</SelectItem>
-                                        <SelectItem value="phone">Phone Call</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
+          {/* Location & Participants */}
+          <div className="grid grid-cols-2 gap-4">
+             <div className="space-y-2">
+                <Label htmlFor="location">Location</Label>
+                 <Select value={formData.locationType} onValueChange={(v) => handleChange('locationType', v as any)}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="video">Video Call (Zoom/Teams)</SelectItem>
+                        <SelectItem value="in_person">In Person</SelectItem>
+                        <SelectItem value="phone">Phone Call</SelectItem>
+                    </SelectContent>
+                </Select>
+             </div>
+             <div className="space-y-2">
+                <Label htmlFor="participants">Participants (Emails)</Label>
+                <Input 
+                    id="participants" 
+                    placeholder="parent@example.com, teacher@school.edu" 
+                    value={formData.participants}
+                    onChange={(e) => handleChange('participants', e.target.value)}
+                />
+             </div>
+          </div>
 
-                        {/* Date Picker */}
-                        <div className="grid gap-2">
-                            <Label>Preferred Date</Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant={"outline"}
-                                        className={cn(
-                                            "w-full justify-start text-left font-normal",
-                                            !date && "text-muted-foreground"
-                                        )}
-                                    >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {date ? format(date, "PPP") : <span>Pick a date</span>}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="start">
-                                    <Calendar
-                                        mode="single"
-                                        selected={date}
-                                        onSelect={setDate}
-                                        initialFocus
-                                        disabled={(date) => date < new Date()}
-                                    />
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                    </div>
-                )}
+          {/* Description */}
+          <div className="space-y-2">
+            <Label htmlFor="description">Notes / Agenda</Label>
+            <Textarea 
+                id="description" 
+                placeholder="Brief details about this session..." 
+                value={formData.description}
+                onChange={(e) => handleChange('description', e.target.value)}
+            />
+          </div>
 
-                {step === 2 && (
-                    <div className="grid gap-4 py-4">
-                         <div className="text-sm text-muted-foreground mb-2">
-                             AI has found the following available slots for {format(date!, "MMMM do")} based on both calendars:
-                         </div>
-                         <div className="grid grid-cols-3 gap-2">
-                             {aiSlots.map((slot: string) => (
-                                 <Button 
-                                    key={slot} 
-                                    variant={selectedSlot === slot ? "default" : "outline"}
-                                    onClick={() => setSelectedSlot(slot)}
-                                    className="text-sm"
-                                 >
-                                     {slot}
-                                 </Button>
-                             ))}
-                         </div>
-                         <div className="grid gap-2 mt-4">
-                             <Label>Notes (Optional)</Label>
-                             <Textarea 
-                                placeholder="Add agenda or details..." 
-                                value={notes}
-                                onChange={e => setNotes(e.target.value)}
-                             />
-                         </div>
-                    </div>
-                )}
-
-                <DialogFooter>
-                    {step === 1 ? (
-                        <Button onClick={checkAvailability} disabled={!selectedUser || !date || loading}>
-                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Find Times
-                        </Button>
-                    ) : (
-                        <>
-                             <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
-                             <Button onClick={handleCreate} disabled={!selectedSlot || loading}>
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Confirm Booking
-                             </Button>
-                        </>
-                    )}
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Schedule
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }

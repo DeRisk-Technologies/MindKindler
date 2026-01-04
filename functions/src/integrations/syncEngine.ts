@@ -1,5 +1,8 @@
+// functions/src/integrations/syncEngine.ts
+
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import { OneRosterConnector } from "./connectors/oneroster";
 
 const getDb = () => {
     if (admin.apps.length === 0) {
@@ -8,7 +11,6 @@ const getDb = () => {
     return admin.firestore();
 };
 
-// Mock Sync Engine
 export const syncExternalData = async (request: CallableRequest) => {
     const db = getDb();
     
@@ -20,34 +22,72 @@ export const syncExternalData = async (request: CallableRequest) => {
     }
 
     let syncedCount = 0;
+    const errors: string[] = [];
 
-    // 2. Iterate and "Fetch" Data (Mocking external API call)
+    // 2. Iterate and Fetch Data
     for (const doc of integrationsSnap.docs) {
         const config = doc.data();
-        
-        // Mock Data: External Grades
-        const mockGrades = [
-            { studentId: "std_mock_1", subject: "Math", score: 88, source: config.type },
-            { studentId: "std_mock_2", subject: "Science", score: 92, source: config.type },
-        ];
+        let records = [];
 
-        // 3. Upsert into 'assessment_results' or 'external_grades'
-        const batch = db.batch();
-        
-        for (const grade of mockGrades) {
-            const ref = db.collection("external_academic_records").doc(); // New collection for external data
-            batch.set(ref, {
-                ...grade,
-                syncedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            syncedCount++;
+        try {
+            if (config.type === 'oneroster') {
+                // Decrypt secrets here in prod (e.g. Secret Manager)
+                // For now reading from doc or env
+                const rosterConfig = {
+                    clientId: config.clientId || process.env.ONEROSTER_CLIENT_ID || '',
+                    clientSecret: config.clientSecret || process.env.ONEROSTER_CLIENT_SECRET || '',
+                    baseUrl: config.baseUrl
+                };
+                
+                if (!rosterConfig.clientId) {
+                    throw new Error(`Missing credentials for ${doc.id}`);
+                }
+
+                records = await OneRosterConnector.fetchGrades(rosterConfig);
+            } else {
+                console.log(`Skipping unknown integration type: ${config.type}`);
+                continue;
+            }
+
+            // 3. Upsert into 'external_academic_records'
+            if (records.length > 0) {
+                const batch = db.batch();
+                let batchCount = 0;
+
+                for (const rec of records) {
+                    // Create a deterministic ID to avoid dupes
+                    const id = `${config.type}_${rec.studentId}_${rec.subject}_${rec.date}`;
+                    const ref = db.collection("external_academic_records").doc(id);
+                    
+                    batch.set(ref, {
+                        ...rec,
+                        integrationId: doc.id,
+                        syncedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                    
+                    batchCount++;
+                    syncedCount++;
+                }
+                
+                await batch.commit();
+                
+                // Update last sync time
+                await doc.ref.update({ 
+                    lastSync: new Date().toISOString(),
+                    syncStatus: 'success',
+                    recordsSynced: batchCount
+                });
+            }
+        } catch (e: any) {
+            console.error(`Sync error for ${doc.id}`, e);
+            errors.push(`${doc.id}: ${e.message}`);
+            await doc.ref.update({ syncStatus: 'error', lastError: e.message });
         }
-        
-        await batch.commit();
-        
-        // Update last sync time
-        await doc.ref.update({ lastSync: new Date().toISOString() });
     }
 
-    return { success: true, message: `Synced ${syncedCount} records from ${integrationsSnap.size} providers.` };
+    return { 
+        success: errors.length === 0, 
+        syncedCount, 
+        message: errors.length > 0 ? `Synced with errors: ${errors.join('; ')}` : "Sync complete."
+    };
 };

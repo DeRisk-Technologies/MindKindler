@@ -1,39 +1,66 @@
-// firestore.rules (Snippet for EPP Upload Portal)
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function
-    function isEPP() {
-      return request.auth.token.role in ['educationalpsychologist', 'admin'];
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
     }
     
-    function isTrustedAssistant() {
-      return get(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId)/users/$(request.auth.uid)).data.isTrustedAssistant == true;
+    function isTenantMember(tenantId) {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'global_admin');
     }
 
-    match /tenants/{tenantId}/documents/{docId} {
-      allow read: if request.auth != null; // Refine per tenant
+    function isGlobalAdmin() {
+       return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'global_admin';
+    }
+
+    // --- MindKindler Community Rules ---
+    // Updated Path Structure: tenants/{tenantId}/community/{feature}/{collection}
+
+    // Forum
+    match /tenants/{tenantId}/community/forum/categories/{categoryId} {
+      allow read: if isTenantMember(tenantId);
+      allow write: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin());
+    }
+
+    match /tenants/{tenantId}/community/forum/threads/{threadId} {
+      allow read: if isTenantMember(tenantId);
+      allow create: if isTenantMember(tenantId) && request.resource.data.authorId == request.auth.uid;
+      allow update: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin());
       
-      // Anyone can upload (create) status='uploading'
-      allow create: if request.resource.data.status == 'uploading' 
-                    && request.resource.data.uploadedBy == request.auth.uid;
-
-      // Only EPP or Trusted Assistant can publish
-      allow update: if (request.resource.data.status == 'published' 
-                        && (isEPP() || isTrustedAssistant()))
-                    || (request.resource.data.status != 'published'); 
+      match /posts/{postId} {
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && request.resource.data.authorId == request.auth.uid;
+        allow update: if isTenantMember(tenantId) && (request.resource.data.authorId == request.auth.uid || isGlobalAdmin());
+      }
     }
 
-    match /tenants/{tenantId}/document_staging/{stagingId} {
-      allow read, write: if request.auth != null;
+    // Wiki
+    match /tenants/{tenantId}/community/wiki/pages/{pageId} {
+       allow read: if isTenantMember(tenantId);
+       allow create: if isTenantMember(tenantId); 
+       allow update: if isTenantMember(tenantId);
     }
 
-    // Audit logs immutable
-    match /tenants/{tenantId}/documents/{docId}/timeline/{eventId} {
-      allow create: if request.auth != null;
-      allow update, delete: if false; 
+    // Blog
+    match /tenants/{tenantId}/community/blog/posts/{postId} {
+       allow read: if isTenantMember(tenantId); 
+       allow write: if isTenantMember(tenantId); 
+    }
+
+    // Global Public Forum
+    match /global/forum/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isGlobalAdmin(); 
+    }
+    
+    // Global Wiki
+    match /global/wiki/pages/{pageId} {
+      allow read: if isAuthenticated();
+      allow write: if isGlobalAdmin();
     }
   }
 }
