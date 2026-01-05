@@ -1,4 +1,4 @@
-import * as nodemailer from 'nodemailer';
+// import * as nodemailer from 'nodemailer'; // Uncomment when configuring SMTP
 import * as functions from 'firebase-functions';
 
 // Interface for email options

@@ -124,3 +124,8 @@ export const provisionEnterpriseTenant = provisionTenant;
 // --- Email Infrastructure ---
 import { processEmailQueue as emailQueueHandler } from './services/email';
 export const processEmailQueue = emailQueueHandler;
+
+// --- Billing (Stripe) ---
+import { createCheckoutSession as checkoutHandler, handleStripeWebhook as webhookHandler } from './billing/stripe-integration';
+export const createStripeCheckout = checkoutHandler;
+export const stripeWebhook = webhookHandler;
