@@ -57,14 +57,14 @@ export function DashboardSidebar() {
           const userSnap = await getDoc(doc(db, "users", user.uid));
           if (userSnap.exists()) {
             const data = userSnap.data();
-            setRole(data.role);
+            // Normalizing role to handle inconsistent casing or variations
+            const normalizedRole = data.role?.toLowerCase() || "";
+            setRole(normalizedRole);
             setIsTrustedAssistant(data.isTrustedAssistant === true);
           } else {
-             // Fallback logic in case User doc is slow to create or missing
-             // If we have a custom claim for role, use that immediately
              const token = await user.getIdTokenResult();
              if (token.claims.role) {
-                setRole(token.claims.role as string);
+                setRole((token.claims.role as string).toLowerCase());
              }
           }
         } catch (e) {
@@ -77,28 +77,24 @@ export function DashboardSidebar() {
 
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
 
-  // --- Role Definitions ---
+  // --- Normalized Role Definitions ---
+  // We use lowercase to match the values coming from signup/admin forms
   
-  // Super User
-  const isSuperAdmin = role === 'SuperAdmin';
+  const isSuperAdmin = role === 'superadmin' || role === 'admin';
   
-  // Administrators (Organization Level)
-  // Independent EPPs act as their own TenantAdmin
-  const isTenantAdmin = role === 'TenantAdmin' || role === 'SchoolAdmin' || isSuperAdmin;
+  const isTenantAdmin = role === 'tenantadmin' || role === 'schooladministrator' || isSuperAdmin;
   
-  // Clinical Practitioners (EPPs, Psychologists)
-  // Note: Independent EPPs usually hold this role AND TenantAdmin, or just EPP if managed.
-  // CRITICAL FIX: Ensure 'EPP' role specifically unlocks this section.
-  const isClinician = role === 'EPP' || role === 'SchoolPsychologist' || role === 'ClinicalPsychologist' || isTenantAdmin;
+  // Clinicians: Includes EPP, Educational Psychologist, Clinical Psychologist
+  const isClinician = 
+    role === 'epp' || 
+    role === 'educationalpsychologist' || 
+    role === 'clinicalpsychologist' || 
+    role === 'schoolpsychologist' || 
+    isTenantAdmin;
   
-  // Support Staff
-  const isAssistant = role === 'Assistant' || role === 'TrustedAssistant' || isTenantAdmin;
+  const isAssistant = role === 'assistant' || role === 'trustedassistant' || isTenantAdmin;
   
-  // Government / Policy
-  const isGov = role === 'GovAnalyst' || role === 'StateOfficial' || isSuperAdmin;
-
-  // Debugging log to trace why menu might be hidden
-  // console.log("Current Role:", role, "Is Clinician?", isClinician);
+  const isGov = role === 'govanalyst' || role === 'stateofficial' || role === 'localeducationauthority' || isSuperAdmin;
 
   return (
     <>
@@ -107,22 +103,16 @@ export function DashboardSidebar() {
       </SidebarHeader>
       <SidebarContent className="px-2 py-4">
         
-        {/* =========================================
-            1. CORE CLINICAL WORKSPACE
-            (Visible to EPPs, School Admins, Tenant Admins)
-           ========================================= */}
+        {/* 1. CORE CLINICAL WORKSPACE */}
         <SidebarGroup>
           <SidebarGroupLabel>Clinical Workspace</SidebarGroupLabel>
           <SidebarMenu>
-            
-            {/* Dashboard Overview */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === "/dashboard"} tooltip="Overview">
                 <Link href="/dashboard"><LayoutDashboard /><span>Overview</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             
-            {/* Caseload Management - PRIMARY ANCHOR */}
             {isClinician && (
                 <Collapsible defaultOpen={true} className="group/collapsible">
                 <SidebarMenuItem>
@@ -144,7 +134,6 @@ export function DashboardSidebar() {
                             <Link href="/dashboard/cases"><span>Active Cases</span></Link>
                         </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
-                        {/* Added Parents link for completeness */}
                         <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/students/parents")}>
                             <Link href="/dashboard/students"><span>Parents & Guardians</span></Link>
@@ -156,7 +145,6 @@ export function DashboardSidebar() {
                 </Collapsible>
             )}
 
-            {/* Assessment & Reporting */}
             {isClinician && (
                 <Collapsible defaultOpen={isActive("/dashboard/assessments") || isActive("/dashboard/reports")} className="group/collapsible">
                 <SidebarMenuItem>
@@ -197,9 +185,7 @@ export function DashboardSidebar() {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* =========================================
-            2. COMMUNICATION & SCHEDULING
-           ========================================= */}
+        {/* 2. COMMUNICATION & SCHEDULING */}
         <SidebarGroup>
             <SidebarGroupLabel>Communication</SidebarGroupLabel>
             <SidebarMenu>
@@ -219,7 +205,6 @@ export function DashboardSidebar() {
                    </SidebarMenuButton>
                </SidebarMenuItem>
 
-               {/* AI Co-Pilot (Clinicians Only) */}
                {isClinician && (
                    <SidebarMenuItem>
                        <SidebarMenuButton asChild isActive={isActive("/dashboard/govintel/copilot")} tooltip="AI Co-Pilot">
@@ -232,10 +217,7 @@ export function DashboardSidebar() {
             </SidebarMenu>
         </SidebarGroup>
 
-        {/* =========================================
-            3. ENTERPRISE & GOVINTEL 
-            (Gov, State, SuperAdmin, Large LEA Admins)
-           ========================================= */}
+        {/* 3. ENTERPRISE & GOVINTEL */}
         {(isGov || isTenantAdmin) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Organization & Strategy</SidebarGroupLabel>
@@ -281,10 +263,7 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* =========================================
-            4. DATA OPERATIONS
-            (Admins, Assistants - and Independent EPPs for Import)
-           ========================================= */}
+        {/* 4. DATA OPERATIONS */}
         {(isTenantAdmin || isAssistant) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Data Operations</SidebarGroupLabel>
@@ -317,9 +296,7 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* =========================================
-            5. COMMUNITY & GROWTH (All Users)
-           ========================================= */}
+        {/* 5. COMMUNITY & GROWTH */}
         <SidebarGroup>
             <SidebarGroupLabel>Community & Growth</SidebarGroupLabel>
             <SidebarMenu>
@@ -377,9 +354,7 @@ export function DashboardSidebar() {
             </SidebarMenu>
         </SidebarGroup>
 
-        {/* =========================================
-            6. SYSTEM & ADMIN
-           ========================================= */}
+        {/* 6. SYSTEM & ADMIN */}
         <SidebarGroup className="mt-auto">
             <SidebarGroupLabel>System</SidebarGroupLabel>
             <SidebarMenu>
@@ -389,7 +364,6 @@ export function DashboardSidebar() {
                     </SidebarMenuButton>
                 </SidebarMenuItem>
                 
-                {/* SuperAdmin / Owner Tools */}
                 {isSuperAdmin && (
                     <Collapsible defaultOpen={isActive("/dashboard/admin")} className="group/collapsible">
                         <SidebarMenuItem>
