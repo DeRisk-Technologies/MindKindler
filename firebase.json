@@ -2,33 +2,33 @@
   "firestore": [
     {
       "database": "(default)",
-      "rules": "firestore.rules",
-      "indexes": "firestore.indexes.json"
-    },
-    {
-      "database": "mindkindler-eu",
-      "rules": "firestore.rules",
-      "indexes": "firestore.indexes.json"
+      "rules": "firestore.default.rules",
+      "indexes": "firestore.default.indexes.json"
     },
     {
       "database": "mindkindler-uk",
-      "rules": "firestore.rules",
-      "indexes": "firestore.indexes.json"
+      "rules": "firestore.mindkindler-uk.rules",
+      "indexes": "firestore.mindkindler-uk.indexes.json"
     },
     {
-      "database": "mindkindler-me",
-      "rules": "firestore.rules",
-      "indexes": "firestore.indexes.json"
-    },
-    {
-      "database": "mindkindler-us",
-      "rules": "firestore.rules",
-      "indexes": "firestore.indexes.json"
+      "database": "mindkindler-eu",
+      "rules": "firestore.mindkindler-eu.rules",
+      "indexes": "firestore.mindkindler-eu.indexes.json"
     },
     {
       "database": "mindkindler-asia",
-      "rules": "firestore.rules",
-      "indexes": "firestore.indexes.json"
+      "rules": "firestore.mindkindler-asia.rules",
+      "indexes": "firestore.mindkindler-asia.indexes.json"
+    },
+    {
+      "database": "mindkindler-me",
+      "rules": "firestore.mindkindler-me.rules",
+      "indexes": "firestore.mindkindler-me.indexes.json"
+    },
+    {
+      "database": "mindkindler-us",
+      "rules": "firestore.mindkindler-us.rules",
+      "indexes": "firestore.mindkindler-us.indexes.json"
     }
   ],
   "functions": [
