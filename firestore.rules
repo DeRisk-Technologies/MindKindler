@@ -29,18 +29,17 @@ service cloud.firestore {
     function isClinician(tenantId) {
        let role = getRole();
        return isTenantMember(tenantId) && (
-         role != null && (
-           role.lower() in [
-              'epp', 'educationalpsychologist', 'clinicalpsychologist', 
-              'schoolpsychologist', 'tenantadmin', 'superadmin', 'admin', 'schooladministrator'
-           ]
-         )
+         role in [
+            'EPP', 'epp', 'EducationalPsychologist', 'educationalpsychologist', 
+            'ClinicalPsychologist', 'clinicalpsychologist', 'SchoolPsychologist', 
+            'TenantAdmin', 'SuperAdmin', 'Admin', 'SchoolAdministrator', 'admin', 'tenantadmin'
+         ]
        );
     }
 
-    // --- Global Settings (Fixes Landing Page Error) ---
+    // --- Global Settings ---
     match /organization_settings/{id} {
-      allow read: if true; // Publicly readable for landing page
+      allow read: if true; 
       allow write: if isSystemAdmin();
     }
 
@@ -57,7 +56,7 @@ service cloud.firestore {
       allow update: if isSystemAdmin() || (isAuthenticated() && getTenantId() == orgId);
     }
 
-    // --- Student 360 & Clinical Data ---
+    // --- Student 360 & Clinical Data (Multi-DB) ---
     match /tenants/{tenantId}/students/{studentId} {
       allow read: if isTenantMember(tenantId);
       allow write: if isClinician(tenantId);
