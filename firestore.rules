@@ -7,8 +7,6 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // SHARDING-SAFE ROLE CHECK
-    // Prioritizes token claims (Role-based access across shards)
     function getRole() {
       return request.auth.token.role;
     }
@@ -19,7 +17,9 @@ service cloud.firestore {
 
     function isSystemAdmin() {
       let role = getRole();
-      return isAuthenticated() && (role == 'SuperAdmin' || role == 'Admin' || role == 'admin' || role == 'superadmin');
+      return isAuthenticated() && (
+        role == 'SuperAdmin' || role == 'Admin' || role == 'admin' || role == 'superadmin'
+      );
     }
 
     function isTenantMember(tenantId) {
@@ -28,12 +28,20 @@ service cloud.firestore {
     
     function isClinician(tenantId) {
        let role = getRole();
-       let normalizedRole = role.lower(); // Rules v2 support string methods
-       return isTenantMember(tenantId) && 
-         (normalizedRole in [
-            'epp', 'educationalpsychologist', 'clinicalpsychologist', 
-            'schoolpsychologist', 'tenantadmin', 'superadmin', 'admin'
-         ]);
+       return isTenantMember(tenantId) && (
+         role != null && (
+           role.lower() in [
+              'epp', 'educationalpsychologist', 'clinicalpsychologist', 
+              'schoolpsychologist', 'tenantadmin', 'superadmin', 'admin', 'schooladministrator'
+           ]
+         )
+       );
+    }
+
+    // --- Global Settings (Fixes Landing Page Error) ---
+    match /organization_settings/{id} {
+      allow read: if true; // Publicly readable for landing page
+      allow write: if isSystemAdmin();
     }
 
     // --- Core User Management ---
@@ -50,13 +58,13 @@ service cloud.firestore {
     }
 
     // --- Student 360 & Clinical Data ---
-    // This now works across ALL sharded regional databases
     match /tenants/{tenantId}/students/{studentId} {
       allow read: if isTenantMember(tenantId);
       allow write: if isClinician(tenantId);
       
       match /{allSubcollections=**} {
-        allow read, write: if isClinician(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow write: if isClinician(tenantId);
       }
     }
     
@@ -65,33 +73,32 @@ service cloud.firestore {
        allow write: if isClinician(tenantId);
        
        match /{allSubcollections=**} {
-          allow read, write: if isClinician(tenantId);
+          allow read: if isTenantMember(tenantId);
+          allow write: if isClinician(tenantId);
        }
     }
 
     match /tenants/{tenantId}/consultations/{docId} {
-       allow read, write: if isClinician(tenantId);
+       allow read: if isTenantMember(tenantId);
+       allow write: if isClinician(tenantId);
     }
 
-    // --- Other Collections ---
+    // --- Calendar & Messaging ---
     match /tenants/{tenantId}/appointments/{appointmentId} {
-      allow read: if isTenantMember(tenantId);
-      allow write: if isTenantMember(tenantId);
+      allow read, write: if isTenantMember(tenantId);
     }
     
     match /tenants/{tenantId}/chats/{chatId} {
-      allow read, update: if isTenantMember(tenantId) && request.auth.uid in resource.data.participantIds;
+      allow read, update: if isTenantMember(tenantId);
       allow create: if isTenantMember(tenantId);
       
       match /messages/{msgId} {
-         allow read: if isTenantMember(tenantId); // Participant check handled at parent
-         allow create: if isTenantMember(tenantId);
+         allow read, create: if isTenantMember(tenantId);
       }
     }
 
     match /policyRules/{ruleId} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /guardianFindings/{fId} { allow read, create, update: if isAuthenticated(); }
-    match /installedPacks/{pId} { allow read, write: if isAuthenticated(); }
 
     // --- Default Deny ---
     match /{document=**} {
