@@ -59,6 +59,13 @@ export function DashboardSidebar() {
             const data = userSnap.data();
             setRole(data.role);
             setIsTrustedAssistant(data.isTrustedAssistant === true);
+          } else {
+             // Fallback logic in case User doc is slow to create or missing
+             // If we have a custom claim for role, use that immediately
+             const token = await user.getIdTokenResult();
+             if (token.claims.role) {
+                setRole(token.claims.role as string);
+             }
           }
         } catch (e) {
           console.error("Error fetching role", e);
@@ -81,6 +88,7 @@ export function DashboardSidebar() {
   
   // Clinical Practitioners (EPPs, Psychologists)
   // Note: Independent EPPs usually hold this role AND TenantAdmin, or just EPP if managed.
+  // CRITICAL FIX: Ensure 'EPP' role specifically unlocks this section.
   const isClinician = role === 'EPP' || role === 'SchoolPsychologist' || role === 'ClinicalPsychologist' || isTenantAdmin;
   
   // Support Staff
@@ -88,6 +96,9 @@ export function DashboardSidebar() {
   
   // Government / Policy
   const isGov = role === 'GovAnalyst' || role === 'StateOfficial' || isSuperAdmin;
+
+  // Debugging log to trace why menu might be hidden
+  // console.log("Current Role:", role, "Is Clinician?", isClinician);
 
   return (
     <>

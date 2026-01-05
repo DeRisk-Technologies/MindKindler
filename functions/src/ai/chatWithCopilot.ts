@@ -1,12 +1,28 @@
+// functions/src/ai/chatWithCopilot.ts
+
 import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { logAuditEvent } from '../student360/audit/audit-logger';
+import { retrieveContext } from "./knowledge/retrieve"; // Import real retrieval logic
+import { VertexAI } from '@google-cloud/vertexai';
+
+// Initialize Vertex AI for Generation
+const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
+const location = 'europe-west3';
+const vertex_ai = new VertexAI({ project: project, location: location });
+const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-1.5-flash-001' });
 
 interface ChatRequest {
     sessionId?: string;
     message: string;
     contextMode: 'general' | 'student' | 'case';
     contextId?: string; // studentId or caseId
+}
+
+interface Citation {
+    sourceId: string;
+    text: string;
+    relevance: number;
 }
 
 export const handler = async (request: CallableRequest<ChatRequest>) => {
@@ -45,19 +61,54 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         throw new HttpsError('permission-denied', 'Safety Violation: Query blocked by Guardian.');
     }
 
-    // 4. RAG Retrieval & Generation (Stubbed for Prototype)
-    let responseText = "I don't have enough context for that.";
-    let citations = [];
-
-    if (contextMode === 'student' && contextId) {
-        responseText = `Based on the record for Student ${contextId}, the last assessment was on Oct 12th. The primary need identified is Dyslexia support.`;
-        citations = [{ sourceId: 'doc-1', text: 'Psychological Assessment 2023', relevance: 0.95 }];
-    } else {
-        responseText = "According to the UK SEN Code of Practice (2015), requests must be processed within 6 weeks.";
-        citations = [{ sourceId: 'policy-uk-sen', text: 'UK SEN Code 9.1', relevance: 0.99 }];
+    // 4. RAG Retrieval (Real Implementation)
+    let contextText = "";
+    let citations: Citation[] = [];
+    
+    try {
+        // Construct query: augment user message with context mode
+        const retrievalQuery = `${contextMode} ${contextId ? `(${contextId})` : ''}: ${message}`;
+        const searchResults = await retrieveContext(tenantId, retrievalQuery);
+        
+        if (searchResults.length > 0) {
+            contextText = searchResults.map(r => r.text).join('\n\n');
+            citations = searchResults.map(r => ({ 
+                sourceId: r.documentId || r.id, 
+                text: r.metadata?.title || 'Knowledge Base',
+                relevance: r.score 
+            }));
+        }
+    } catch (e) {
+        console.error("RAG Retrieval Failed", e);
+        // Fallback to no context
     }
 
-    // 5. Persist Bot Response
+    // 5. LLM Generation with Grounding
+    const systemPrompt = `
+        You are MindKindler Copilot, an AI assistant for Educational Psychologists.
+        Use the provided context to answer the user's question accurately.
+        If the context doesn't answer the question, say "I don't have that information in my knowledge base."
+        Do not halluncinate.
+        
+        Context:
+        ${contextText}
+    `;
+
+    const requestPrompt = {
+        contents: [{ role: 'user', parts: [{ text: systemPrompt + "\n\nUser Question: " + message }] }]
+    };
+
+    let responseText = "I encountered an error generating the response.";
+    try {
+        const result = await generativeModel.generateContent(requestPrompt);
+        const response = await result.response;
+        responseText = response.candidates?.[0].content.parts[0].text || responseText;
+    } catch (e) {
+        console.error("LLM Generation Failed", e);
+        responseText = "I'm having trouble connecting to my brain right now. Please try again.";
+    }
+
+    // 6. Persist Bot Response
     const responseRef = await db.collection('bot_sessions').doc(currentSessionId).collection('messages').add({
         role: 'assistant',
         content: responseText,
@@ -66,7 +117,7 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // 6. Log Provenance
+    // 7. Log Provenance
     await logAuditEvent({
         tenantId,
         action: 'ai_generate',

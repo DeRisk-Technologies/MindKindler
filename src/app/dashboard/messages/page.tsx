@@ -1,35 +1,100 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Phone, Video, MoreVertical, Search, Paperclip } from 'lucide-react';
+import { Send, Phone, Video, MoreVertical, Search, Paperclip, ShieldAlert, Loader2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-
-// Mock Data for Prototype
-const MOCK_CHATS = [
-    { id: '1', name: 'Dr. Sarah & Parent (Alice)', lastMsg: 'Sounds good, see you then.', time: '10:30 AM', unread: 2 },
-    { id: '2', name: 'School Admin Team', lastMsg: 'Report uploaded.', time: 'Yesterday', unread: 0 },
-    { id: '3', name: 'Support', lastMsg: 'How can we help?', time: 'Mon', unread: 0 },
-];
-
-const MOCK_MESSAGES = [
-    { id: '1', text: 'Hello, I wanted to confirm the appointment time.', sender: 'parent', time: '10:00 AM' },
-    { id: '2', text: 'Hi! Yes, we are scheduled for 2pm on Thursday.', sender: 'me', time: '10:05 AM' },
-    { id: '3', text: 'Great, will this be on Zoom?', sender: 'parent', time: '10:15 AM' },
-    { id: '4', text: 'Yes, I will send the secure link shortly.', sender: 'me', time: '10:20 AM' },
-];
+import { useAuth } from '@/hooks/use-auth';
+import { ChatService } from '@/services/messaging/chat-service';
+import { ChatChannel, ChatMessage } from '@/types/schema';
+import { useToast } from '@/hooks/use-toast';
 
 export default function MessagesPage() {
-    const [selectedChat, setSelectedChat] = useState<string | null>('1');
+    const { user, tenant } = useAuth();
+    const { toast } = useToast();
+    
+    // State
+    const [chats, setChats] = useState<ChatChannel[]>([]);
+    const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
+    const [isSending, setIsSending] = useState(false);
+    
+    // Services
+    const chatService = useRef<ChatService | null>(null);
+    const scrollEndRef = useRef<HTMLDivElement>(null);
+
+    // Initialize Service
+    useEffect(() => {
+        if (user && tenant) {
+            chatService.current = new ChatService(tenant.id, user.uid);
+            
+            // Subscribe to Chats
+            const unsubscribe = chatService.current.subscribeToChats((data) => {
+                setChats(data);
+                // Auto-select first chat if none selected
+                if (!selectedChatId && data.length > 0) {
+                    setSelectedChatId(data[0].id);
+                }
+            });
+            return () => unsubscribe();
+        }
+    }, [user, tenant]);
+
+    // Subscribe to Messages when Chat changes
+    useEffect(() => {
+        if (selectedChatId && chatService.current) {
+            const unsubscribe = chatService.current.subscribeToMessages(selectedChatId, (data) => {
+                setMessages(data);
+                // Scroll to bottom
+                setTimeout(() => scrollEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+            });
+            return () => unsubscribe();
+        }
+    }, [selectedChatId]);
+
+    const handleSendMessage = async () => {
+        if (!inputText.trim() || !selectedChatId || !chatService.current) return;
+        
+        setIsSending(true);
+        const result = await chatService.current.sendMessage(selectedChatId, inputText);
+        setIsSending(false);
+
+        if (result.success) {
+            setInputText('');
+        } else {
+            toast({
+                title: "Message Blocked",
+                description: result.error,
+                variant: "destructive"
+            });
+        }
+    };
+
+    // Derived State
+    const activeChat = chats.find(c => c.id === selectedChatId);
+
+    // Helpers
+    const getChatName = (chat: ChatChannel) => {
+        if (chat.name) return chat.name;
+        // Logic to show other participant's name would go here (requires User Profile lookup)
+        return chat.participantIds.filter(id => id !== user?.uid).join(', ') || 'Unknown Chat';
+    };
+
+    const formatTime = (isoString: string) => {
+        const date = new Date(isoString);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
+    if (!user) return <div className="p-10 text-center">Please log in to view messages.</div>;
 
     return (
         <div className="flex h-[calc(100vh-100px)] border rounded-lg overflow-hidden bg-white shadow-sm">
             
-            {/* Sidebar */}
+            {/* Sidebar List */}
             <div className="w-80 border-r flex flex-col bg-gray-50">
                 <div className="p-4 border-b bg-white">
                     <div className="relative">
@@ -38,27 +103,29 @@ export default function MessagesPage() {
                     </div>
                 </div>
                 <ScrollArea className="flex-1">
-                    {MOCK_CHATS.map(chat => (
+                    {chats.length === 0 && (
+                        <div className="p-4 text-center text-gray-400 text-sm">No conversations yet.</div>
+                    )}
+                    {chats.map(chat => (
                         <div 
                             key={chat.id} 
-                            onClick={() => setSelectedChat(chat.id)}
-                            className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-100 transition-colors ${selectedChat === chat.id ? 'bg-blue-50 border-r-4 border-blue-500' : ''}`}
+                            onClick={() => setSelectedChatId(chat.id)}
+                            className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-100 transition-colors ${selectedChatId === chat.id ? 'bg-blue-50 border-r-4 border-blue-500' : ''}`}
                         >
                             <Avatar>
-                                <AvatarFallback>{chat.name[0]}</AvatarFallback>
+                                <AvatarFallback>{getChatName(chat)[0]}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-baseline">
-                                    <span className="font-semibold text-sm truncate">{chat.name}</span>
-                                    <span className="text-[10px] text-gray-500">{chat.time}</span>
+                                    <span className="font-semibold text-sm truncate">{getChatName(chat)}</span>
+                                    {chat.lastMessage && (
+                                        <span className="text-[10px] text-gray-500">{formatTime(chat.lastMessage.sentAt)}</span>
+                                    )}
                                 </div>
-                                <p className="text-xs text-gray-500 truncate">{chat.lastMsg}</p>
+                                <p className="text-xs text-gray-500 truncate">
+                                    {chat.lastMessage?.text || 'New conversation'}
+                                </p>
                             </div>
-                            {chat.unread > 0 && (
-                                <div className="h-5 w-5 bg-blue-600 text-white text-[10px] flex items-center justify-center rounded-full">
-                                    {chat.unread}
-                                </div>
-                            )}
                         </div>
                     ))}
                 </ScrollArea>
@@ -66,64 +133,76 @@ export default function MessagesPage() {
 
             {/* Chat Area */}
             <div className="flex-1 flex flex-col">
-                {/* Header */}
-                <div className="p-4 border-b flex justify-between items-center bg-white h-16">
-                    <div className="flex items-center gap-3">
-                         <Avatar className="h-8 w-8">
-                            <AvatarFallback>A</AvatarFallback>
-                        </Avatar>
-                        <div>
-                            <h3 className="font-semibold text-sm">Dr. Sarah & Parent (Alice)</h3>
-                            <p className="text-xs text-green-600 flex items-center gap-1">
-                                <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span> Online
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button variant="ghost" size="icon"><Phone className="h-4 w-4 text-gray-500" /></Button>
-                        <Button variant="ghost" size="icon"><Video className="h-4 w-4 text-gray-500" /></Button>
-                        <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4 text-gray-500" /></Button>
-                    </div>
-                </div>
-
-                {/* Messages */}
-                <ScrollArea className="flex-1 p-4 bg-gray-50">
-                    <div className="space-y-4">
-                        {MOCK_MESSAGES.map(msg => (
-                            <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[70%] p-3 rounded-2xl text-sm ${
-                                    msg.sender === 'me' 
-                                        ? 'bg-blue-600 text-white rounded-tr-none' 
-                                        : 'bg-white border text-gray-800 rounded-tl-none shadow-sm'
-                                }`}>
-                                    <p>{msg.text}</p>
-                                    <p className={`text-[10px] mt-1 text-right ${msg.sender === 'me' ? 'text-blue-100' : 'text-gray-400'}`}>
-                                        {msg.time}
+                {activeChat ? (
+                    <>
+                        {/* Header */}
+                        <div className="p-4 border-b flex justify-between items-center bg-white h-16">
+                            <div className="flex items-center gap-3">
+                                 <Avatar className="h-8 w-8">
+                                    <AvatarFallback>{getChatName(activeChat)[0]}</AvatarFallback>
+                                </Avatar>
+                                <div>
+                                    <h3 className="font-semibold text-sm">{getChatName(activeChat)}</h3>
+                                    <p className="text-xs text-green-600 flex items-center gap-1">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span> Encrypted
                                     </p>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                </ScrollArea>
+                            <div className="flex gap-2">
+                                <Button variant="ghost" size="icon"><Phone className="h-4 w-4 text-gray-500" /></Button>
+                                <Button variant="ghost" size="icon"><Video className="h-4 w-4 text-gray-500" /></Button>
+                                <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4 text-gray-500" /></Button>
+                            </div>
+                        </div>
 
-                {/* Input */}
-                <div className="p-4 bg-white border-t">
-                    <div className="flex gap-2 items-center">
-                        <Button variant="ghost" size="icon" className="shrink-0"><Paperclip className="h-4 w-4 text-gray-500" /></Button>
-                        <Input 
-                            value={inputText} 
-                            onChange={(e) => setInputText(e.target.value)} 
-                            placeholder="Type a message..." 
-                            className="flex-1"
-                        />
-                        <Button size="icon" className="shrink-0">
-                            <Send className="h-4 w-4" />
-                        </Button>
+                        {/* Messages */}
+                        <ScrollArea className="flex-1 p-4 bg-gray-50">
+                            <div className="space-y-4">
+                                {messages.map(msg => (
+                                    <div key={msg.id} className={`flex ${msg.senderId === user.uid ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`max-w-[70%] p-3 rounded-2xl text-sm ${
+                                            msg.senderId === user.uid
+                                                ? 'bg-blue-600 text-white rounded-tr-none' 
+                                                : 'bg-white border text-gray-800 rounded-tl-none shadow-sm'
+                                        }`}>
+                                            <p>{msg.content}</p>
+                                            <p className={`text-[10px] mt-1 text-right ${msg.senderId === user.uid ? 'text-blue-100' : 'text-gray-400'}`}>
+                                                {formatTime(msg.createdAt)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div ref={scrollEndRef} />
+                            </div>
+                        </ScrollArea>
+
+                        {/* Input */}
+                        <div className="p-4 bg-white border-t">
+                            <div className="flex gap-2 items-center">
+                                <Button variant="ghost" size="icon" className="shrink-0"><Paperclip className="h-4 w-4 text-gray-500" /></Button>
+                                <Input 
+                                    value={inputText} 
+                                    onChange={(e) => setInputText(e.target.value)} 
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                    placeholder="Type a message..." 
+                                    className="flex-1"
+                                    disabled={isSending}
+                                />
+                                <Button size="icon" className="shrink-0" onClick={handleSendMessage} disabled={isSending}>
+                                    {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                </Button>
+                            </div>
+                            <div className="text-[10px] text-center text-gray-400 mt-2 flex items-center justify-center gap-1">
+                                <Shield className="h-3 w-3" /> Messages are monitored by AI Guardian for safety.
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex-1 flex items-center justify-center text-gray-400 flex-col gap-2">
+                        <Shield className="h-10 w-10 text-gray-200" />
+                        <p>Select a chat to start messaging securely.</p>
                     </div>
-                    <div className="text-[10px] text-center text-gray-400 mt-2 flex items-center justify-center gap-1">
-                        <Shield className="h-3 w-3" /> Messages are monitored by AI Guardian for safety.
-                    </div>
-                </div>
+                )}
             </div>
         </div>
     );

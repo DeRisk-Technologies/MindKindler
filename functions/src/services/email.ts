@@ -1,5 +1,5 @@
 // import * as nodemailer from 'nodemailer'; // Uncomment when configuring SMTP
-import * as functions from 'firebase-functions';
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 
 // Interface for email options
 interface EmailOptions {
@@ -54,29 +54,32 @@ export const emailService = {
  * Cloud Function Trigger: onEmailQueue
  * Listens for new documents in 'mail_queue' collection to send asynchronously.
  */
-export const processEmailQueue = functions.firestore
-    .document('mail_queue/{emailId}')
-    .onCreate(async (snap, context) => {
-        const data = snap.data();
-        if (!data) return;
+export const processEmailQueue = onDocumentCreated({
+    document: "mail_queue/{emailId}",
+    region: "europe-west3"
+}, async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data();
+    if (!data) return;
 
-        try {
-            await emailService.send({
-                to: data.to,
-                subject: data.subject,
-                html: data.html,
-                text: data.text
-            });
+    try {
+        await emailService.send({
+            to: data.to,
+            subject: data.subject,
+            html: data.html,
+            text: data.text
+        });
 
-            await snap.ref.update({
-                status: 'sent',
-                sentAt: new Date().toISOString()
-            });
-        } catch (error: any) {
-            console.error(`Failed to send email ${context.params.emailId}`, error);
-            await snap.ref.update({
-                status: 'error',
-                error: error.message
-            });
-        }
-    });
+        await snap.ref.update({
+            status: 'sent',
+            sentAt: new Date().toISOString()
+        });
+    } catch (error: any) {
+        console.error(`Failed to send email ${event.params.emailId}`, error);
+        await snap.ref.update({
+            status: 'error',
+            error: error.message
+        });
+    }
+});

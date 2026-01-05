@@ -1,8 +1,10 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsOptions, onRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import Stripe from 'stripe';
 
 const db = admin.firestore();
+const region = "europe-west3";
+const callOptions: HttpsOptions = { region, cors: true };
 
 // Initialize Stripe
 // Cast to any to bypass strict version string check if SDK definitions are newer/older than dashboard
@@ -23,26 +25,26 @@ const PLAN_PRICE_MAP: Record<string, string> = {
  * Creates a Stripe Checkout Session for a subscription.
  * Called by the frontend "Upgrade" button.
  */
-export const createCheckoutSession = functions.https.onCall(async (data, context) => {
+export const createCheckoutSession = onCall(callOptions, async (request) => {
     // 1. Auth Check
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Login required.');
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Login required.');
     }
 
-    const { planId, successUrl, cancelUrl } = data;
-    const userId = context.auth.uid;
+    const { planId, successUrl, cancelUrl } = request.data;
+    const userId = request.auth.uid;
     
     // Get Tenant ID (assuming user has custom claim or profile)
     const userSnap = await db.collection('users').doc(userId).get();
     const tenantId = userSnap.data()?.tenantId;
 
     if (!tenantId) {
-        throw new functions.https.HttpsError('failed-precondition', 'User has no tenant.');
+        throw new HttpsError('failed-precondition', 'User has no tenant.');
     }
 
     const priceId = PLAN_PRICE_MAP[planId];
     if (!priceId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid Plan ID');
+        throw new HttpsError('invalid-argument', 'Invalid Plan ID');
     }
 
     try {
@@ -55,7 +57,7 @@ export const createCheckoutSession = functions.https.onCall(async (data, context
         const orgData = orgSnap.exists ? orgSnap.data() : (tenantSnap.exists ? tenantSnap.data() : null);
 
         if (!orgData) {
-             throw new functions.https.HttpsError('not-found', 'Organization not found.');
+             throw new HttpsError('not-found', 'Organization not found.');
         }
 
         if (orgData?.stripeCustomerId) {
@@ -98,7 +100,7 @@ export const createCheckoutSession = functions.https.onCall(async (data, context
 
     } catch (error: any) {
         console.error("Stripe Checkout Error:", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw new HttpsError('internal', error.message);
     }
 });
 
@@ -108,13 +110,14 @@ export const createCheckoutSession = functions.https.onCall(async (data, context
  * HTTP Trigger for Stripe Webhooks.
  * Updates Firestore when subscription status changes.
  */
-export const handleStripeWebhook = functions.https.onRequest(async (req, res) => {
+export const handleStripeWebhook = onRequest({ region }, async (req, res) => {
     const sig = req.headers['stripe-signature'];
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_placeholder';
 
     let event;
 
     try {
+        // @ts-ignore
         event = stripe.webhooks.constructEvent(req.rawBody, sig as string, endpointSecret);
     } catch (err: any) {
         console.error(`Webhook Error: ${err.message}`);

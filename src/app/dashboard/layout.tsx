@@ -6,7 +6,7 @@ import { auth } from "@/lib/firebase";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { Sidebar, SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { AIAssistantFloat } from "@/components/ai-assistant-float";
+import { CopilotFloat } from "@/components/dashboard/case/ai-copilot-float";
 
 const FUNCTIONS_REGION = "europe-west3";
 
@@ -44,7 +44,8 @@ export default function DashboardLayout({
             {children}
           </main>
         </SidebarInset>
-        <AIAssistantFloat />
+        {/* Replaced old AIAssistantFloat with CopilotFloat */}
+        <CopilotFloat contextMode="general" /> 
       </div>
     </SidebarProvider>
   );

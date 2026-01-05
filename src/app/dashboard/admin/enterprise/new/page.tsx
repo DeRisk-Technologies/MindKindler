@@ -31,8 +31,8 @@ export default function CreateOrgPage() {
         setLoading(true);
 
         try {
-            // Updated: Call the Provisioning Cloud Function
-            const provisionFn = httpsCallable(functions, 'provisionEnterpriseTenant');
+            // Updated: Call the Provisioning Cloud Function V2
+            const provisionFn = httpsCallable(functions, 'provisionEnterpriseTenantV2');
             const result = await provisionFn({
                 name: formData.name,
                 type: formData.type,

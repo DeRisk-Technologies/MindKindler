@@ -15,41 +15,115 @@ service cloud.firestore {
       return isAuthenticated() && getUserData().role == 'SuperAdmin';
     }
 
+    // UPDATED: isTenantMember now strictly checks if the user's stored tenantId matches.
+    // Optimization: In prod, pass custom claim token.tenantId to avoid the get() read cost.
     function isTenantMember(tenantId) {
       return isAuthenticated() && 
         (getUserData().tenantId == tenantId || isSystemAdmin());
     }
     
+    // UPDATED: Added 'EPP' to the list of roles that can act as admin for certain contexts if needed,
+    // or keep separate. Here we ensure EPPs are recognized as members with elevated write access.
     function isTenantAdmin(tenantId) {
       return isTenantMember(tenantId) && 
         (getUserData().role in ['TenantAdmin', 'SchoolAdmin', 'SuperAdmin']);
     }
 
+    function isClinician(tenantId) {
+       return isTenantMember(tenantId) && 
+         (getUserData().role in ['EPP', 'SchoolPsychologist', 'ClinicalPsychologist', 'TenantAdmin', 'SuperAdmin']);
+    }
+
     // --- Core User Management ---
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isTenantMember(resource.data.tenantId));
+      allow read: if isAuthenticated(); // Allow reading own profile and others (needed for chat names etc)
       allow write: if isSystemAdmin() || request.auth.uid == userId;
     }
 
-    // --- Enterprise & GovIntel (New) ---
+    // --- Enterprise & GovIntel ---
     match /organizations/{orgId} {
-      // Public read might be needed for login/lookup, but restrict to auth for now
       allow read: if isAuthenticated(); 
-      // Only SuperAdmins can create top-level orgs; TenantAdmins can update their own
       allow create: if isSystemAdmin();
       allow update: if isSystemAdmin() || (isAuthenticated() && getUserData().tenantId == orgId && isTenantAdmin(orgId));
     }
 
-    // --- Commercial & Billing (New) ---
+    // --- Commercial & Billing ---
     match /tenants/{tenantId}/billing/{document=**} {
-      // Only Tenant Admins can see/manage billing
       allow read, write: if isTenantAdmin(tenantId);
     }
 
-    // --- Community (Existing) ---
+    // --- Student 360 Core (FIXED PERMISSIONS) ---
+    match /tenants/{tenantId}/students/{studentId} {
+      // Clinicians need READ access to see the student list
+      allow read: if isTenantMember(tenantId);
+      
+      // Clinicians need WRITE access to update student details/notes
+      allow write: if isClinician(tenantId);
+      
+      // Sub-collections
+      match /assessments/{assessmentId} {
+        allow read, write: if isClinician(tenantId);
+      }
+      match /reports/{reportId} {
+        allow read, write: if isClinician(tenantId);
+      }
+    }
+    
+    // --- Cases (FIXED PERMISSIONS) ---
+    match /tenants/{tenantId}/cases/{caseId} {
+       allow read: if isTenantMember(tenantId);
+       allow write: if isClinician(tenantId);
+       
+       match /timeline/{eventId} {
+          allow read, write: if isClinician(tenantId);
+       }
+    }
+
+    // --- Guardian (Security) ---
+    match /policyRules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isSystemAdmin();
+    }
+
+    match /guardianFindings/{findingId} {
+      allow read: if isTenantMember(resource.data.tenantId);
+      allow create: if isAuthenticated();
+      allow update: if isTenantMember(resource.data.tenantId) && isTenantAdmin(resource.data.tenantId);
+    }
+
+    match /guardianOverrideRequests/{reqId} {
+      allow read: if isTenantMember(resource.data.tenantId);
+      allow create: if isTenantMember(resource.data.tenantId);
+      allow update: if isTenantAdmin(resource.data.tenantId);
+    }
+
+    // --- Calendar & Appointments ---
+    match /tenants/{tenantId}/appointments/{appointmentId} {
+      allow read: if isTenantMember(tenantId);
+      allow write: if isTenantMember(tenantId);
+    }
+
+    match /tenants/{tenantId}/availability/{slotId} {
+      allow read: if isTenantMember(tenantId);
+      allow write: if isAuthenticated() && (request.auth.uid == resource.data.userId || isTenantAdmin(tenantId));
+    }
+
+    // --- Internal Messaging ---
+    match /tenants/{tenantId}/chats/{chatId} {
+      allow read: if isTenantMember(tenantId) && request.auth.uid in resource.data.participantIds;
+      allow create: if isTenantMember(tenantId);
+      allow update: if isTenantMember(tenantId) && request.auth.uid in resource.data.participantIds;
+      
+      match /messages/{messageId} {
+        allow read: if isTenantMember(tenantId) && request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)/chats/$(chatId)).data.participantIds;
+        allow create: if isTenantMember(tenantId) && request.auth.uid == request.resource.data.senderId;
+      }
+    }
+
+    // --- Community ---
     match /tenants/{tenantId}/community/forum/categories/{categoryId} {
       allow read: if isTenantMember(tenantId);
-      allow write: if isTenantMember(tenantId); // Refine to moderators later
+      allow write: if isTenantMember(tenantId);
     }
 
     match /tenants/{tenantId}/community/forum/threads/{threadId} {

@@ -1,10 +1,13 @@
-import * as functions from "firebase-functions";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from 'firebase-admin';
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
-export const slaEscalator = functions.region('europe-west3').pubsub.schedule('every 60 minutes').onRun(async (context) => {
+export const slaEscalator = onSchedule({
+    schedule: "every 60 minutes",
+    region: "europe-west3"
+}, async (event) => {
     const now = admin.firestore.Timestamp.now();
     
     const query = db.collectionGroup('cases')
@@ -13,7 +16,7 @@ export const slaEscalator = functions.region('europe-west3').pubsub.schedule('ev
 
     const snapshot = await query.get();
 
-    if (snapshot.empty) return null;
+    if (snapshot.empty) return;
 
     const batch = db.batch();
     let count = 0;
@@ -61,5 +64,4 @@ export const slaEscalator = functions.region('europe-west3').pubsub.schedule('ev
     }
 
     console.log(`SLA Escalator processed ${snapshot.size} cases.`);
-    return null;
 });

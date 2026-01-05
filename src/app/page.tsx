@@ -14,7 +14,10 @@ import {
   GraduationCap,
   Upload,
   ShieldCheck,
-  FileText
+  FileText,
+  Clock,
+  MessageSquare,
+  Lock
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
@@ -72,6 +75,22 @@ export default function Home() {
       title: "Training Academy",
       description: "Continuous professional development with tracked certifications and adaptive learning paths.",
     },
+    // New Marketing Features
+    {
+        icon: <Clock className="h-8 w-8 text-primary" />,
+        title: "Reclaim Your Time",
+        description: "Save 10+ hours per week on administrative tasks. Let AI handle the paperwork while you focus on the child.",
+    },
+    {
+        icon: <MessageSquare className="h-8 w-8 text-primary" />,
+        title: "Secure Collaboration",
+        description: "Connect with schools, parents, and multi-disciplinary teams through encrypted, compliant channels.",
+    },
+    {
+        icon: <Lock className="h-8 w-8 text-primary" />,
+        title: "Clinical Safety First",
+        description: "Built by certified Educational Psychologists. Adheres to strict ethical guidelines and data sovereignty laws.",
+    }
   ];
 
   return (
@@ -95,7 +114,11 @@ export default function Home() {
               Kindling Potential, <span className="text-primary">Globally</span>.
             </h1>
             <p className="max-w-[600px] text-lg text-muted-foreground md:text-xl">
-              The AI-enabled ecosystem connecting governments, schools, and clinicians. Now with advanced <strong>Report Writing</strong> and <strong>Data Ingestion</strong>.
+              The AI-enabled ecosystem connecting governments, schools, and clinicians. Built by psychologists, for psychologists.
+            </p>
+             <p className="text-sm text-muted-foreground italic flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-green-600" />
+                Guided by experienced, certified Educational Child Psychologists.
             </p>
             <div className="flex flex-col gap-4 sm:flex-row">
               <Button size="lg" asChild>
@@ -118,6 +141,45 @@ export default function Home() {
               />
             )}
           </div>
+        </section>
+
+        {/* Use Cases Section */}
+        <section className="bg-gray-50 py-12">
+            <div className="container mx-auto px-4 md:px-6">
+                 <div className="mx-auto mb-10 max-w-2xl text-center">
+                    <h2 className="text-2xl font-bold">Why Choose MindKindler?</h2>
+                    <p className="text-muted-foreground">Tailored solutions for every stakeholder in the education ecosystem.</p>
+                </div>
+                <div className="grid gap-6 md:grid-cols-3">
+                    <div className="flex flex-col items-center text-center space-y-2 p-4">
+                        <div className="p-3 bg-blue-100 rounded-full text-blue-600">
+                             <Briefcase className="h-6 w-6" />
+                        </div>
+                        <h3 className="font-semibold text-lg">For the Independent EPP</h3>
+                        <p className="text-sm text-gray-600">
+                            "I used to spend my weekends writing reports. Now, MindKindler drafts 80% of it for me, allowing me to take on more cases and increase my impact."
+                        </p>
+                    </div>
+                     <div className="flex flex-col items-center text-center space-y-2 p-4">
+                        <div className="p-3 bg-green-100 rounded-full text-green-600">
+                             <Building2 className="h-6 w-6" />
+                        </div>
+                        <h3 className="font-semibold text-lg">For School Districts</h3>
+                        <p className="text-sm text-gray-600">
+                            "Centralized oversight of all our SEN students. We can finally track intervention success rates and budget allocation in real-time."
+                        </p>
+                    </div>
+                     <div className="flex flex-col items-center text-center space-y-2 p-4">
+                        <div className="p-3 bg-purple-100 rounded-full text-purple-600">
+                             <Globe className="h-6 w-6" />
+                        </div>
+                        <h3 className="font-semibold text-lg">For Governments</h3>
+                        <p className="text-sm text-gray-600">
+                            "Data-driven policy making. MindKindler gives us the macro-view we need to benchmark our regions against global standards."
+                        </p>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section id="features" className="w-full bg-secondary/50 py-12 md:py-24">
@@ -228,4 +290,8 @@ export default function Home() {
       </footer>
     </div>
   );
+}
+
+function Building2({ className }: { className?: string }) {
+    return <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>;
 }

@@ -1,7 +1,10 @@
-import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { onCall, HttpsOptions, HttpsError } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 
 const db = admin.firestore();
+const region = "europe-west3";
+const callOptions: HttpsOptions = { region, cors: true };
 
 // --- Configuration ---
 // In production, fetch these from Secret Manager
@@ -14,9 +17,9 @@ const db = admin.firestore();
  * Creates a meeting on an external provider (Zoom/Teams) while strictly sanitizing PII.
  * Ensures the student's name NEVER leaves the MindKindler boundary in metadata.
  */
-export const securelyCreateMeeting = functions.https.onCall(async (data, context) => {
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+export const securelyCreateMeeting = onCall(callOptions, async (request) => {
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'User must be logged in');
     }
 
     const { 
@@ -26,7 +29,7 @@ export const securelyCreateMeeting = functions.https.onCall(async (data, context
         duration,
         caseId,   // Link to internal Case
         studentId // Used internally, NEVER sent to provider
-    } = data;
+    } = request.data;
 
     // 1. DATA PRIVACY ENFORCEMENT
     // We strictly control the meeting title sent to the third party.
@@ -47,11 +50,11 @@ export const securelyCreateMeeting = functions.https.onCall(async (data, context
         } else if (provider === 'teams') {
             meetingDetails = await createTeamsMeeting(sanitizedTopic, startTime, duration);
         } else {
-            throw new functions.https.HttpsError('invalid-argument', 'Unsupported provider');
+            throw new HttpsError('invalid-argument', 'Unsupported provider');
         }
     } catch (error: any) {
         console.error(`[Integrations] Failed to create ${provider} meeting:`, error);
-        throw new functions.https.HttpsError('internal', 'Provider API failed');
+        throw new HttpsError('internal', 'Provider API failed');
     }
 
     // 3. SECURE STORAGE & LINKING
@@ -61,7 +64,7 @@ export const securelyCreateMeeting = functions.https.onCall(async (data, context
     const appointmentRef = db.collection('appointments').doc();
     await appointmentRef.set({
         id: appointmentRef.id,
-        tenantId: context.auth.token.tenantId || 'default-tenant',
+        tenantId: request.auth.token.tenantId || 'default-tenant',
         provider: provider,
         externalMeetingId: meetingDetails.id,
         joinUrl: meetingDetails.joinUrl,
@@ -74,7 +77,7 @@ export const securelyCreateMeeting = functions.https.onCall(async (data, context
         sanitizedExternalTopic: sanitizedTopic,
         
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdBy: context.auth.uid,
+        createdBy: request.auth.uid,
         
         // Metadata for Recording Fetcher
         recordingStatus: 'pending', // watcher will look for this
@@ -118,7 +121,10 @@ async function createTeamsMeeting(subject: string, startTime: string, duration: 
  * 3. Store them in MindKindler Secure Storage.
  * 4. DELETE them from Zoom/Teams to enforce data sovereignty.
  */
-export const fetchAndPurgeRecordings = functions.pubsub.schedule('every 1 hours').onRun(async (context) => {
+export const fetchAndPurgeRecordings = onSchedule({
+    schedule: "every 1 hours",
+    region
+}, async (event) => {
     
     const pendingRecordings = await db.collection('appointments')
         .where('status', '==', 'completed')

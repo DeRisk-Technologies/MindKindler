@@ -1,8 +1,10 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsOptions, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { emailService } from '../services/email';
 
 const db = admin.firestore();
+const region = "europe-west3";
+const callOptions: HttpsOptions = { region, cors: true };
 
 // --- Configuration ---
 // In prod, use: const SENDGRID_KEY = process.env.SENDGRID_KEY;
@@ -24,13 +26,13 @@ interface ProvisionData {
  * 2. Creates Admin User for the Tenant.
  * 3. Sends Welcome Email with Login Instructions.
  */
-export const provisionTenant = functions.https.onCall(async (data: ProvisionData, context) => {
+export const provisionTenant = onCall(callOptions, async (request) => {
     // 1. Security Check: Only SuperAdmin can call this
-    if (!context.auth?.token?.role || context.auth.token.role !== 'SuperAdmin') {
-        throw new functions.https.HttpsError('permission-denied', 'Only SuperAdmins can provision tenants.');
+    if (!request.auth?.token?.role || request.auth.token.role !== 'SuperAdmin') {
+        throw new HttpsError('permission-denied', 'Only SuperAdmins can provision tenants.');
     }
 
-    const { name, type, region, contactName, contactEmail, planTier } = data;
+    const { name, type, region, contactName, contactEmail, planTier } = request.data as ProvisionData;
 
     try {
         console.log(`[Provisioning] Starting for: ${name} (${type}) in ${region}`);
@@ -48,7 +50,7 @@ export const provisionTenant = functions.https.onCall(async (data: ProvisionData
             status: 'provisioning', // Initial status
             primaryContact: { name: contactName, email: contactEmail, roleTitle: 'Admin' },
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            provisionedBy: context.auth.uid
+            provisionedBy: request.auth.uid
         };
 
         await orgRef.set(orgData);
@@ -121,6 +123,6 @@ export const provisionTenant = functions.https.onCall(async (data: ProvisionData
 
     } catch (error: any) {
         console.error("[Provisioning] Failed:", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw new HttpsError('internal', error.message);
     }
 });
