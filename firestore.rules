@@ -12,31 +12,35 @@ service cloud.firestore {
     }
     
     function isSystemAdmin() {
-      return isAuthenticated() && getUserData().role == 'SuperAdmin';
+      let role = getUserData().role;
+      return isAuthenticated() && (role == 'SuperAdmin' || role == 'Admin' || role == 'admin');
     }
 
-    // UPDATED: isTenantMember now strictly checks if the user's stored tenantId matches.
-    // Optimization: In prod, pass custom claim token.tenantId to avoid the get() read cost.
     function isTenantMember(tenantId) {
+      let user = getUserData();
       return isAuthenticated() && 
-        (getUserData().tenantId == tenantId || isSystemAdmin());
+        (user.tenantId == tenantId || isSystemAdmin());
     }
     
-    // UPDATED: Added 'EPP' to the list of roles that can act as admin for certain contexts if needed,
-    // or keep separate. Here we ensure EPPs are recognized as members with elevated write access.
     function isTenantAdmin(tenantId) {
+      let role = getUserData().role;
       return isTenantMember(tenantId) && 
-        (getUserData().role in ['TenantAdmin', 'SchoolAdmin', 'SuperAdmin']);
+        (role in ['TenantAdmin', 'SchoolAdmin', 'SuperAdmin', 'Admin', 'SchoolAdministrator', 'admin']);
     }
 
     function isClinician(tenantId) {
+       let role = getUserData().role;
        return isTenantMember(tenantId) && 
-         (getUserData().role in ['EPP', 'SchoolPsychologist', 'ClinicalPsychologist', 'TenantAdmin', 'SuperAdmin']);
+         (role in [
+            'EPP', 'epp', 'EducationalPsychologist', 'educationalpsychologist', 
+            'ClinicalPsychologist', 'clinicalpsychologist', 'SchoolPsychologist', 
+            'TenantAdmin', 'SuperAdmin', 'Admin', 'SchoolAdministrator'
+         ]);
     }
 
     // --- Core User Management ---
     match /users/{userId} {
-      allow read: if isAuthenticated(); // Allow reading own profile and others (needed for chat names etc)
+      allow read: if isAuthenticated(); 
       allow write: if isSystemAdmin() || request.auth.uid == userId;
     }
 
@@ -52,15 +56,11 @@ service cloud.firestore {
       allow read, write: if isTenantAdmin(tenantId);
     }
 
-    // --- Student 360 Core (FIXED PERMISSIONS) ---
+    // --- Student 360 Core ---
     match /tenants/{tenantId}/students/{studentId} {
-      // Clinicians need READ access to see the student list
       allow read: if isTenantMember(tenantId);
-      
-      // Clinicians need WRITE access to update student details/notes
       allow write: if isClinician(tenantId);
       
-      // Sub-collections
       match /assessments/{assessmentId} {
         allow read, write: if isClinician(tenantId);
       }
@@ -69,7 +69,7 @@ service cloud.firestore {
       }
     }
     
-    // --- Cases (FIXED PERMISSIONS) ---
+    // --- Cases ---
     match /tenants/{tenantId}/cases/{caseId} {
        allow read: if isTenantMember(tenantId);
        allow write: if isClinician(tenantId);
@@ -79,7 +79,12 @@ service cloud.firestore {
        }
     }
 
-    // --- Guardian (Security) ---
+    // --- Consultations ---
+    match /tenants/{tenantId}/consultations/{docId} {
+       allow read, write: if isClinician(tenantId);
+    }
+
+    // --- Guardian ---
     match /policyRules/{ruleId} {
       allow read: if isAuthenticated();
       allow write: if isSystemAdmin();
@@ -121,31 +126,9 @@ service cloud.firestore {
     }
 
     // --- Community ---
-    match /tenants/{tenantId}/community/forum/categories/{categoryId} {
+    match /tenants/{tenantId}/community/{document=**} {
       allow read: if isTenantMember(tenantId);
       allow write: if isTenantMember(tenantId);
-    }
-
-    match /tenants/{tenantId}/community/forum/threads/{threadId} {
-      allow read: if isTenantMember(tenantId);
-      allow create: if isTenantMember(tenantId);
-      allow update: if isTenantMember(tenantId);
-      
-      match /posts/{postId} {
-        allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId);
-        allow update: if isTenantMember(tenantId);
-      }
-    }
-
-    match /tenants/{tenantId}/community/wiki/pages/{pageId} {
-       allow read: if isTenantMember(tenantId);
-       allow create, update: if isTenantMember(tenantId);
-    }
-
-    match /tenants/{tenantId}/community/blog/posts/{postId} {
-       allow read: if isTenantMember(tenantId); 
-       allow write: if isTenantMember(tenantId); 
     }
 
     match /global/forum/{document=**} {

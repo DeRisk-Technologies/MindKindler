@@ -36,16 +36,17 @@ export const getRegionalDb = (regionId?: string): Firestore => {
     // 1. Determine Database ID mapping
     const dbId = getDbForRegion(regionId);
     
-    // 2. Return cached instance if exists
+    // 2. Return default if no specific ID needed
+    if (dbId === '(default)') return db;
+
+    // 3. Return cached instance if exists
     if (dbInstances[dbId]) return dbInstances[dbId];
 
-    // 3. Initialize new instance for this specific database
-    // Note: 'databaseId' option is supported in v9 modular SDK for named databases
+    // 4. Initialize new instance for this specific database
     console.log(`[Firebase] Initializing connection to database: ${dbId}`);
     
-    const instance = initializeFirestore(app, {
-        experimentalForceLongPolling: true, // Often needed for robust connections
-    }, dbId);
+    // Using simple getFirestore(app, dbId) for named databases
+    const instance = getFirestore(app, dbId);
     
     dbInstances[dbId] = instance;
     return instance;
@@ -69,10 +70,6 @@ try {
     }
 } catch (error) {
     console.error("Firebase initialization failed:", error);
-    app = {} as any;
-    db = {} as any;
-    auth = {} as any;
-    functions = {} as any;
 }
 
 export { app, db, auth, functions, analytics };
