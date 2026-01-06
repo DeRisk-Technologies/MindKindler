@@ -17,17 +17,13 @@ import * as aiInsights from "./ai/analyzeConsultationInsight";
 import * as aiAssessments from "./ai/generateAssessmentContent";
 import * as docProcessing from "./ai/processUploadedDocument";
 import { generatePolicyMemoFlow } from "./ai/flows/generatePolicyMemo";
-// Import Grading Flow
 import { scoreOpenTextResponseFlow } from "./ai/flows/grading";
 import { handler as chatHandler } from "./ai/chatWithCopilot";
 
 export const generateClinicalReport = onCall(callOptions, aiReports.handler);
 export const analyzeConsultationInsight = onCall(callOptions, aiInsights.handler);
 export const generateAssessmentContent = onCall(callOptions, aiAssessments.handler);
-
-// Correctly exporting the background trigger (not wrapping in onCall)
 export const processUploadedDocument = docProcessing.processDocumentTrigger;
-
 export const chatWithCopilot = onCall(callOptions, chatHandler);
 
 export const generatePolicyMemo = onCall(callOptions, async (req) => {
@@ -36,14 +32,13 @@ export const generatePolicyMemo = onCall(callOptions, async (req) => {
     return await generatePolicyMemoFlow(tenantId, snapshotData, focusArea, req.auth.uid);
 });
 
-// NEW: Grading AI
 export const gradeOpenText = onCall(callOptions, async (req) => {
     if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required');
     const { tenantId, question, studentAnswer, rubric, maxPoints } = req.data;
     return await scoreOpenTextResponseFlow(tenantId, question, studentAnswer, rubric, maxPoints, req.auth.uid);
 });
 
-// ... (Rest of existing exports)
+// --- Admin & Data Maintenance ---
 import { clearDemoDataHandler } from "./admin/clearData";
 import { seedDemoDataHandler } from "./admin/seedData";
 import { setupUserProfileHandler } from "./admin/userManagement";
@@ -57,6 +52,7 @@ export const anonymizeTrainingData = onSchedule({
     region
 }, anonymizeDataHandler);
 
+// --- Grading & Assessment ---
 import { gradeSubmissionHandler, detectAnomaliesHandler } from "./assessments/grading";
 
 export const gradeAssessmentSubmission = onDocumentCreated({
@@ -69,6 +65,7 @@ export const detectAnomalies = onDocumentUpdated({
     region
 }, detectAnomaliesHandler);
 
+// --- Scheduling ---
 import { findAvailabilityHandler, onAppointmentChangeHandler, sendDailyRemindersHandler } from "./scheduling/scheduler";
 
 export const findAvailabilitySlots = onCall(callOptions, findAvailabilityHandler);
@@ -82,12 +79,15 @@ export const sendDailyReminders = onSchedule({
     region
 }, sendDailyRemindersHandler);
 
+// --- Case Management ---
 import { onAlertCreated } from "./case/autoCreateFromAlerts";
 import { slaEscalator } from "./case/slaEscalator";
 
-export const autoCreateCaseFromAlert = onAlertCreated; 
-export const caseSlaEscalator = slaEscalator;
+// Renaming v2 functions to avoid collision with v1 names during upgrade
+export const autoCreateCaseFromAlertV2 = onAlertCreated; 
+export const caseSlaEscalatorV2 = slaEscalator;
 
+// --- Integrations ---
 import { syncExternalData as syncHandler } from "./integrations/syncEngine";
 export const syncExternalData = onCall(callOptions, syncHandler);
 
@@ -97,7 +97,7 @@ import { processBulkManifest as bulkImportHandler } from "./upload/bulkImport";
 export const exportReport = exportReportHandler; 
 export const processBulkManifest = bulkImportHandler;
 
-// Student 360 Secure Endpoints
+// --- Student 360 Secure ---
 import { handler as getStudent360Handler } from "./student360/getStudent360";
 import { handler as processDocumentHandler } from "./student360/ocr/processDocument";
 import { handler as guardianCheckHandler } from "./student360/guardian/guardianCheck";
@@ -106,7 +106,31 @@ export const getStudent360 = onCall(callOptions, getStudent360Handler);
 export const processDocumentSecure = onCall(callOptions, processDocumentHandler);
 export const guardianCheck = onCall(callOptions, guardianCheckHandler);
 
-// --- Community Features ---
+// --- Community ---
 import { onPostCreated, onThreadCreated } from './community/moderation';
 export const onCommunityPostCreated = onPostCreated;
 export const onCommunityThreadCreated = onThreadCreated;
+
+// --- Meeting Compliance ---
+import { securelyCreateMeeting as secureMeetingHandler, fetchAndPurgeRecordings as purgeHandler } from './integrations/meeting-compliance';
+
+// Renaming to avoid collision during upgrade
+export const securelyCreateMeetingV2 = secureMeetingHandler;
+export const meetingComplianceWorkerV2 = purgeHandler;
+
+// --- Enterprise Provisioning ---
+import { provisionTenant } from './enterprise/provisioning';
+export const provisionEnterpriseTenantV2 = provisionTenant;
+
+// --- Email ---
+import { processEmailQueue as emailQueueHandler } from './services/email';
+export const processEmailQueueV2 = emailQueueHandler;
+
+// --- Billing ---
+import { createCheckoutSession as checkoutHandler, handleStripeWebhook as webhookHandler } from './billing/stripe-integration';
+export const createStripeCheckoutV2 = checkoutHandler;
+export const stripeWebhookV2 = webhookHandler;
+
+// --- GovIntel ---
+import { aggregateGovStats as aggregateGovStatsHandler } from './govintel/aggregation';
+export const aggregateGovStatsV2 = aggregateGovStatsHandler;

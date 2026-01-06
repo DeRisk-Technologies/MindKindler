@@ -1,179 +1,173 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, AlertTriangle, RefreshCw } from "lucide-react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { 
+    CloudCog, 
+    Video, 
+    Calendar, 
+    ShieldCheck, 
+    Key, 
+    Lock,
+    Globe,
+    Server
+} from 'lucide-react';
 
-export default function IntegrationsPage() {
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("canvas");
+interface IntegrationConfig {
+    id: string;
+    name: string;
+    description: string;
+    provider: string;
+    status: 'connected' | 'disconnected' | 'error';
+    isAdminOnly: boolean;
+    configFields: { key: string; label: string; type: 'text' | 'password'; value: string }[];
+}
 
-  const [config, setConfig] = useState({
-      baseUrl: "",
-      clientId: "",
-      clientSecret: "",
-      syncGrades: true,
-      syncRoster: true,
-      syncAttendance: false
-  });
+const INITIAL_INTEGRATIONS: IntegrationConfig[] = [
+    // Admin Managed - System Wide
+    {
+        id: 'nylas',
+        name: 'Unified Calendar Sync (Nylas)',
+        description: 'Enables Google/Outlook sync for all users. Requires Client ID/Secret.',
+        provider: 'Nylas',
+        status: 'disconnected',
+        isAdminOnly: true,
+        configFields: [
+            { key: 'client_id', label: 'Client ID', type: 'text', value: '' },
+            { key: 'client_secret', label: 'Client Secret', type: 'password', value: '' }
+        ]
+    },
+    {
+        id: 'teams_admin',
+        name: 'Microsoft Teams (Enterprise)',
+        description: 'Tenant-wide Teams integration for meeting generation.',
+        provider: 'Microsoft',
+        status: 'connected',
+        isAdminOnly: true,
+        configFields: [
+            { key: 'tenant_id', label: 'Tenant ID', type: 'text', value: '********' },
+            { key: 'client_secret', label: 'Client Secret', type: 'password', value: '********' }
+        ]
+    },
+    // User Managed (But Admins can see status)
+    {
+        id: 'zoom_user',
+        name: 'Zoom (Personal)',
+        description: 'Connect your personal Zoom account for video calls.',
+        provider: 'Zoom',
+        status: 'disconnected',
+        isAdminOnly: false,
+        configFields: [] // OAuth flow usually doesn't need manual field entry here
+    }
+];
 
-  const handleSave = async () => {
-      setLoading(true);
-      try {
-          // In a real app, secrets should be encrypted or sent to a secure backend endpoint
-          // For prototype, saving to firestore 'integrations' collection
-          await addDoc(collection(db, "integrations"), {
-              type: activeTab,
-              status: "active",
-              credentials: {
-                  baseUrl: config.baseUrl,
-                  clientId: config.clientId,
-                  // clientSecret: "ENCRYPTED" 
-              },
-              settings: {
-                  syncGrades: config.syncGrades,
-                  syncRoster: config.syncRoster,
-                  syncAttendance: config.syncAttendance
-              },
-              createdAt: serverTimestamp()
-          });
-          
-          toast({ title: "Integration Saved", description: `${activeTab} connection active.` });
-      } catch (e) {
-          toast({ title: "Error", description: "Failed to save configuration.", variant: "destructive" });
-      } finally {
-          setLoading(false);
-      }
-  };
+export default function IntegrationsSettingsPage() {
+    const [integrations, setIntegrations] = useState(INITIAL_INTEGRATIONS);
+    const { toast } = useToast();
+    const [isAdmin, setIsAdmin] = useState(true); // Mock role check
 
-  const handleSyncNow = () => {
-      toast({ title: "Sync Started", description: "Fetching data from external system..." });
-      // Trigger Cloud Function here
-  };
+    const handleSave = (id: string) => {
+        // API call to save config securely
+        toast({ title: "Configuration Saved", description: "Integration settings updated." });
+    };
 
-  return (
-    <div className="space-y-8 p-8 pt-6">
-        <div>
-            <h1 className="text-3xl font-bold tracking-tight text-primary">Integrations</h1>
-            <p className="text-muted-foreground">Connect external LMS and SIS platforms.</p>
-        </div>
+    const toggleStatus = (id: string) => {
+        setIntegrations(prev => prev.map(i => {
+            if (i.id === id) {
+                const newStatus = i.status === 'connected' ? 'disconnected' : 'connected';
+                toast({ title: newStatus === 'connected' ? "Connected" : "Disconnected", description: `${i.name} is now ${newStatus}.` });
+                return { ...i, status: newStatus };
+            }
+            return i;
+        }));
+    };
 
-        <div className="grid gap-6 md:grid-cols-3">
-            {/* Sidebar / Selection */}
-            <div className="space-y-4">
-                {['Canvas', 'Blackboard', 'Google Classroom', 'PowerSchool'].map((sys) => (
-                    <Card 
-                        key={sys} 
-                        className={`cursor-pointer transition-all hover:border-primary ${activeTab === sys.toLowerCase() ? 'border-primary bg-primary/5' : ''}`}
-                        onClick={() => setActiveTab(sys.toLowerCase())}
-                    >
-                        <CardHeader className="p-4 flex flex-row items-center gap-4">
-                            <div className="h-10 w-10 rounded bg-muted flex items-center justify-center font-bold text-lg">
-                                {sys.charAt(0)}
-                            </div>
-                            <div>
-                                <CardTitle className="text-base">{sys}</CardTitle>
-                                <CardDescription className="text-xs">LMS / SIS Provider</CardDescription>
-                            </div>
-                        </CardHeader>
-                    </Card>
-                ))}
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h3 className="text-2xl font-bold tracking-tight">Integrations & API Connections</h3>
+                    <p className="text-muted-foreground">Manage external tools. Some settings require Admin privileges.</p>
+                </div>
+                <div className="flex items-center gap-2 bg-muted p-2 rounded-lg">
+                    <Label>View as:</Label>
+                    <Switch checked={isAdmin} onCheckedChange={setIsAdmin} />
+                    <span className="text-sm">{isAdmin ? 'Admin' : 'User'}</span>
+                </div>
             </div>
 
-            {/* Config Form */}
-            <div className="md:col-span-2">
-                <Card>
-                    <CardHeader>
-                        <div className="flex justify-between">
-                            <div>
-                                <CardTitle className="capitalize">{activeTab} Configuration</CardTitle>
-                                <CardDescription>Configure API access and data sync rules.</CardDescription>
-                            </div>
-                            <Badge variant="outline" className="h-fit">Not Connected</Badge>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                        <div className="space-y-2">
-                            <Label>Base URL</Label>
-                            <Input 
-                                placeholder={`https://${activeTab}.instructure.com`} 
-                                value={config.baseUrl}
-                                onChange={(e) => setConfig({...config, baseUrl: e.target.value})}
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Client ID</Label>
-                                <Input 
-                                    value={config.clientId}
-                                    onChange={(e) => setConfig({...config, clientId: e.target.value})}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Client Secret / API Key</Label>
-                                <Input 
-                                    type="password" 
-                                    value={config.clientSecret}
-                                    onChange={(e) => setConfig({...config, clientSecret: e.target.value})}
-                                />
-                            </div>
-                        </div>
+            <Tabs defaultValue="all">
+                <TabsList>
+                    <TabsTrigger value="all">All Integrations</TabsTrigger>
+                    <TabsTrigger value="communication">Communication</TabsTrigger>
+                    <TabsTrigger value="calendar">Calendar</TabsTrigger>
+                </TabsList>
 
-                        <div className="space-y-4 pt-4 border-t">
-                            <h4 className="font-medium text-sm">Sync Preferences</h4>
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label>Sync Roster</Label>
-                                    <p className="text-xs text-muted-foreground">Import students and teachers</p>
+                <TabsContent value="all" className="space-y-6 mt-6">
+                    {integrations.filter(i => isAdmin || !i.isAdminOnly).map(integration => (
+                        <Card key={integration.id} className="overflow-hidden">
+                            <CardHeader className="bg-muted/30 pb-4">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-white rounded-md border shadow-sm">
+                                            {integration.provider === 'Microsoft' && <Server className="h-6 w-6 text-blue-600"/>}
+                                            {integration.provider === 'Nylas' && <Calendar className="h-6 w-6 text-emerald-600"/>}
+                                            {integration.provider === 'Zoom' && <Video className="h-6 w-6 text-blue-500"/>}
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-lg flex items-center gap-2">
+                                                {integration.name}
+                                                {integration.isAdminOnly && <Badge variant="secondary" className="text-xs font-normal"><ShieldCheck className="mr-1 h-3 w-3"/> Admin Managed</Badge>}
+                                            </CardTitle>
+                                            <CardDescription>{integration.description}</CardDescription>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                         <Badge variant={integration.status === 'connected' ? 'default' : 'outline'}>
+                                            {integration.status === 'connected' ? 'Active' : 'Inactive'}
+                                         </Badge>
+                                         {!integration.isAdminOnly || isAdmin ? (
+                                             <Button variant="outline" size="sm" onClick={() => toggleStatus(integration.id)}>
+                                                 {integration.status === 'connected' ? 'Disconnect' : 'Connect'}
+                                             </Button>
+                                         ) : null}
+                                    </div>
                                 </div>
-                                <Switch 
-                                    checked={config.syncRoster}
-                                    onCheckedChange={(c) => setConfig({...config, syncRoster: c})}
-                                />
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label>Sync Grades</Label>
-                                    <p className="text-xs text-muted-foreground">Import assignment scores</p>
-                                </div>
-                                <Switch 
-                                    checked={config.syncGrades}
-                                    onCheckedChange={(c) => setConfig({...config, syncGrades: c})}
-                                />
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label>Sync Attendance</Label>
-                                    <p className="text-xs text-muted-foreground">Import daily attendance logs</p>
-                                </div>
-                                <Switch 
-                                    checked={config.syncAttendance}
-                                    onCheckedChange={(c) => setConfig({...config, syncAttendance: c})}
-                                />
-                            </div>
-                        </div>
-                    </CardContent>
-                    <CardFooter className="flex justify-between border-t p-6">
-                        <Button variant="outline" onClick={handleSyncNow}>
-                            <RefreshCw className="mr-2 h-4 w-4" /> Sync Now
-                        </Button>
-                        <Button onClick={handleSave} disabled={loading}>
-                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save Configuration
-                        </Button>
-                    </CardFooter>
-                </Card>
-            </div>
+                            </CardHeader>
+                            
+                            {(isAdmin && integration.configFields.length > 0) && (
+                                <CardContent className="pt-6 border-t">
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        {integration.configFields.map(field => (
+                                            <div key={field.key} className="space-y-2">
+                                                <Label>{field.label}</Label>
+                                                <div className="relative">
+                                                    <Input 
+                                                        type={field.type} 
+                                                        defaultValue={field.value} 
+                                                        placeholder={`Enter ${field.label}`}
+                                                    />
+                                                    {field.type === 'password' && <Lock className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground"/>}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-4 flex justify-end">
+                                        <Button size="sm" onClick={() => handleSave(integration.id)}>Save Configuration</Button>
+                                    </div>
+                                </CardContent>
+                            )}
+                        </Card>
+                    ))}
+                </TabsContent>
+            </Tabs>
         </div>
-    </div>
-  );
+    );
 }

@@ -2,7 +2,6 @@ import * as admin from "firebase-admin";
 import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 
 const getDb = () => {
-    // Check if app is already initialized to avoid "default app already exists" error
     if (admin.apps.length === 0) {
         admin.initializeApp();
     }
@@ -10,46 +9,48 @@ const getDb = () => {
 };
 
 export const setupUserProfileHandler = async (request: CallableRequest) => {
-    // 1. Check Authentication
     if (!request.auth) {
-        // Return a standard HttpsError for the client to handle gracefully
         throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
 
     const db = getDb();
+    const auth = admin.auth();
     const { uid, token } = request.auth;
-    const { email, name, picture } = token; 
     
-    // 2. Defensive Check: Ensure we don't overwrite indiscriminately
     const docRef = db.collection("users").doc(uid);
     
     try {
         const docSnap = await docRef.get();
+        let userData = docSnap.exists ? docSnap.data() : null;
 
         if (!docSnap.exists) {
-            // 3. Create Profile if missing
-            await Promise.all([
-                docRef.set({
-                    uid: uid, // Store UID explicitly for easier indexing
-                    email: email || "",
-                    displayName: name || "New User",
-                    photoURL: picture || "",
-                    role: 'parent', // Default role
-                    online: true,   // Default status
-                    isVisible: true, // Default privacy
-                    createdAt: admin.firestore.FieldValue.serverTimestamp()
-                }),
-                // Only set claims if strictly necessary for security rules immediately
-                // admin.auth().setCustomUserClaims(uid, { role: 'parent' }) 
-            ]);
-            return { status: 'created', message: 'User profile initialized.' };
+            // Create default profile if completely missing
+            userData = {
+                uid: uid,
+                email: token.email || "",
+                displayName: token.name || "New User",
+                role: 'parent', 
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+            await docRef.set(userData);
+        }
+
+        // SYNC CLAIMS: Ensure Auth Token matches Firestore Profile
+        // This is critical for sharded database security rules
+        const currentClaims = token || {};
+        if (userData && (currentClaims.role !== userData.role || currentClaims.tenantId !== userData.tenantId)) {
+            console.log(`[Auth] Syncing claims for user ${uid}: role=${userData.role}, tenantId=${userData.tenantId}`);
+            await auth.setCustomUserClaims(uid, {
+                role: userData.role,
+                tenantId: userData.tenantId || null
+            });
+            return { status: 'updated', message: 'Permissions synchronized. Please refresh your token.' };
         }
         
-        return { status: 'exists', message: 'Profile already exists.' };
+        return { status: 'exists', message: 'Profile and permissions are up to date.' };
 
     } catch (e: any) {
         console.error("Error in setupUserProfile:", e);
-        // Throw structured error back to client
         throw new HttpsError('internal', `Profile setup failed: ${e.message}`);
     }
 };

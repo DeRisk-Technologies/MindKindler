@@ -6,7 +6,7 @@ import {
   ProvenanceMetadata,
   ProvenanceField
 } from '@/types/schema';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase'; // FIXED: Using 'functions' instance from lib/firebase
 import { 
   collection, 
   doc, 
@@ -20,7 +20,7 @@ import {
   serverTimestamp,
   addDoc
 } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
 
 export class Student360Service {
   private static STUDENT_COLLECTION = 'students';
@@ -31,7 +31,7 @@ export class Student360Service {
    * Securely fetch student data via Cloud Function to ensure redaction.
    */
   static async getStudent(studentId: string, reason?: string): Promise<StudentRecord> {
-      const functions = getFunctions();
+      // Use the pre-configured 'functions' instance which points to europe-west3
       const getStudent360 = httpsCallable(functions, 'getStudent360');
       
       try {
@@ -121,12 +121,7 @@ export class Student360Service {
       
       const data = snapshot.data() as StudentRecord;
       
-      // Update the specific field's metadata
-      // Note: Deep updates in Firestore require dot notation string keys if using update(),
-      // but in a transaction we read, modify object, and set back.
-      
       // Helper to traverse path and update
-      // Logic simplified for brevity; real impl needs to handle nested paths like 'identity.dateOfBirth'
       const parts = fieldPath.split('.');
       let current: any = data;
       for (let i = 0; i < parts.length - 1; i++) {
@@ -138,7 +133,7 @@ export class Student360Service {
         field.metadata.verified = true;
         field.metadata.verifiedBy = verifierId;
         field.metadata.verifiedAt = new Date().toISOString();
-        if (evidenceRef) field.metadata.sourceId = evidenceRef; // Or add to a separate evidence list
+        if (evidenceRef) field.metadata.sourceId = evidenceRef; 
       }
 
       // Recalculate trust score
@@ -162,21 +157,16 @@ export class Student360Service {
       if (field?.metadata?.verified) {
         score += weight;
       } else if (field?.metadata?.confidence && field.metadata.confidence > 0.8) {
-        // Give partial credit for high-confidence AI/OCR
         score += weight * 0.5;
       }
     };
 
-    // Identity (High weight)
     checkField(student.identity?.firstName, 10);
     checkField(student.identity?.lastName, 10);
     checkField(student.identity?.dateOfBirth, 20);
     checkField(student.identity?.nationalId, 20);
-
-    // Education (Medium)
     checkField(student.education?.currentSchoolId, 15);
 
-    // Normalize
     if (totalWeight === 0) return 0;
     return Math.round((score / totalWeight) * 100);
   }
@@ -192,7 +182,6 @@ export class Student360Service {
     const tasks: VerificationTask[] = [];
     const now = new Date().toISOString();
 
-    // Check DOB
     if (!student.identity.dateOfBirth.metadata.verified) {
       tasks.push({
         id: crypto.randomUUID(),
@@ -204,7 +193,6 @@ export class Student360Service {
       });
     }
 
-    // Check Parents
     if (parents.length === 0) {
       tasks.push({
         id: crypto.randomUUID(),
@@ -215,7 +203,6 @@ export class Student360Service {
         createdAt: now
       });
     } else {
-        // Check if any parent has PR
         const hasPr = parents.some(p => p.hasParentalResponsibility);
         if (!hasPr) {
              tasks.push({

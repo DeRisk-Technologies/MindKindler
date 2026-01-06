@@ -2,114 +2,115 @@ import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { logAuditEvent } from './audit/audit-logger';
 
-// Type definitions to match client-side schema (simplified for server)
-interface StudentRecord {
-    id: string;
-    tenantId: string;
-    identity: {
-        firstName: { value: string };
-        lastName: { value: string };
-        // ... other fields
-    };
-    meta: {
-        privacyLevel: 'standard' | 'high' | 'restricted';
-    };
-    // ...
-}
+if (!admin.apps.length) admin.initializeApp();
 
-interface GetStudentRequest {
-    studentId: string;
-    reason?: string; // Optional reason for audit
-}
-
-// Export raw handler, NOT onCall wrapper
-export const handler = async (request: CallableRequest<GetStudentRequest>) => {
+export const handler = async (request: CallableRequest<any>) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'User must be logged in.');
     }
 
     const { studentId, reason } = request.data;
     const uid = request.auth.uid;
-    const tenantId = request.auth.token.tenantId || 'default-tenant'; // Ideally from custom claim
+    const userRole = (request.auth.token.role || 'ParentUser') as string;
+    const userTenantId = (request.auth.token.tenantId || 'default-tenant') as string;
 
-    // 1. Fetch Student
-    const studentRef = admin.firestore().collection('students').doc(studentId);
-    const snapshot = await studentRef.get();
+    try {
+        const db = admin.firestore();
+        let studentRef = db.collection('students').doc(studentId);
+        let snapshot = await studentRef.get();
 
-    if (!snapshot.exists) {
-        throw new HttpsError('not-found', 'Student not found.');
-    }
+        if (!snapshot.exists) {
+            studentRef = db.collection('tenants').doc(userTenantId).collection('students').doc(studentId);
+            snapshot = await studentRef.get();
+        }
 
-    const studentData = snapshot.data() as StudentRecord;
+        if (!snapshot.exists) {
+            throw new HttpsError('not-found', 'Student record not found.');
+        }
 
-    // 2. Tenant Check
-    if (studentData.tenantId !== tenantId) {
-        console.warn(`[SECURITY] Tenant mismatch access attempt by ${uid}`);
-        throw new HttpsError('permission-denied', 'Unauthorized access.');
-    }
+        const rawData = snapshot.data() || {};
+        
+        // --- DATA NORMALIZATION (Legacy -> Enterprise) ---
+        // If 'identity' is missing, it's a legacy record. We wrap it for the UI.
+        const normalizedData: any = {
+            id: snapshot.id,
+            tenantId: rawData.tenantId || 'default-tenant',
+            meta: rawData.meta || {
+                trustScore: 100,
+                privacyLevel: 'standard',
+                createdAt: rawData.createdAt || new Date().toISOString()
+            },
+            identity: rawData.identity || {
+                firstName: { value: rawData.firstName || "Unknown", metadata: { source: 'manual', verified: true } },
+                lastName: { value: rawData.lastName || "Student", metadata: { source: 'manual', verified: true } },
+                dateOfBirth: { value: rawData.dateOfBirth || "Unknown", metadata: { source: 'manual', verified: true } },
+                gender: { value: rawData.gender || "Unknown", metadata: { source: 'manual', verified: true } },
+                nationalId: { value: rawData.nationalId || "", metadata: { source: 'manual', verified: false } }
+            },
+            education: rawData.education || {
+                currentSchoolId: { value: rawData.schoolId || "Unknown", metadata: { source: 'manual', verified: true } },
+                attendancePercentage: { value: 100, metadata: { source: 'manual', verified: false } }
+            },
+            family: rawData.family || {
+                parents: rawData.parentId ? [{ id: rawData.parentId, firstName: 'Parent', lastName: 'Record', relationshipType: 'Guardian' }] : []
+            },
+            health: rawData.health || {
+                allergies: { value: rawData.needs || [] },
+                conditions: { value: rawData.diagnosisCategory || [] },
+                medications: { value: [] }
+            },
+            discipline: rawData.discipline || (rawData.alerts || []).map((a: any) => ({
+                id: a.id || Math.random().toString(),
+                type: a.type || 'Alert',
+                severity: a.severity || 'low',
+                description: a.title || ''
+            }))
+        };
 
-    // 3. Role-Based Access Control (RBAC) & Field-Level Security
-    const userRole = request.auth.token.role || 'ParentUser'; // Default to lowest priv
-    
-    // Check if user is authorized to view restricted records
-    if (studentData.meta.privacyLevel === 'restricted' && !['SuperAdmin', 'EPP'].includes(userRole)) {
+        // 2. SECURITY CHECK (Post-Normalization)
+        const isSuperAdmin = ['SuperAdmin', 'Admin', 'admin'].includes(userRole);
+        if (!isSuperAdmin && normalizedData.tenantId !== userTenantId && normalizedData.tenantId !== 'default-tenant') {
+            throw new HttpsError('permission-denied', 'Unauthorized access.');
+        }
+
+        // 3. Redaction Logic
+        const redactedData = redactDataForRole(normalizedData, userRole);
+
+        // 4. Audit Log
         await logAuditEvent({
-            tenantId,
+            tenantId: normalizedData.tenantId,
             action: 'read',
             resourceType: 'student',
             resourceId: studentId,
             actorId: uid,
-            details: 'Access denied to restricted record',
+            details: 'Viewed Student Record (Normalized)',
             metadata: { reason }
         });
-        throw new HttpsError('permission-denied', 'Access to restricted record denied.');
+
+        return redactedData;
+
+    } catch (error: any) {
+        console.error(`[Student360] Error:`, error);
+        if (error instanceof HttpsError) throw error;
+        throw new HttpsError('internal', error.message);
     }
-
-    // 4. Redaction Logic (Server-side enforcement)
-    // We clone and strip fields based on role
-    const redactedData = redactDataForRole(studentData, userRole);
-
-    // 5. Audit Log
-    await logAuditEvent({
-        tenantId,
-        action: 'read',
-        resourceType: 'student',
-        resourceId: studentId,
-        actorId: uid,
-        details: 'Viewed Student 360 Record',
-        metadata: { 
-            reason, 
-            redacted: Object.keys(studentData).length !== Object.keys(redactedData).length 
-        }
-    });
-
-    return redactedData;
 };
 
-
-/**
- * Helper to strip sensitive fields based on role.
- * This ensures even if the client is compromised, the data never left the server.
- */
 function redactDataForRole(data: any, role: string): any {
     const copy = JSON.parse(JSON.stringify(data));
+    if (['SuperAdmin', 'Admin', 'admin'].includes(role)) return copy;
 
-    // Define restricted paths
     const restrictions: Record<string, string[]> = {
-        'careHistory': ['EPP', 'SuperAdmin', 'GovAnalyst'],
-        'discipline': ['EPP', 'SchoolAdmin', 'SuperAdmin'],
-        'health': ['EPP', 'SchoolAdmin', 'SuperAdmin', 'ParentUser'], // Parents can see health
-        'identity.nationalId': ['EPP', 'SuperAdmin', 'SchoolAdmin'],
+        'careHistory': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist'],
+        'discipline': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist', 'SchoolAdmin'],
+        'health': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist', 'ParentUser'],
     };
 
-    // Apply Redaction
-    if (!restrictions['careHistory'].includes(role)) delete copy.careHistory;
-    if (!restrictions['discipline'].includes(role)) delete copy.discipline;
-    
-    // Partial redaction for nationalId (nested)
-    if (!restrictions['identity.nationalId'].includes(role) && copy.identity?.nationalId) {
-        copy.identity.nationalId.value = 'REDACTED';
-    }
+    Object.keys(restrictions).forEach(path => {
+        if (!restrictions[path].some(r => r.toLowerCase() === role.toLowerCase())) {
+            delete copy[path];
+        }
+    });
 
     return copy;
 }

@@ -23,7 +23,7 @@ import { CaseFiles } from "@/components/dashboard/case/tabs/case-files";
 import { useRouter } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { AICopilotFloat } from "@/components/dashboard/case/ai-copilot-float";
+import { CopilotFloat } from "@/components/dashboard/case/ai-copilot-float"; // FIXED IMPORT
 
 interface CaseDetailsProps {
   caseId: string;
@@ -179,7 +179,8 @@ export function CaseDetails({ caseId }: CaseDetailsProps) {
       </div>
 
       {/* AI Copilot Float */}
-      <AICopilotFloat context={{ type: 'case', data: caseData, activeTab }} />
+      {/* Updated to use the correct exported component name */}
+      <CopilotFloat contextMode="case" contextId={caseId} />
     </div>
   );
 }

@@ -261,6 +261,7 @@ export interface TenantLocalizationSettings {
   allowUserLocaleOverride: boolean;
   updatedAt: string;
   updatedBy: string;
+  publishedBy?: string;
 }
 
 export interface TenantSettings {
@@ -541,8 +542,8 @@ export interface GuardianFinding {
 
 export interface GuardianEvent {
     tenantId: string;
-    eventType: string; // e.g., 'data_share', 'ai_generate', 'export'
-    subjectType: 'student' | 'case' | 'report';
+    eventType: string; // e.g., 'data_share', 'ai_generate', 'export', 'message_send'
+    subjectType: 'student' | 'case' | 'report' | 'message';
     subjectId: string;
     context: Record<string, any>; // Flexible context (content, destination, etc.)
     actorId: string;

@@ -1,212 +1,138 @@
-"use client";
+// src/components/dashboard/appointments/create-dialog.tsx
 
-import { useState } from 'react';
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Plus, Loader2 } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast";
+import React, { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { MeetingService } from '@/services/integrations/meetings/zoom-service';
+import { Loader2, Video, Calendar, ShieldCheck } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
+import { addDoc, collection } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { Appointment } from '@/types/schema';
 
-// Schema-aligned types
-interface AppointmentFormData {
-    title: string;
-    type: string;
-    startAt: string;
-    endAt: string;
-    locationType: 'video' | 'in_person' | 'phone';
-    participants: string; // Comma separated for MVP
-    description: string;
-}
+export function CreateAppointmentDialog({ onCreated, open, setOpen }: { onCreated?: () => void, open: boolean, setOpen: (open: boolean) => void }) {
+    const { tenant, user } = useAuth();
+    const { toast } = useToast();
+    const [isLoading, setIsLoading] = useState(false);
+    
+    // Form State
+    const [title, setTitle] = useState('');
+    const [date, setDate] = useState('');
+    const [time, setTime] = useState('');
+    const [duration, setDuration] = useState('60');
+    const [type, setType] = useState<'in_person' | 'video'>('video');
+    const [platform, setPlatform] = useState<'zoom' | 'teams'>('zoom');
 
-export function CreateAppointmentDialog() {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
-  
-  const [formData, setFormData] = useState<AppointmentFormData>({
-      title: '',
-      type: 'consultation',
-      startAt: '',
-      endAt: '',
-      locationType: 'video',
-      participants: '',
-      description: ''
-  });
+    const handleCreate = async () => {
+        if (!tenant || !user) return;
+        setIsLoading(true);
 
-  const handleChange = (field: keyof AppointmentFormData, value: string) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
-  };
+        try {
+            // 1. Create Appointment Record (Pending)
+            const startDateTime = new Date(`${date}T${time}`);
+            const endDateTime = new Date(startDateTime.getTime() + parseInt(duration) * 60000);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+            const appointmentData: Partial<Appointment> = {
+                tenantId: tenant.id,
+                hostUserId: user.uid,
+                title,
+                startAt: startDateTime.toISOString(),
+                endAt: endDateTime.toISOString(),
+                status: 'scheduled',
+                type: 'consultation',
+                locationType: type,
+                participantIds: [], // Add participants logic later
+                createdAt: new Date().toISOString(),
+                createdBy: user.uid
+            };
 
-    try {
-        // Validation Logic
-        if (new Date(formData.startAt) >= new Date(formData.endAt)) {
-            throw new Error("End time must be after start time");
+            const docRef = await addDoc(collection(db, `tenants/${tenant.id}/appointments`), appointmentData);
+
+            // 2. Provision Video Link if needed
+            if (type === 'video') {
+                const meetingUrl = await MeetingService.createMeeting(docRef.id, platform);
+                // Update doc is handled by Cloud Function usually, but for immediate UI feedback:
+                // We trust the service or wait for the function. 
+                // The service `createMeeting` waits for the function result.
+            }
+
+            toast({ title: "Appointment Scheduled", description: "Meeting link generated securely." });
+            setOpen(false);
+            if (onCreated) onCreated();
+        } catch (error: any) {
+            console.error(error);
+            toast({ title: "Error", description: error.message, variant: "destructive" });
+        } finally {
+            setIsLoading(false);
         }
+    };
 
-        // Simulate API call to create Appointment
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        console.log("Creating Appointment:", formData);
-        
-        toast({ title: "Appointment Scheduled", description: `${formData.title} has been booked.` });
-        setOpen(false);
-        // Reset form
-        setFormData({
-            title: '',
-            type: 'consultation',
-            startAt: '',
-            endAt: '',
-            locationType: 'video',
-            participants: '',
-            description: ''
-        });
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle>Schedule Appointment</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="title" className="text-right">Title</Label>
+                        <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-3" placeholder="Consultation with..." />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="date" className="text-right">Date</Label>
+                        <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="col-span-3" />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="time" className="text-right">Time</Label>
+                        <Input id="time" type="time" value={time} onChange={(e) => setTime(e.target.value)} className="col-span-3" />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label className="text-right">Type</Label>
+                        <Select value={type} onValueChange={(v: any) => setType(v)}>
+                            <SelectTrigger className="col-span-3">
+                                <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="in_person">In Person</SelectItem>
+                                <SelectItem value="video">Video Call</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
 
-    } catch (error: any) {
-        toast({ 
-            title: "Error", 
-            description: error.message || "Failed to schedule appointment",
-            variant: "destructive"
-        });
-    } finally {
-        setLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-         <Button className="gap-2">
-            <Plus className="h-4 w-4" /> New Appointment
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>New Appointment</DialogTitle>
-          <DialogDescription>
-            Schedule a new session. Notifications will be sent to participants.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-          
-          {/* Title & Type Row */}
-          <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Title</Label>
-                <Input 
-                    id="title" 
-                    placeholder="e.g. Initial Consultation" 
-                    value={formData.title}
-                    onChange={(e) => handleChange('title', e.target.value)}
-                    required 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="type">Type</Label>
-                 <Select value={formData.type} onValueChange={(v) => handleChange('type', v)}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="consultation">Consultation</SelectItem>
-                        <SelectItem value="assessment">Assessment</SelectItem>
-                        <SelectItem value="follow_up">Follow-up</SelectItem>
-                        <SelectItem value="telehealth">Telehealth</SelectItem>
-                    </SelectContent>
-                </Select>
-              </div>
-          </div>
-
-          {/* Date & Time Row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-                <Label htmlFor="startAt">Start Time</Label>
-                <Input 
-                    id="startAt" 
-                    type="datetime-local" 
-                    value={formData.startAt}
-                    onChange={(e) => handleChange('startAt', e.target.value)}
-                    required 
-                />
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="endAt">End Time</Label>
-                <Input 
-                    id="endAt" 
-                    type="datetime-local" 
-                    value={formData.endAt}
-                    onChange={(e) => handleChange('endAt', e.target.value)}
-                    required 
-                />
-            </div>
-          </div>
-
-          {/* Location & Participants */}
-          <div className="grid grid-cols-2 gap-4">
-             <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                 <Select value={formData.locationType} onValueChange={(v) => handleChange('locationType', v as any)}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Select location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="video">Video Call (Zoom/Teams)</SelectItem>
-                        <SelectItem value="in_person">In Person</SelectItem>
-                        <SelectItem value="phone">Phone Call</SelectItem>
-                    </SelectContent>
-                </Select>
-             </div>
-             <div className="space-y-2">
-                <Label htmlFor="participants">Participants (Emails)</Label>
-                <Input 
-                    id="participants" 
-                    placeholder="parent@example.com, teacher@school.edu" 
-                    value={formData.participants}
-                    onChange={(e) => handleChange('participants', e.target.value)}
-                />
-             </div>
-          </div>
-
-          {/* Description */}
-          <div className="space-y-2">
-            <Label htmlFor="description">Notes / Agenda</Label>
-            <Textarea 
-                id="description" 
-                placeholder="Brief details about this session..." 
-                value={formData.description}
-                onChange={(e) => handleChange('description', e.target.value)}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Schedule
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+                    {type === 'video' && (
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Platform</Label>
+                            <Select value={platform} onValueChange={(v: any) => setPlatform(v)}>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue placeholder="Select platform" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="zoom">Zoom (Secure)</SelectItem>
+                                    <SelectItem value="teams">Microsoft Teams</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+                    
+                    {type === 'video' && (
+                        <div className="col-span-4 flex items-center gap-2 p-2 bg-blue-50 text-blue-700 text-xs rounded">
+                            <ShieldCheck className="h-4 w-4" />
+                            <span>Meeting metadata will be sanitized for privacy.</span>
+                        </div>
+                    )}
+                </div>
+                <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                    <Button onClick={handleCreate} disabled={isLoading}>
+                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Schedule'}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
 }
