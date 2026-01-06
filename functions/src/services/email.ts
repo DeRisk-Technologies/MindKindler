@@ -1,4 +1,4 @@
-// import * as nodemailer from 'nodemailer'; // Uncomment when configuring SMTP
+import * as nodemailer from 'nodemailer';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 
 // Interface for email options
@@ -18,35 +18,53 @@ interface EmailOptions {
  */
 export const emailService = {
     async send(options: EmailOptions): Promise<boolean> {
-        // In production, use:
-        // const host = process.env.SMTP_HOST;
-        // const user = process.env.SMTP_USER;
-        // const pass = process.env.SMTP_PASS;
-        
-        // Fallback for Development/MVP if env vars missing
-        // const transporter = nodemailer.createTransport({
-        //     host: process.env.SMTP_HOST || "smtp.sendgrid.net",
-        //     port: 587,
-        //     secure: false, // true for 465, false for other ports
-        //     auth: {
-        //         user: process.env.SMTP_USER || "apikey", 
-        //         pass: process.env.SMTP_PASS || "mock_key", 
-        //     },
-        // });
+        const host = process.env.SMTP_HOST;
+        const port = parseInt(process.env.SMTP_PORT || "587");
+        const user = process.env.SMTP_USER;
+        const pass = process.env.SMTP_PASS;
 
-        // For MVP without live credentials, we log the attempt.
-        // Once SMTP_HOST/USER/PASS are set in .env or secrets, uncomment the transporter logic.
-        
-        console.log(`
-        >>> [OUTBOUND EMAIL] >>>
-        To: ${options.to}
-        Subject: ${options.subject}
-        Content-Length: ${options.html?.length || options.text?.length}
-        <<< [END EMAIL] <<<
-        `);
+        if (host && user && pass) {
+            try {
+                const transporter = nodemailer.createTransport({
+                    host: host,
+                    port: port,
+                    secure: port === 465, // true for 465, false for other ports
+                    auth: {
+                        user: user,
+                        pass: pass,
+                    },
+                });
 
-        // Simulate success
-        return true;
+                await transporter.sendMail({
+                    from: process.env.SMTP_FROM || '"MindKindler" <noreply@mindkindler.com>',
+                    to: options.to,
+                    subject: options.subject,
+                    text: options.text,
+                    html: options.html,
+                    attachments: options.attachments,
+                });
+
+                console.log(`[Email Service] Sent email to ${options.to}`);
+                return true;
+            } catch (error) {
+                console.error("[Email Service] Failed to send email via SMTP", error);
+                // Fallback to logging for debugging if SMTP fails, or rethrow?
+                // For now, let's log and rethrow so the queue processor knows it failed.
+                throw error;
+            }
+        } else {
+             // Fallback for Development/MVP if env vars missing
+             console.log(`
+             >>> [OUTBOUND EMAIL (MOCK)] >>>
+             To: ${options.to}
+             Subject: ${options.subject}
+             Content-Length: ${options.html?.length || options.text?.length}
+             <<< [END EMAIL] <<<
+             `);
+     
+             // Simulate success
+             return true;
+        }
     }
 };
 
@@ -62,6 +80,9 @@ export const processEmailQueue = onDocumentCreated({
     if (!snap) return;
     const data = snap.data();
     if (!data) return;
+
+    // Avoid infinite loops or reprocessing if already sent/error (though onDocumentCreated usually only triggers once)
+    if (data.status === 'sent' || data.status === 'error') return;
 
     try {
         await emailService.send({

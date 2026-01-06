@@ -33,35 +33,79 @@ service cloud.firestore {
        );
     }
 
-    // --- 1. GLOBAL & ROOT COLLECTIONS ---
+    // --- 1. GLOBAL REGISTRIES & CONFIG ---
     
-    match /organization_settings/{id} {
-      allow read: if true; 
-      allow write: if isSystemAdmin();
-    }
-
-    match /translations/{document=**} {
-      allow read: if true;
-      allow write: if isSystemAdmin();
-    }
-
     match /users/{userId} {
-      allow read: if isAuthenticated(); 
+      allow read: if isAuthenticated();
       allow write: if isSystemAdmin() || request.auth.uid == userId;
     }
 
+    // Paying Tenants (Organizations)
     match /organizations/{orgId} {
-      allow read: if isAuthenticated(); 
+      // Allow list/read for hierarchy building
+      allow read: if isAuthenticated();
+      // Allow creation/update by SuperAdmin
       allow create: if isSystemAdmin();
+      // Allow update by Tenant Admin (their own org) OR SuperAdmin
       allow update: if isSystemAdmin() || (isAuthenticated() && getTenantId() == orgId);
     }
 
-    // --- 2. TENANT DATA (Shards) ---
+    // Universal Hierarchy (The "Global Registry" Tree)
+    match /org_units/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isSystemAdmin();
+    }
+
+    // --- 2. ROOT LEVEL CLINICAL DATA (Legacy / Default DB) ---
+    match /students/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
+    match /cases/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
+    match /reports/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
+    match /consultation_sessions/{id} { allow read, write: if isClinician(null); }
+    
+    match /assessment_templates/{id} { allow read: if isAuthenticated(); allow write: if isClinician(null); }
+    match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
+    match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
+    
+    // --- 3. ADMIN & PORTAL MODULES ---
+    match /schools/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /districts/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /gov_stats/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    
+    match /partners/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /dealRegistrations/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /partnerStatements/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /partnerInvoices/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /partnerRevenueLedger/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+
+    match /settings/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /translations/{document=**} { allow read: if true; }
+    match /organization_settings/{id} { allow read: if true; allow write: if isSystemAdmin(); }
+    
+    match /policyRules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /knowledgeDocuments/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /knowledgeChunks/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /recommendationTemplates/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /safeguardingIncidents/{id} { allow read: if isAuthenticated(); allow write: if isClinician(null); }
+    match /personalRules/{id} { allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isSystemAdmin()); }
+
+    match /trainingModules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /trainingCompletions/{id} { allow read, write: if isAuthenticated(); }
+    match /certificates/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+
+    match /document_staging/{id} { allow read, write: if isAuthenticated(); }
+    
+    match /bot_sessions/{id} { 
+      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isSystemAdmin());
+      match /messages/{mId} { allow read, write: if isAuthenticated(); }
+    }
+
+    // --- 4. TENANT-NESTED SHARDS (Enterprise) ---
     match /tenants/{tenantId} {
-      // Allow PUBLIC read for 'global' tenant to support landing page
-      // Allow AUTHENTICATED read for matching tenant or admins
-      allow read: if tenantId == 'global' || (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin()));
+      // Allow reading tenant root doc if member or if global settings
+      allow read: if (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin())) || tenantId == 'global';
       
+      // Explicitly allow settings/i18n for 'global' tenant or authorized users
       match /settings/{document=**} {
         allow read: if tenantId == 'global' || (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin()));
         allow write: if isSystemAdmin() || (isAuthenticated() && getTenantId() == tenantId);
@@ -72,42 +116,16 @@ service cloud.firestore {
         allow write: if isSystemAdmin();
       }
 
-      match /students/{studentId} {
-        allow read: if isSystemAdmin() || (isAuthenticated() && (getTenantId() == tenantId || tenantId == 'default-tenant'));
-        allow write: if isSystemAdmin() || isClinician(tenantId);
-        match /{sub=**} {
-          allow read: if isSystemAdmin() || (isAuthenticated() && (getTenantId() == tenantId || tenantId == 'default-tenant'));
-          allow write: if isSystemAdmin() || isClinician(tenantId);
-        }
+      match /community/{feature}/{sub=**} {
+        allow read, write: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
       }
 
-      match /cases/{caseId} {
-        allow read: if isSystemAdmin() || (isAuthenticated() && (getTenantId() == tenantId || tenantId == 'default-tenant'));
-        allow write: if isSystemAdmin() || isClinician(tenantId);
-        match /{sub=**} {
-          allow read: if isSystemAdmin() || (isAuthenticated() && (getTenantId() == tenantId || tenantId == 'default-tenant'));
-          allow write: if isSystemAdmin() || isClinician(tenantId);
-        }
-      }
-
-      match /{other=**} {
-        allow read, write: if isSystemAdmin() || (isAuthenticated() && getTenantId() == tenantId);
+      match /{allSubcollections=**} {
+        allow read, write: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
       }
     }
 
-    // --- 3. LEGACY ROOT COLLECTIONS ---
-    match /students/{id} { allow read, write: if isSystemAdmin() || (isAuthenticated() && isClinician(null)); }
-    match /cases/{id} { allow read, write: if isSystemAdmin() || (isAuthenticated() && isClinician(null)); }
-    match /reports/{id} { allow read, write: if isSystemAdmin() || (isAuthenticated() && isClinician(null)); }
-    match /schools/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin() || (isAuthenticated() && isClinician(null)); }
-    match /districts/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /gov_stats/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /policyRules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /bot_sessions/{id} { 
-        allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isSystemAdmin());
-        match /messages/{mId} { allow read, write: if isAuthenticated(); }
-    }
-
+    // --- Default Deny ---
     match /{document=**} {
       allow read, write: if false;
     }

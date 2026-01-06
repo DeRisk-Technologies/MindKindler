@@ -17,7 +17,8 @@ import {
   FileText,
   Clock,
   MessageSquare,
-  Lock
+  Lock,
+  Database
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
@@ -90,6 +91,16 @@ export default function Home() {
         icon: <Lock className="h-8 w-8 text-primary" />,
         title: "Clinical Safety First",
         description: "Built by certified Educational Psychologists. Adheres to strict ethical guidelines and data sovereignty laws.",
+    },
+    {
+        icon: <Users className="h-8 w-8 text-primary" />,
+        title: "Community Forum",
+        description: "Connect with peers, share insights, and access a global network of educational psychologists.",
+    },
+    {
+        icon: <Database className="h-8 w-8 text-primary" />,
+        title: "Global Knowledge Vault",
+        description: "A centralized repository of best practices, research, and policy documents.",
     }
   ];
 
@@ -114,7 +125,7 @@ export default function Home() {
               Kindling Potential, <span className="text-primary">Globally</span>.
             </h1>
             <p className="max-w-[600px] text-lg text-muted-foreground md:text-xl">
-              The AI-enabled ecosystem connecting governments, schools, and clinicians. Built by psychologists, for psychologists.
+              The AI-enabled Educational Psychology ecosystem connecting governments, schools, and clinicians.
             </p>
              <p className="text-sm text-muted-foreground italic flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-green-600" />

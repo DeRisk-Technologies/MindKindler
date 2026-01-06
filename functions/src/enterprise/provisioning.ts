@@ -13,11 +13,13 @@ interface ProvisionData {
     contactName: string;
     contactEmail: string;
     planTier: string;
+    parentId?: string;
+    metadata?: {
+        registryId?: string; // The ID of the OrgUnit in the hierarchy tree
+    };
 }
 
 export const provisionTenant = onCall(callOptions, async (request) => {
-    // 1. IMPROVED SECURITY CHECK
-    // Allow if role is in token OR if SuperAdmin in Firestore
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'Login required.');
 
@@ -32,12 +34,9 @@ export const provisionTenant = onCall(callOptions, async (request) => {
         throw new HttpsError('permission-denied', 'Only SuperAdmins can provision tenants.');
     }
 
-    const { name, type, region, contactName, contactEmail, planTier } = request.data as ProvisionData;
+    const { name, type, region, contactName, contactEmail, planTier, parentId, metadata } = request.data as ProvisionData;
 
     try {
-        console.log(`[Provisioning] Starting for: ${name} (${type}) in ${region}`);
-
-        // 2. Create Organization Document (In Default DB)
         const orgRef = db.collection('organizations').doc();
         const orgId = orgRef.id;
 
@@ -49,13 +48,28 @@ export const provisionTenant = onCall(callOptions, async (request) => {
             planTier,
             status: 'active',
             primaryContact: { name: contactName, email: contactEmail, roleTitle: 'Admin' },
+            parentId: parentId && parentId !== 'none' ? parentId : null, 
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            provisionedBy: uid
+            provisionedBy: uid,
+            linkedRegistryId: metadata?.registryId || null // Link to the hierarchy node
         };
 
         await orgRef.set(orgData);
 
-        // 3. Create Tenant Admin User
+        // --- NEW: Bridge Registry to Tenant ---
+        // If this provision came from the Wizard (has registryId), mark that node as a Tenant Root
+        if (metadata?.registryId) {
+            const registryRef = db.collection('org_units').doc(metadata.registryId);
+            await registryRef.set({
+                isTenantRoot: true,
+                tenantId: orgId, // This allows the LEA Admin to "own" this branch
+                subscriptionTier: 'STANDARD' // Default
+            }, { merge: true });
+            
+            console.log(`[Provisioning] Upgraded OrgUnit ${metadata.registryId} to Tenant Root linked to ${orgId}`);
+        }
+
+        // Create Admin User
         let adminUid;
         try {
             const userRecord = await admin.auth().getUserByEmail(contactEmail);
@@ -69,7 +83,6 @@ export const provisionTenant = onCall(callOptions, async (request) => {
             adminUid = newUser.uid;
         }
 
-        // Set Claims
         await admin.auth().setCustomUserClaims(adminUid, { 
             role: 'TenantAdmin', 
             tenantId: orgId 
@@ -83,28 +96,13 @@ export const provisionTenant = onCall(callOptions, async (request) => {
             orgMemberships: [{ orgId, role: 'TenantAdmin', status: 'active', joinedAt: new Date().toISOString() }]
         }, { merge: true });
 
-        // 4. Send Welcome Email (Simulated)
-        const loginUrl = `https://mindkindler-84fcf.web.app/login?tenant=${orgId}`;
-        const emailBody = `
-            Dear ${contactName},
-            The MindKindler environment for "${name}" is ready.
-            Role: Organization Administrator
-            Login: ${loginUrl}
-            Tenant ID: ${orgId}
-            Region: ${region}
-        `;
-
         await emailService.send({
             to: contactEmail,
             subject: "Welcome to MindKindler",
-            text: emailBody
+            text: `MindKindler Environment ready for ${name}.`
         });
 
-        return { 
-            success: true, 
-            orgId: orgId, 
-            message: `Tenant ${name} provisioned successfully in ${region}.` 
-        };
+        return { success: true, orgId: orgId, message: `Tenant ${name} provisioned and linked to Global Registry.` };
 
     } catch (error: any) {
         console.error("[Provisioning] Failed:", error);

@@ -38,7 +38,7 @@ export const UK_LEA_LIST = [
     { id: 'lea_211', name: 'Southwark' },
     { id: 'lea_212', name: 'Tower Hamlets' },
     { id: 'lea_213', name: 'Wandsworth' },
-    { id: 'lea_213', name: 'Westminster' },
+    { id: 'lea_214', name: 'Westminster' }, // Fixed Duplicate Key
     { id: 'lea_330', name: 'Birmingham' },
     { id: 'lea_331', name: 'Coventry' },
     { id: 'lea_350', name: 'Manchester' },
