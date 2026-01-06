@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-// import { enterpriseService } from '@/services/enterprise/org-service'; // REPLACED by Cloud Function call
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 import { Loader2, Building, Globe } from 'lucide-react';
@@ -31,7 +30,6 @@ export default function CreateOrgPage() {
         setLoading(true);
 
         try {
-            // Updated: Call the Provisioning Cloud Function V2
             const provisionFn = httpsCallable(functions, 'provisionEnterpriseTenantV2');
             const result = await provisionFn({
                 name: formData.name,
@@ -43,22 +41,11 @@ export default function CreateOrgPage() {
             });
 
             const response = result.data as any;
-
-            toast({ 
-                title: "Provisioning Successful", 
-                description: response.message || "Tenant created and invite sent." 
-            });
-            
-            // Clear Form
+            toast({ title: "Provisioning Successful", description: response.message || "Tenant created and invite sent." });
             setFormData({ ...formData, name: '', contactName: '', contactEmail: '' });
-
         } catch (error: any) {
             console.error(error);
-            toast({ 
-                title: "Provisioning Failed", 
-                description: error.message || "Failed to create organization.", 
-                variant: "destructive" 
-            });
+            toast({ title: "Provisioning Failed", description: error.message || "Failed to create organization.", variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -85,12 +72,7 @@ export default function CreateOrgPage() {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Organization Name</Label>
-                                <Input 
-                                    placeholder="e.g. Springfield High School" 
-                                    value={formData.name}
-                                    onChange={e => setFormData({...formData, name: e.target.value})}
-                                    required
-                                />
+                                <Input placeholder="e.g. Springfield High School" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
                             </div>
                             <div className="space-y-2">
                                 <Label>Type</Label>
@@ -112,35 +94,23 @@ export default function CreateOrgPage() {
                             <Select value={formData.region} onValueChange={(v: DataRegion) => setFormData({...formData, region: v})}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="europe-west3">Europe (Frankfurt) - GDPR Compliant</SelectItem>
-                                    <SelectItem value="us-central1">United States (Iowa) - FERPA/HIPAA</SelectItem>
+                                    <SelectItem value="europe-west2">United Kingdom (London)</SelectItem>
+                                    <SelectItem value="europe-west3">European Union (Frankfurt)</SelectItem>
+                                    <SelectItem value="me-central2">Middle East (Saudi Arabia)</SelectItem>
+                                    <SelectItem value="us-central1">United States (Iowa)</SelectItem>
                                     <SelectItem value="asia-northeast1">Asia (Tokyo)</SelectItem>
                                 </SelectContent>
                             </Select>
-                            <p className="text-xs text-muted-foreground">
-                                <strong>Critical:</strong> This determines where all student data is physically stored. Cannot be changed later.
-                            </p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                              <div className="space-y-2">
                                 <Label>Primary Contact Name (Admin)</Label>
-                                <Input 
-                                    placeholder="Jane Doe" 
-                                    value={formData.contactName}
-                                    onChange={e => setFormData({...formData, contactName: e.target.value})}
-                                    required
-                                />
+                                <Input placeholder="Jane Doe" value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value})} required />
                             </div>
                              <div className="space-y-2">
                                 <Label>Contact Email</Label>
-                                <Input 
-                                    type="email"
-                                    placeholder="admin@school.edu" 
-                                    value={formData.contactEmail}
-                                    onChange={e => setFormData({...formData, contactEmail: e.target.value})}
-                                    required
-                                />
+                                <Input type="email" placeholder="admin@school.edu" value={formData.contactEmail} onChange={e => setFormData({...formData, contactEmail: e.target.value})} required />
                             </div>
                         </div>
 
@@ -149,9 +119,9 @@ export default function CreateOrgPage() {
                             <Select value={formData.plan} onValueChange={(v) => setFormData({...formData, plan: v})}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="essential">Essential (Small School)</SelectItem>
-                                    <SelectItem value="professional">Professional (Standard)</SelectItem>
-                                    <SelectItem value="enterprise">Enterprise (National/State)</SelectItem>
+                                    <SelectItem value="essential">Essential</SelectItem>
+                                    <SelectItem value="professional">Professional</SelectItem>
+                                    <SelectItem value="enterprise">Enterprise</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
