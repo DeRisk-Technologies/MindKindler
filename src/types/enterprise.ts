@@ -4,7 +4,14 @@ export type OrgType = 'national' | 'state' | 'lea' | 'school' | 'agency' | 'clin
 
 export type SubscriptionStatus = 'trial' | 'active' | 'past_due' | 'canceled' | 'lifetime';
 
-export type DataRegion = 'us-central1' | 'europe-west3' | 'asia-northeast1'; // US, EU (Frankfurt), Tokyo
+export type DataRegion = 
+    | 'us-central1' 
+    | 'europe-west3' 
+    | 'europe-west2' 
+    | 'me-central2' 
+    | 'asia-northeast1' 
+    | 'northamerica-northeast1' 
+    | 'europe-west1'; // Added Canada and France
 
 export interface Organization {
     id: string;
