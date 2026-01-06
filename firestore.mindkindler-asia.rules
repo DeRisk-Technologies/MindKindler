@@ -33,7 +33,8 @@ service cloud.firestore {
        );
     }
 
-    // --- 1. ROOT LEVEL COLLECTIONS (Existing Data) ---
+    // --- 1. ROOT LEVEL COLLECTIONS (Existing Data & Global Modules) ---
+    
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow write: if isSystemAdmin() || request.auth.uid == userId;
@@ -44,29 +45,53 @@ service cloud.firestore {
       allow write: if isSystemAdmin();
     }
 
+    // Clinical Records
     match /students/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
     match /cases/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
     match /reports/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
+    match /consultation_sessions/{id} { allow read, write: if isClinician(null); }
+    
+    // Assessments
     match /assessment_templates/{id} { allow read: if isAuthenticated(); allow write: if isClinician(null); }
     match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
     match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
-    match /consultation_sessions/{id} { allow read, write: if isClinician(null); }
+    
+    // Org Hierarchy & GovIntel (Fixes Benchmarking, Overview, Policy Planner)
     match /schools/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /districts/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /gov_stats/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    
+    // Partner Portal
     match /partners/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /dealRegistrations/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /partnerStatements/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /partnerInvoices/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /partnerRevenueLedger/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+
+    // Settings & Translations
     match /settings/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /policyRules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /translations/{document=**} { allow read: if true; }
     match /organization_settings/{id} { allow read: if true; allow write: if isSystemAdmin(); }
     
-    // Additional Root Collections (Missing in previous pass)
+    // Intelligence & Knowledge Base
+    match /policyRules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /knowledgeDocuments/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /knowledgeChunks/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /recommendationTemplates/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /safeguardingIncidents/{id} { allow read: if isAuthenticated(); allow write: if isClinician(null); }
+    match /personalRules/{id} { allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isSystemAdmin()); }
+
+    // Training Academy
     match /trainingModules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /trainingCompletions/{id} { allow read, write: if isAuthenticated(); }
     match /certificates/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+
+    // Data Operations
     match /document_staging/{id} { allow read, write: if isAuthenticated(); }
-    match /knowledgeChunks/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    
+    // AI Co-Pilot
     match /bot_sessions/{id} { 
-      allow read, write: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isSystemAdmin());
       match /messages/{mId} { allow read, write: if isAuthenticated(); }
     }
 
@@ -74,7 +99,6 @@ service cloud.firestore {
     match /tenants/{tenantId} {
       allow read: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
       
-      // Fixed: Explicit access for nested community features
       match /community/{feature}/{sub=**} {
         allow read, write: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
       }
