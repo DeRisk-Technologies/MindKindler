@@ -10,43 +10,7 @@ import { Building2, Plus, Globe, MoreVertical, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Organization } from '@/types/enterprise';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-
-// Mock Data - In prod, fetch from enterpriseService
-const MOCK_TENANTS: Organization[] = [
-    {
-        id: 't_1',
-        name: 'Ministry of Education (National)',
-        type: 'national',
-        region: 'europe-west3',
-        planTier: 'enterprise',
-        primaryContact: { name: 'Director General', email: 'dg@gov.uk', roleTitle: 'DG' },
-        address: { city: 'London', country: 'UK', street: '', state: '', postalCode: '' },
-        settings: { features: {}, security: { mfaRequired: true } },
-        createdAt: '2023-01-01'
-    },
-    {
-        id: 't_2',
-        name: 'California Dept of Education',
-        type: 'state',
-        region: 'us-central1',
-        planTier: 'enterprise',
-        primaryContact: { name: 'State Admin', email: 'admin@cde.ca.gov', roleTitle: 'Admin' },
-        address: { city: 'Sacramento', country: 'US', street: '', state: 'CA', postalCode: '' },
-        settings: { features: {}, security: { mfaRequired: true } },
-        createdAt: '2023-02-15'
-    },
-    {
-        id: 't_3',
-        name: 'Springfield School District',
-        type: 'lea',
-        region: 'us-central1',
-        planTier: 'professional',
-        primaryContact: { name: 'Supt. Chalmers', email: 'chalmers@springfield.edu', roleTitle: 'Superintendent' },
-        address: { city: 'Springfield', country: 'US', street: '', state: 'IL', postalCode: '' },
-        settings: { features: {}, security: { mfaRequired: true } },
-        createdAt: '2023-03-10'
-    }
-];
+import { orgService } from '@/services/enterprise/org-service';
 
 export default function TenantManagementPage() {
     const { toast } = useToast();
@@ -54,12 +18,19 @@ export default function TenantManagementPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Simulate fetch
-        setTimeout(() => {
-            setTenants(MOCK_TENANTS);
-            setLoading(false);
-        }, 800);
-    }, []);
+        async function fetchTenants() {
+            try {
+                const data = await orgService.getAllOrganizations();
+                setTenants(data);
+            } catch (error) {
+                console.error("Failed to fetch tenants", error);
+                toast({ title: "Error", description: "Failed to load tenants.", variant: "destructive" });
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchTenants();
+    }, [toast]);
 
     const handleAction = (action: string, tenantId: string) => {
         toast({ title: `Action: ${action}`, description: `Processing for tenant ${tenantId}` });
@@ -83,7 +54,7 @@ export default function TenantManagementPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Active Tenants</CardTitle>
+                    <CardTitle>Active Tenants ({tenants.length})</CardTitle>
                     <CardDescription>Manage subscription status, data residency, and access.</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -99,59 +70,69 @@ export default function TenantManagementPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {tenants.map(tenant => (
-                                <TableRow key={tenant.id}>
-                                    <TableCell>
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-muted rounded-md">
-                                                <Building2 className="h-4 w-4 text-slate-600"/>
-                                            </div>
-                                            <div>
-                                                <div className="font-medium">{tenant.name}</div>
-                                                <div className="text-xs text-muted-foreground">ID: {tenant.id}</div>
-                                            </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline" className="capitalize">{tenant.type}</Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <Globe className="h-3 w-3 text-muted-foreground"/>
-                                            {tenant.region}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge className={tenant.planTier === 'enterprise' ? 'bg-purple-600' : 'bg-blue-600'}>
-                                            {tenant.planTier}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="text-sm">{tenant.primaryContact.email}</div>
-                                        <div className="text-xs text-muted-foreground">{tenant.primaryContact.name}</div>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon">
-                                                    <MoreVertical className="h-4 w-4"/>
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => handleAction('View Hierarchy', tenant.id)}>
-                                                    View Hierarchy
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleAction('Manage Billing', tenant.id)}>
-                                                    Manage Billing
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleAction('Suspend', tenant.id)} className="text-red-600">
-                                                    Suspend Tenant
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
+                            {tenants.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                        No tenants found. Click "Provision New Tenant" to get started.
                                     </TableCell>
                                 </TableRow>
-                            ))}
+                            ) : (
+                                tenants.map(tenant => (
+                                    <TableRow key={tenant.id}>
+                                        <TableCell>
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-muted rounded-md">
+                                                    <Building2 className="h-4 w-4 text-slate-600"/>
+                                                </div>
+                                                <div>
+                                                    <div className="font-medium">{tenant.name}</div>
+                                                    <div className="text-xs text-muted-foreground">ID: {tenant.id}</div>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant="outline" className="capitalize">{tenant.type}</Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <Globe className="h-3 w-3 text-muted-foreground"/>
+                                                {tenant.region}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge className={tenant.planTier === 'enterprise' ? 'bg-purple-600' : (tenant.planTier === 'professional' ? 'bg-blue-600' : 'bg-slate-600')}>
+                                                {tenant.planTier}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="text-sm">{tenant.primaryContact?.email}</div>
+                                            <div className="text-xs text-muted-foreground">{tenant.primaryContact?.name}</div>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon">
+                                                        <MoreVertical className="h-4 w-4"/>
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem asChild>
+                                                        <Link href={`/dashboard/govintel/hierarchy/${tenant.id}`}>
+                                                            View Hierarchy
+                                                        </Link>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleAction('Manage Billing', tenant.id)}>
+                                                        Manage Billing
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleAction('Suspend', tenant.id)} className="text-red-600">
+                                                        Suspend Tenant
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
