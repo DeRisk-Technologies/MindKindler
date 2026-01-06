@@ -2,15 +2,9 @@ import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { logAuditEvent } from './audit/audit-logger';
 
-// Standardized initialization check
 if (!admin.apps.length) admin.initializeApp();
 
-interface GetStudentRequest {
-    studentId: string;
-    reason?: string; 
-}
-
-export const handler = async (request: CallableRequest<GetStudentRequest>) => {
+export const handler = async (request: CallableRequest<any>) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'User must be logged in.');
     }
@@ -20,21 +14,12 @@ export const handler = async (request: CallableRequest<GetStudentRequest>) => {
     const userRole = (request.auth.token.role || 'ParentUser') as string;
     const userTenantId = (request.auth.token.tenantId || 'default-tenant') as string;
 
-    console.log(`[Student360] Fetch attempt by ${uid} for student ${studentId} (Tenant: ${userTenantId})`);
-
     try {
-        // 1. SELECT DATABASE
-        // Using standard firestore instance for now to ensure connectivity
         const db = admin.firestore();
-
-        // 2. FETCH STUDENT
-        // Try Root Collection first
         let studentRef = db.collection('students').doc(studentId);
         let snapshot = await studentRef.get();
 
-        // Fallback to Tenant-Nested Path if not found in root
         if (!snapshot.exists) {
-            console.log(`[Student360] Not found in root, checking tenants/${userTenantId}/students...`);
             studentRef = db.collection('tenants').doc(userTenantId).collection('students').doc(studentId);
             snapshot = await studentRef.get();
         }
@@ -43,31 +28,62 @@ export const handler = async (request: CallableRequest<GetStudentRequest>) => {
             throw new HttpsError('not-found', 'Student record not found.');
         }
 
-        const studentData = snapshot.data();
+        const rawData = snapshot.data() || {};
+        
+        // --- DATA NORMALIZATION (Legacy -> Enterprise) ---
+        // If 'identity' is missing, it's a legacy record. We wrap it for the UI.
+        const normalizedData: any = {
+            id: snapshot.id,
+            tenantId: rawData.tenantId || 'default-tenant',
+            meta: rawData.meta || {
+                trustScore: 100,
+                privacyLevel: 'standard',
+                createdAt: rawData.createdAt || new Date().toISOString()
+            },
+            identity: rawData.identity || {
+                firstName: { value: rawData.firstName || "Unknown", metadata: { source: 'manual', verified: true } },
+                lastName: { value: rawData.lastName || "Student", metadata: { source: 'manual', verified: true } },
+                dateOfBirth: { value: rawData.dateOfBirth || "Unknown", metadata: { source: 'manual', verified: true } },
+                gender: { value: rawData.gender || "Unknown", metadata: { source: 'manual', verified: true } },
+                nationalId: { value: rawData.nationalId || "", metadata: { source: 'manual', verified: false } }
+            },
+            education: rawData.education || {
+                currentSchoolId: { value: rawData.schoolId || "Unknown", metadata: { source: 'manual', verified: true } },
+                attendancePercentage: { value: 100, metadata: { source: 'manual', verified: false } }
+            },
+            family: rawData.family || {
+                parents: rawData.parentId ? [{ id: rawData.parentId, firstName: 'Parent', lastName: 'Record', relationshipType: 'Guardian' }] : []
+            },
+            health: rawData.health || {
+                allergies: { value: rawData.needs || [] },
+                conditions: { value: rawData.diagnosisCategory || [] },
+                medications: { value: [] }
+            },
+            discipline: rawData.discipline || (rawData.alerts || []).map((a: any) => ({
+                id: a.id || Math.random().toString(),
+                type: a.type || 'Alert',
+                severity: a.severity || 'low',
+                description: a.title || ''
+            }))
+        };
 
-        // 3. SECURITY CHECK
+        // 2. SECURITY CHECK (Post-Normalization)
         const isSuperAdmin = ['SuperAdmin', 'Admin', 'admin'].includes(userRole);
-        const recordTenantId = studentData?.tenantId || 'default-tenant';
-
-        // Authorization Logic
-        if (!isSuperAdmin) {
-            if (recordTenantId !== userTenantId && recordTenantId !== 'default-tenant') {
-                console.warn(`[SECURITY] Access Denied: Tenant Mismatch. User=${userTenantId}, Record=${recordTenantId}`);
-                throw new HttpsError('permission-denied', 'Unauthorized access to this record.');
-            }
+        if (!isSuperAdmin && normalizedData.tenantId !== userTenantId && normalizedData.tenantId !== 'default-tenant') {
+            throw new HttpsError('permission-denied', 'Unauthorized access.');
         }
 
-        // 4. Redaction Logic
-        const redactedData = redactDataForRole(studentData, userRole);
+        // 3. Redaction Logic
+        const redactedData = redactDataForRole(normalizedData, userRole);
 
-        // 5. Audit Log
+        // 4. Audit Log
         await logAuditEvent({
-            tenantId: recordTenantId,
+            tenantId: normalizedData.tenantId,
             action: 'read',
             resourceType: 'student',
             resourceId: studentId,
             actorId: uid,
-            details: 'Viewed Student 360 Record (Secure)',
+            details: 'Viewed Student Record (Normalized)',
             metadata: { reason }
         });
 
@@ -75,22 +91,19 @@ export const handler = async (request: CallableRequest<GetStudentRequest>) => {
 
     } catch (error: any) {
         console.error(`[Student360] Error:`, error);
-        // Map internal errors to secure HttpsErrors
         if (error instanceof HttpsError) throw error;
-        throw new HttpsError('internal', error.message || 'Failed to process request.');
+        throw new HttpsError('internal', error.message);
     }
 };
 
 function redactDataForRole(data: any, role: string): any {
     const copy = JSON.parse(JSON.stringify(data));
-    
-    // SuperAdmins bypass redaction
     if (['SuperAdmin', 'Admin', 'admin'].includes(role)) return copy;
 
     const restrictions: Record<string, string[]> = {
-        'careHistory': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist', 'SchoolPsychologist'],
-        'discipline': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist', 'SchoolPsychologist', 'SchoolAdmin'],
-        'health': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist', 'SchoolPsychologist', 'ParentUser'],
+        'careHistory': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist'],
+        'discipline': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist', 'SchoolAdmin'],
+        'health': ['EPP', 'EducationalPsychologist', 'ClinicalPsychologist', 'ParentUser'],
     };
 
     Object.keys(restrictions).forEach(path => {
