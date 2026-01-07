@@ -155,6 +155,9 @@ export interface StudentRecord {
 
     discipline?: DisciplineIncident[];
 
+    // Extension field for Country OS Modular Architecture
+    extensions?: Record<string, any>; 
+
     meta: {
         createdAt: string;
         createdBy: string;
@@ -727,4 +730,55 @@ export interface BotMessage {
     provenanceId?: string; // Link to ai_provenance log
     
     createdAt: string;
+}
+
+// --- Country OS: Knowledge Documents & Policy Drafts ---
+
+export interface KnowledgeDocument {
+    id: string;
+    type: 'rulebook' | 'report' | 'evidence';
+    title: string;
+    ownerId: string;
+    tenantId?: string; // If null, global/system doc
+    visibility: 'private' | 'team' | 'public';
+    storagePath: string; // GS path
+    
+    status: 'uploaded' | 'processing' | 'indexed' | 'error';
+    
+    metadata: {
+        originalFileName: string;
+        authority?: string; // For rulebooks
+        evidenceType?: string; // For evidence
+        publicationYear?: string;
+        trustScore?: number;
+        verified?: boolean;
+        caseTags?: string[];
+    };
+    
+    createdAt: string;
+}
+
+export interface PolicyRuleDraft {
+    id: string;
+    tenantId: string;
+    sourceDocumentId: string;
+    
+    extractedText: string;
+    citations: string[]; // Chunk IDs
+    
+    confidence: number; // AI confidence 0-1
+    status: 'draft' | 'approved' | 'rejected';
+    
+    structuredDraft: {
+        title: string;
+        severity: 'low' | 'medium' | 'high' | 'critical';
+        triggerCondition: string;
+        remediation: string;
+        mode: 'advisory' | 'enforce';
+        blockActions: boolean;
+    };
+    
+    createdAt: string;
+    reviewedBy?: string;
+    reviewedAt?: string;
 }
