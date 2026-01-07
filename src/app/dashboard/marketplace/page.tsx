@@ -15,6 +15,8 @@ import { installPack } from '@/marketplace/installer';
 
 // Mock Catalog (In prod, fetch from API)
 import ukPack from "@/marketplace/catalog/uk_la_pack.json";
+import { MarketplaceManifest } from '@/marketplace/types';
+
 // In a real app, these would be fetched dynamically. 
 // For now, we manually map the ID to the JSON import for the client-side call.
 const CATALOG: Record<string, any> = {
@@ -52,21 +54,34 @@ export default function MarketplacePage() {
             return;
         }
 
+        // Fallback for Dev: If SuperAdmin has no tenantId, use 'default'
+        // CASTING USER TO ANY TO AVOID TS ERROR ON tenantId
+        const tenantId = (user as any).tenantId || (user.email?.includes('admin') ? 'default' : null);
+
+        if (!tenantId) {
+            toast({ 
+                variant: "destructive", 
+                title: "Configuration Error", 
+                description: "Your user account is not linked to a Tenant ID. Please contact support." 
+            });
+            return;
+        }
+
         setInstalling(packId);
 
         try {
             // Get the manifest JSON
-            const manifest = CATALOG[packId];
+            const manifest = CATALOG[packId] as MarketplaceManifest;
             if (!manifest) {
                 // Fallback for demo packs that don't have a JSON file yet
                 throw new Error("Pack manifest not found in catalog (Demo Only).");
             }
 
-            console.log(`Installing pack ${packId}...`);
+            console.log(`Installing pack ${packId} for tenant ${tenantId}...`);
             
             // Client-Side Install
             // This runs in the browser context, using the active User session.
-            const res = await installPack(manifest);
+            const res = await installPack(manifest, tenantId);
             
             if (res.success) {
                 toast({
