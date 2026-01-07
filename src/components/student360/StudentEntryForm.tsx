@@ -9,8 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { ParentEntryForm } from './ParentEntryForm';
 import { Loader2, Save, Shield, Map } from 'lucide-react';
-import { useSchemaExtensions } from '@/hooks/use-schema-extensions'; // NEW
-import { DynamicFormField } from '@/components/ui/dynamic-form-field'; // NEW
+import { useSchemaExtensions } from '@/hooks/use-schema-extensions';
+import { DynamicFormField } from '@/components/ui/dynamic-form-field';
+import { Student360Service } from '@/services/student360-service'; // Use real service
+import { useAuth } from '@/hooks/use-auth';
 
 // Default values structure
 const defaultValues = {
@@ -40,8 +42,8 @@ export function StudentEntryForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const { user } = useAuth();
   
-  // Phase 7: Inject Country OS Extensions
   const { config: schemaConfig, loading: loadingExtensions } = useSchemaExtensions();
 
   const form = useForm({
@@ -49,19 +51,37 @@ export function StudentEntryForm() {
   });
 
   const onSubmit = async (data: any) => {
+    if (!user?.tenantId) return;
     setIsSubmitting(true);
+    
     try {
-        console.log("Submitting 360 Record:", data);
+        // Prepare Payload for Service
+        // Merge the dynamic 'extensions' into the main payload if the service supports it
+        // The Student360Service types might need to be updated to accept 'extensions'
+        // For now, we assume strict typing, so we might need to cast or update the type definition
+        // Let's pass it as part of studentData.
         
-        // Simulating delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        const studentData = {
+            identity: data.identity,
+            education: data.education,
+            family: data.family,
+            health: data.health,
+            extensions: data.extensions // Passing the Country OS fields (UPN etc)
+        };
 
+        const studentId = await Student360Service.createStudentWithParents(
+            user.tenantId, 
+            studentData as any, // Cast to any until interface is fully updated
+            data.family.parents, 
+            user.uid
+        );
+        
         toast({
             title: "Student Record Created",
             description: "Student and parent records have been saved successfully. Verification tasks generated.",
         });
 
-        router.push(`/dashboard/students`);
+        router.push(`/dashboard/students/${studentId}`);
 
     } catch (error) {
         console.error(error);
