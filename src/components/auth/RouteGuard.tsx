@@ -14,30 +14,32 @@ interface Props {
 export function RouteGuard({ children }: Props) {
     const router = useRouter();
     const pathname = usePathname();
-    const { can, user, loading } = usePermissions(); // FIX: Destructure loading
+    const { can, hasRole, user, loading } = usePermissions();
 
     useEffect(() => {
-        // 1. If still loading permissions, do nothing yet
         if (loading) return;
-
-        // 2. If no user, Layout usually handles redirect to login, but we can double check
         if (!user) return; 
 
-        // 3. Staff SCR Protection
+        // 1. Staff SCR Protection
         if (pathname.startsWith('/dashboard/staff') && !can('view_staff_scr')) {
-            console.warn(`Access Denied: ${user.email} (Role: ${JSON.stringify(user)}) cannot view Staff SCR.`);
             router.replace('/dashboard');
         }
 
-        // 4. GovIntel Protection
+        // 2. GovIntel Protection
         if (pathname.startsWith('/dashboard/govintel') && !can('view_gov_intel')) {
-            console.warn(`Access Denied: cannot view GovIntel.`);
             router.replace('/dashboard');
         }
 
-    }, [pathname, user, can, loading, router]);
+        // 3. Admin / Tenant Provisioning Protection
+        // Allow EPPs (who are effectively TenantAdmins of their practice) to access provisioning tools
+        // Specifically /dashboard/admin/enterprise/new
+        if (pathname.startsWith('/dashboard/admin') && !hasRole(['SuperAdmin', 'TenantAdmin', 'EPP'])) {
+             console.warn(`Access Denied: ${user.email} cannot view Admin Console.`);
+             router.replace('/dashboard');
+        }
 
-    // Show spinner while checking permissions to prevent flash of content or premature redirect
+    }, [pathname, user, can, hasRole, loading, router]);
+
     if (loading) {
         return (
             <div className="h-screen w-full flex items-center justify-center">

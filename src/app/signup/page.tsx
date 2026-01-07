@@ -56,6 +56,17 @@ export default function SignupPage() {
   const { toast } = useToast();
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("");
+  const [regNumber, setRegNumber] = useState("");
+
+  // Helper to determine label for registration number
+  const getRegLabel = () => {
+      const r = selectedRole.toLowerCase();
+      if (r.includes("psychologist")) return "HCPC / License Number";
+      if (r.includes("school")) return "URN / School ID";
+      return "Registration / Employee ID";
+  };
+  
+  const showRegField = ["educationalpsychologist", "clinicalpsychologist", "schooladministrator", "localeducationauthority"].includes(selectedRole.toLowerCase());
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,6 +107,7 @@ export default function SignupPage() {
           region: selectedRegion,
           shardId: `mindkindler-${selectedRegion}`, // Convention
           email: user.email, // Needed for routing/recovery, generally acceptable
+          role: selectedRole, // Useful for global routing checks without touching PII
           createdAt: serverTimestamp()
       });
 
@@ -111,14 +123,20 @@ export default function SignupPage() {
         displayName: `${firstName} ${lastName}`,
         role: selectedRole,
         region: selectedRegion, 
-        tenantId: "pending", 
-        verification: { status: 'pending' }, 
+        tenantId: "pending", // Independent tenants start as their own pending tenant
+        verification: { 
+            status: 'pending',
+            hcpcNumber: regNumber || null // Store the captured ID
+        }, 
+        extensions: {
+            registration_number: regNumber || null
+        },
         createdAt: serverTimestamp(),
       });
 
       toast({
         title: "Account created",
-        description: "Welcome to MindKindler! Your data is securely stored in your selected region.",
+        description: "Welcome to MindKindler! Your account is pending verification.",
       });
 
       router.push("/dashboard");
@@ -206,6 +224,21 @@ export default function SignupPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Dynamic Registration Number Field */}
+            {showRegField && (
+                <div className="grid gap-2 animate-in fade-in slide-in-from-top-2">
+                    <Label htmlFor="regNumber" className="text-primary font-semibold">{getRegLabel()}</Label>
+                    <Input 
+                        id="regNumber" 
+                        value={regNumber} 
+                        onChange={(e) => setRegNumber(e.target.value)} 
+                        placeholder="Required for verification"
+                        required 
+                    />
+                    <p className="text-[10px] text-muted-foreground">This will be verified against the official register.</p>
+                </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

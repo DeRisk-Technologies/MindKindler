@@ -30,10 +30,7 @@ export function usePermissions() {
             if (!user) return; 
 
             try {
-                console.log(`[usePermissions] resolving location for ${user.uid}...`);
-                
                 // 1. Check Routing Table (Global)
-                // This tells us WHICH database holds the user's profile
                 const routingRef = doc(db, 'user_routing', user.uid);
                 const routingSnap = await getDoc(routingRef);
                 
@@ -43,7 +40,6 @@ export function usePermissions() {
                 if (routingSnap.exists()) {
                     const routing = routingSnap.data();
                     if (routing.shardId) {
-                        console.log(`[usePermissions] User routed to shard: ${routing.shardId}`);
                         targetDb = getRegionalDb(routing.region); // e.g. 'uk'
                         targetShard = routing.shardId;
                     }
@@ -57,20 +53,23 @@ export function usePermissions() {
                 
                 if (profileSnap.exists() && isMounted) {
                     const data = profileSnap.data() as StaffProfile;
-                    console.log(`[usePermissions] Profile Loaded from ${targetShard}. Role: ${data.role}`);
+                    // console.log(`[usePermissions] Profile Loaded from ${targetShard}. Role: ${data.role}`);
                     
                     setVerificationStatus(data.verification?.status || 'unverified');
                     
-                    // Priority: Token Claims > Firestore Profile
-                    const token = await user.getIdTokenResult();
-                    if (token?.claims?.role) {
-                         setUserRole(token.claims.role as Role);
-                    } else if (data.role) {
-                         setUserRole(data.role as Role);
+                    // Priority: Firestore Profile > Token Claims
+                    // (Changed Logic: Profile is fresher than token if recently updated)
+                    if (data.role) {
+                         // Normalize role string (e.g. 'educationalpsychologist' -> 'EPP') if needed
+                         // But RBAC_MATRIX handles variants now via update below?
+                         // Ideally we map raw string to Enum.
+                         setUserRole(mapStringToRole(data.role));
+                    } else {
+                         const token = await user.getIdTokenResult();
+                         if (token?.claims?.role) setUserRole(token.claims.role as Role);
                     }
                 } else {
-                    console.warn(`[usePermissions] Profile missing in ${targetShard}`);
-                    // Fallback: Check Token Claims if profile load fails (e.g. strict rules)
+                    // Fallback: Check Token Claims if profile load fails
                      const token = await user.getIdTokenResult();
                     if (token?.claims?.role) {
                          setUserRole(token.claims.role as Role);
@@ -100,7 +99,8 @@ export function usePermissions() {
 
         const sensitiveActions: PermissionAction[] = ['view_sensitive_notes', 'write_psychometrics', 'view_student_pii'];
         if (sensitiveActions.includes(action)) {
-            if (userRole === 'EPP' || (userRole as string) === 'EducationalPsychologist') {
+            // EPPs require strict verification
+            if (userRole === 'EPP' || userRole === 'EducationalPsychologist') {
                 if (verificationStatus !== 'verified') return false;
             }
         }
@@ -113,4 +113,15 @@ export function usePermissions() {
     }
 
     return { can, hasRole, user, verificationStatus, loading, role: userRole, shardId };
+}
+
+// Helper to normalize sloppy string roles to Strict Enums
+function mapStringToRole(roleStr: string): Role {
+    const r = roleStr.toLowerCase();
+    if (r === 'epp' || r === 'educationalpsychologist') return 'EPP';
+    if (r === 'superadmin') return 'SuperAdmin';
+    if (r === 'tenantadmin') return 'TenantAdmin';
+    if (r === 'schooladmin') return 'SchoolAdmin';
+    if (r === 'parent' || r === 'parentuser') return 'ParentUser';
+    return roleStr as Role; // Fallback
 }

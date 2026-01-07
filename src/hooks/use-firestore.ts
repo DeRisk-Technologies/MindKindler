@@ -1,3 +1,5 @@
+// src/hooks/use-firestore.ts
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -44,35 +46,17 @@ export function useFirestoreCollection<T = DocumentData>(
     // 3. Default DB
     
     let targetDb: Firestore = db;
-    const effectiveShard = options?.targetShard || userShardId;
+    let effectiveShard = options?.targetShard || userShardId || 'default';
+
+    // If appointments is global or sharded, we need to be careful.
+    // Appointments often cross-reference so currently we might default to main DB if not fully sharded.
+    // BUT for now, let's respect the shard logic.
 
     if (effectiveShard && effectiveShard !== 'default') {
         try {
-            // Extract region code from shardId 'mindkindler-uk' -> 'uk'
-            // OR getRegionalDb can accept the full DB ID if designed so.
-            // Our getRegionalDb helper in lib/firebase takes 'regionId' (e.g. 'mindkindler-uk').
-            
-            // NOTE: The previous logic assumed shardId was passed to getRegionalDb. 
-            // Let's ensure we pass the DB ID or Region Code correctly.
-            // getRegionalDb implementation checks `getDbForRegion`.
-            // If we pass 'mindkindler-uk', getDbForRegion returns it if it's in the map, 
-            // or checks if it's a key. 
-            // Actually, getDbForRegion expects a region code (like 'uk') or maps 'default' to default.
-            
-            // Let's be safe: If effectiveShard starts with 'mindkindler-', it's a DB ID.
-            // We can try to extract the region code or pass it as is if getRegionalDb handles it.
-            // Looking at regions.ts: 'uk': 'mindkindler-uk'.
-            // Looking at firebase.ts: getRegionalDb(regionId) -> calls getDbForRegion(regionId).
-            
-            // So if effectiveShard is 'mindkindler-uk', getDbForRegion('mindkindler-uk') -> undefined?
-            // No, the map keys are 'uk', 'us', etc. 
-            // So we need to convert 'mindkindler-uk' -> 'uk' OR ensure getRegionalDb handles DB IDs.
-            
-            // Let's try to map DB ID back to region code or just assume it is the region code if valid.
             const regionCode = effectiveShard.replace('mindkindler-', '');
             targetDb = getRegionalDb(regionCode);
-            
-            console.log(`[useFirestoreCollection] Switched to Shard: ${effectiveShard} (Region: ${regionCode})`);
+            // console.log(`[useFirestoreCollection] Switched to Shard: ${effectiveShard} (Region: ${regionCode})`);
         } catch (e) {
             console.warn(`[useFirestoreCollection] Failed to load shard ${effectiveShard}, falling back to default.`);
         }
@@ -93,8 +77,14 @@ export function useFirestoreCollection<T = DocumentData>(
         setData(items);
         setLoading(false);
       }, (err) => {
-        console.error(`Firestore Error (${collectionName} on ${effectiveShard}):`, err);
-        setError(err);
+        // Suppress specific permissions error for non-critical widgets
+        if (err.code === 'permission-denied') {
+             console.warn(`[Permission Denied] Reading ${collectionName} from ${effectiveShard}. This may be expected if user is not verified.`);
+             setData([]); // clear data gracefully
+        } else {
+             console.error(`Firestore Error (${collectionName} on ${effectiveShard}):`, err);
+             setError(err);
+        }
         setLoading(false);
       });
 

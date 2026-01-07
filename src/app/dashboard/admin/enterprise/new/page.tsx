@@ -13,17 +13,26 @@ import { Loader2, Building, Globe, MapPin, CheckCircle2 } from 'lucide-react';
 import { DataRegion, OrgType } from '@/types/enterprise';
 import { GlobalHierarchySelector } from "@/components/enterprise/hierarchy/GlobalHierarchySelector";
 import { OrgUnit } from '@/types/hierarchy';
-import { Badge } from "@/components/ui/badge"; // Added Import
+import { Badge } from "@/components/ui/badge"; 
+import { usePermissions } from '@/hooks/use-permissions'; // Added for context-awareness
 
 export default function CreateOrgPage() {
     const { toast } = useToast();
+    const { shardId: myShardId, hasRole } = usePermissions(); // Get user context
     const [loading, setLoading] = useState(false);
     
+    // Determine default region:
+    // If Global SuperAdmin, default to UK (can change).
+    // If Regional Admin (locked to shard), default to that region (locked).
+    const defaultRegion = (myShardId && myShardId !== 'default') 
+        ? myShardId.replace('mindkindler-', '') 
+        : 'europe-west2';
+
     // Form State
     const [formData, setFormData] = useState({
         name: '',
         type: 'school' as OrgType,
-        region: 'europe-west2' as DataRegion, // Default to UK
+        region: defaultRegion as DataRegion, 
         contactName: '',
         contactEmail: '',
         plan: 'professional',
@@ -32,6 +41,9 @@ export default function CreateOrgPage() {
     });
 
     const [selectedNode, setSelectedNode] = useState<OrgUnit | null>(null);
+
+    // Is the user locked to a region?
+    const isRegionLocked = myShardId && myShardId !== 'default';
 
     // Helper: Map Wizard Types to Enterprise Types
     const mapHierarchyType = (hType: string): OrgType => {
@@ -42,10 +54,10 @@ export default function CreateOrgPage() {
     };
 
     // Helper: Map Region Dropdown to Country Code for Wizard
-    const getCountryCode = (region: DataRegion) => {
-        if (region === 'europe-west2') return 'UK';
+    const getCountryCode = (region: string) => { // relaxed type to allow strings from select
+        if (region === 'europe-west2' || region === 'uk') return 'UK';
         if (region.startsWith('us')) return 'US';
-        if (region === 'europe-west3') return 'DE';
+        if (region === 'europe-west3' || region === 'eu') return 'DE'; // Assuming EU default is Germany for now
         if (region === 'europe-west1') return 'FR';
         if (region.startsWith('me')) return 'SA';
         if (region.startsWith('asia')) return 'JP';
@@ -111,17 +123,26 @@ export default function CreateOrgPage() {
                         <CardContent className="space-y-6">
                             <div className="space-y-2">
                                 <Label>Data Residency Region</Label>
-                                <Select value={formData.region} onValueChange={(v: DataRegion) => setFormData({...formData, region: v, name: '', parentId: ''})}>
-                                    <SelectTrigger className="h-12 text-base"><SelectValue/></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="europe-west2">🇬🇧 UK (London)</SelectItem>
-                                        <SelectItem value="us-central1">🇺🇸 USA (Iowa)</SelectItem>
-                                        <SelectItem value="europe-west3">🇩🇪 Germany (Frankfurt)</SelectItem>
-                                        <SelectItem value="europe-west1">🇫🇷 France (Paris)</SelectItem>
-                                        <SelectItem value="me-central2">🇸🇦 Saudi Arabia (Dammam)</SelectItem>
-                                        <SelectItem value="asia-northeast1">🇯🇵 Japan (Tokyo)</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                {isRegionLocked ? (
+                                    <div className="p-3 bg-muted rounded-md flex items-center gap-2 border">
+                                        <Globe className="h-4 w-4" />
+                                        <span className="font-medium">
+                                            {getCountryCode(formData.region)} (Locked to {formData.region})
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <Select value={formData.region} onValueChange={(v: DataRegion) => setFormData({...formData, region: v, name: '', parentId: ''})}>
+                                        <SelectTrigger className="h-12 text-base"><SelectValue/></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="europe-west2">🇬🇧 UK (London)</SelectItem>
+                                            <SelectItem value="us-central1">🇺🇸 USA (Iowa)</SelectItem>
+                                            <SelectItem value="europe-west3">🇩🇪 Germany (Frankfurt)</SelectItem>
+                                            <SelectItem value="europe-west1">🇫🇷 France (Paris)</SelectItem>
+                                            <SelectItem value="me-central2">🇸🇦 Saudi Arabia (Dammam)</SelectItem>
+                                            <SelectItem value="asia-northeast1">🇯🇵 Japan (Tokyo)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                )}
                             </div>
 
                             {/* THE WIZARD COMPONENT */}
