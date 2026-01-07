@@ -1,308 +1,196 @@
+// src/app/page.tsx
+
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Users,
-  BrainCircuit,
-  BarChart,
-  Globe,
-  Briefcase,
-  Store,
-  GraduationCap,
-  Upload,
-  ShieldCheck,
-  FileText,
-  Clock,
-  MessageSquare,
-  Lock,
-  Database
-} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowRight, Globe, ShieldCheck, CheckCircle2, GraduationCap, BarChart3, Lock, Zap } from "lucide-react";
+import Link from "next/link";
 import { Logo } from "@/components/logo";
-import { PlaceHolderImages } from "@/lib/placeholder-images";
-import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
-const defaultHero = PlaceHolderImages.find((img) => img.id === "hero-1");
-
-export default function Home() {
-  const [heroImageSrc, setHeroImageSrc] = useState(defaultHero?.imageUrl);
-  
-  useEffect(() => {
-    async function fetchSettings() {
-        try {
-            const settingsDoc = await getDoc(doc(db, "organization_settings", "global"));
-            if (settingsDoc.exists() && settingsDoc.data().landingPage?.heroImageUrl) {
-                setHeroImageSrc(settingsDoc.data().landingPage.heroImageUrl);
-            }
-        } catch (e) {
-            console.error("Failed to load landing settings", e);
-        }
-    }
-    fetchSettings();
-  }, []);
-
-  const features = [
-    {
-      icon: <FileText className="h-8 w-8 text-primary" />,
-      title: "AI Report Writer",
-      description: "Draft clinical reports in minutes with evidence-based AI generation, role-based redaction, and secure sign-off.",
-    },
-    {
-        icon: <Upload className="h-8 w-8 text-primary" />,
-        title: "Assistant Upload Portal",
-        description: "Streamline data ingestion with AI-powered bulk uploads, mobile scanning, and human-in-the-loop verification.",
-    },
-    {
-      icon: <Globe className="h-8 w-8 text-primary" />,
-      title: "Government Intelligence",
-      description: "Policy planning, benchmarking, and roll-out simulation for education ministries and local authorities.",
-    },
-    {
-      icon: <Store className="h-8 w-8 text-primary" />,
-      title: "Global Marketplace",
-      description: "Discover and install verified templates, training packs, and policy rulebooks from expert partners.",
-    },
-    {
-      icon: <BrainCircuit className="h-8 w-8 text-primary" />,
-      title: "AI Co-Pilot & Guardian",
-      description: "Real-time clinical insights with a compliance engine that ensures every action meets local regulations.",
-    },
-     {
-      icon: <GraduationCap className="h-8 w-8 text-primary" />,
-      title: "Training Academy",
-      description: "Continuous professional development with tracked certifications and adaptive learning paths.",
-    },
-    // New Marketing Features
-    {
-        icon: <Clock className="h-8 w-8 text-primary" />,
-        title: "Reclaim Your Time",
-        description: "Save 10+ hours per week on administrative tasks. Let AI handle the paperwork while you focus on the child.",
-    },
-    {
-        icon: <MessageSquare className="h-8 w-8 text-primary" />,
-        title: "Secure Collaboration",
-        description: "Connect with schools, parents, and multi-disciplinary teams through encrypted, compliant channels.",
-    },
-    {
-        icon: <Lock className="h-8 w-8 text-primary" />,
-        title: "Clinical Safety First",
-        description: "Built by certified Educational Psychologists. Adheres to strict ethical guidelines and data sovereignty laws.",
-    },
-    {
-        icon: <Users className="h-8 w-8 text-primary" />,
-        title: "Community Forum",
-        description: "Connect with peers, share insights, and access a global network of educational psychologists.",
-    },
-    {
-        icon: <Database className="h-8 w-8 text-primary" />,
-        title: "Global Knowledge Vault",
-        description: "A centralized repository of best practices, research, and policy documents.",
-    }
-  ];
-
+export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="container mx-auto flex h-20 items-center justify-between px-4 md:px-6">
-        <Logo />
-        <nav className="flex items-center gap-4">
-          <Button variant="ghost" asChild>
-            <Link href="/login">Log In</Link>
-          </Button>
-          <Button asChild>
-            <Link href="/signup">Sign Up</Link>
-          </Button>
-        </nav>
+    <div className="flex flex-col min-h-screen bg-slate-50">
+      
+      {/* Header */}
+      <header className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur-md">
+        <div className="container flex h-16 items-center justify-between">
+          <div className="flex items-center gap-2 font-bold text-xl">
+            <Logo />
+          </div>
+          <nav className="hidden md:flex gap-6 text-sm font-medium text-slate-600">
+            <a href="#features" className="hover:text-primary transition-colors">Features</a>
+            <a href="#compliance" className="hover:text-primary transition-colors">Compliance</a>
+            <a href="#pricing" className="hover:text-primary transition-colors">Pricing</a>
+          </nav>
+          <div className="flex items-center gap-4">
+            <Link href="/login">
+              <Button variant="ghost">Log in</Button>
+            </Link>
+            <Link href="/signup">
+              <Button className="bg-indigo-600 hover:bg-indigo-700">Start Free Trial</Button>
+            </Link>
+          </div>
+        </div>
       </header>
 
       <main className="flex-1">
-        <section className="container mx-auto grid grid-cols-1 items-center gap-8 px-4 py-12 md:grid-cols-2 md:px-6 lg:py-24">
-          <div className="space-y-6">
-            <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl lg:text-6xl/none">
-              Kindling Potential, <span className="text-primary">Globally</span>.
+        
+        {/* Hero Section */}
+        <section className="relative overflow-hidden py-24 md:py-32 bg-white">
+          <div className="container relative z-10 flex flex-col items-center text-center">
+            <Badge className="mb-6 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 px-3 py-1 rounded-full flex items-center gap-2">
+              <ShieldCheck className="h-3 w-3" /> Now Available: UK Local Authority Pack
+            </Badge>
+            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900 max-w-4xl mb-6 leading-tight">
+              The Statutory Operating System for <span className="text-indigo-600">Educational Psychology</span>
             </h1>
-            <p className="max-w-[600px] text-lg text-muted-foreground md:text-xl">
-              The AI-enabled Educational Psychology ecosystem connecting governments, schools, and clinicians.
+            <p className="text-lg md:text-xl text-slate-600 max-w-2xl mb-10">
+              MindKindler combines clinical assessment tools, AI-powered reporting, and statutory compliance (EYFS/SEND) into one secure platform.
             </p>
-             <p className="text-sm text-muted-foreground italic flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-green-600" />
-                Guided by experienced, certified Educational Child Psychologists.
-            </p>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <Button size="lg" asChild>
-                <Link href="/signup">Get Started for Free</Link>
-              </Button>
-              <Button size="lg" variant="secondary" asChild>
-                <Link href="/dashboard/partner-portal/apply">Become a Partner</Link>
+            <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+              <Link href="/signup">
+                <Button size="lg" className="w-full sm:w-auto text-base h-12 px-8 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200">
+                  Get Started <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Button size="lg" variant="outline" className="w-full sm:w-auto text-base h-12 px-8">
+                View Interactive Demo
               </Button>
             </div>
+            
+            <div className="mt-16 flex items-center justify-center gap-8 text-sm text-slate-400 font-medium">
+              <span className="flex items-center gap-2"><Lock className="h-4 w-4"/> GDPR Compliant</span>
+              <span className="flex items-center gap-2"><Globe className="h-4 w-4"/> Data Sovereignty</span>
+              <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4"/> HCPC Ready</span>
+            </div>
           </div>
-          <div className="relative h-64 w-full overflow-hidden rounded-xl shadow-2xl md:h-96">
-            {heroImageSrc && (
-              <Image
-                src={heroImageSrc}
-                alt="MindKindler Platform"
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                priority
-              />
-            )}
+          
+          {/* Abstract Background Decoration */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl opacity-30 pointer-events-none">
+             <div className="absolute top-20 left-10 w-72 h-72 bg-purple-200 rounded-full blur-3xl mix-blend-multiply filter animate-blob"></div>
+             <div className="absolute top-20 right-10 w-72 h-72 bg-indigo-200 rounded-full blur-3xl mix-blend-multiply filter animate-blob animation-delay-2000"></div>
+             <div className="absolute -bottom-8 left-20 w-72 h-72 bg-pink-200 rounded-full blur-3xl mix-blend-multiply filter animate-blob animation-delay-4000"></div>
           </div>
         </section>
 
-        {/* Use Cases Section */}
-        <section className="bg-gray-50 py-12">
-            <div className="container mx-auto px-4 md:px-6">
-                 <div className="mx-auto mb-10 max-w-2xl text-center">
-                    <h2 className="text-2xl font-bold">Why Choose MindKindler?</h2>
-                    <p className="text-muted-foreground">Tailored solutions for every stakeholder in the education ecosystem.</p>
+        {/* Value Props Grid */}
+        <section id="features" className="py-24 bg-slate-50">
+          <div className="container">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              
+              <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+                <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center mb-6">
+                  <BarChart3 className="h-6 w-6 text-blue-600" />
                 </div>
-                <div className="grid gap-6 md:grid-cols-3">
-                    <div className="flex flex-col items-center text-center space-y-2 p-4">
-                        <div className="p-3 bg-blue-100 rounded-full text-blue-600">
-                             <Briefcase className="h-6 w-6" />
-                        </div>
-                        <h3 className="font-semibold text-lg">For the Independent EPP</h3>
-                        <p className="text-sm text-gray-600">
-                            "I used to spend my weekends writing reports. Now, MindKindler drafts 80% of it for me, allowing me to take on more cases and increase my impact."
-                        </p>
-                    </div>
-                     <div className="flex flex-col items-center text-center space-y-2 p-4">
-                        <div className="p-3 bg-green-100 rounded-full text-green-600">
-                             <Building2 className="h-6 w-6" />
-                        </div>
-                        <h3 className="font-semibold text-lg">For School Districts</h3>
-                        <p className="text-sm text-gray-600">
-                            "Centralized oversight of all our SEN students. We can finally track intervention success rates and budget allocation in real-time."
-                        </p>
-                    </div>
-                     <div className="flex flex-col items-center text-center space-y-2 p-4">
-                        <div className="p-3 bg-purple-100 rounded-full text-purple-600">
-                             <Globe className="h-6 w-6" />
-                        </div>
-                        <h3 className="font-semibold text-lg">For Governments</h3>
-                        <p className="text-sm text-gray-600">
-                            "Data-driven policy making. MindKindler gives us the macro-view we need to benchmark our regions against global standards."
-                        </p>
-                    </div>
+                <h3 className="text-xl font-bold mb-3">Psychometric Analysis</h3>
+                <p className="text-slate-600 leading-relaxed">
+                  Visualize WISC-V scores with 95% Confidence Intervals. Detect learning difficulties like Dyslexia via automated discrepancy analysis.
+                </p>
+              </div>
+
+              <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+                <div className="h-12 w-12 bg-indigo-50 rounded-xl flex items-center justify-center mb-6">
+                  <Zap className="h-6 w-6 text-indigo-600" />
                 </div>
+                <h3 className="text-xl font-bold mb-3">AI Report Writer</h3>
+                <p className="text-slate-600 leading-relaxed">
+                  Draft statutory reports (EHCP) in seconds. Our RAG engine respects legal constraints, ensuring no medical diagnoses are hallucinated.
+                </p>
+              </div>
+
+              <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+                <div className="h-12 w-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-6">
+                  <ShieldCheck className="h-6 w-6 text-emerald-600" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">Statutory Compliance</h3>
+                <p className="text-slate-600 leading-relaxed">
+                  Built-in workflows for EYFS 2025 "First Day Calling" and Safer Recruitment (Single Central Record) vetting.
+                </p>
+              </div>
+
             </div>
+          </div>
         </section>
 
-        <section id="features" className="w-full bg-secondary/50 py-12 md:py-24">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="mx-auto mb-12 max-w-2xl text-center">
-              <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl">
-                The Complete EdPsych OS
-              </h2>
-              <p className="mt-4 text-muted-foreground md:text-lg">
-                From national policy to individual interventions, MindKindler provides the tools to drive better outcomes.
+        {/* Feature Highlight: UK Pack */}
+        <section className="py-24 bg-white border-y border-slate-100">
+           <div className="container flex flex-col lg:flex-row items-center gap-16">
+              <div className="lg:w-1/2">
+                 <Badge className="mb-4 bg-indigo-100 text-indigo-800 hover:bg-indigo-100">Marketplace Exclusive</Badge>
+                 <h2 className="text-3xl md:text-4xl font-bold mb-6 text-slate-900">Adapt to your jurisdiction instantly.</h2>
+                 <p className="text-lg text-slate-600 mb-8">
+                    MindKindler uses a "Country OS" architecture. Install the UK Pack to activate local laws, norms, and reporting templates.
+                 </p>
+                 <ul className="space-y-4">
+                    <li className="flex items-start gap-3">
+                       <CheckCircle2 className="h-6 w-6 text-green-500 mt-0.5" />
+                       <div>
+                          <span className="font-semibold block text-slate-900">Unique Pupil Number (UPN)</span>
+                          <span className="text-slate-500">Schema automatically extends to capture DfE required fields.</span>
+                       </div>
+                    </li>
+                    <li className="flex items-start gap-3">
+                       <CheckCircle2 className="h-6 w-6 text-green-500 mt-0.5" />
+                       <div>
+                          <span className="font-semibold block text-slate-900">Single Central Record (SCR)</span>
+                          <span className="text-slate-500">Track DBS Checks and Prohibition Orders in a compliant register.</span>
+                       </div>
+                    </li>
+                    <li className="flex items-start gap-3">
+                       <CheckCircle2 className="h-6 w-6 text-green-500 mt-0.5" />
+                       <div>
+                          <span className="font-semibold block text-slate-900">Graduated Approach</span>
+                          <span className="text-slate-500">Workflows that enforce the Assess-Plan-Do-Review cycle.</span>
+                       </div>
+                    </li>
+                 </ul>
+              </div>
+              <div className="lg:w-1/2 relative">
+                 <div className="absolute inset-0 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-2xl transform rotate-3 scale-105 opacity-10"></div>
+                 <img 
+                   src="/api/placeholder/600/400" 
+                   alt="Dashboard Preview" 
+                   className="rounded-2xl shadow-2xl border border-slate-200 relative z-10 bg-slate-50" 
+                 />
+                 {/* Floating Badge */}
+                 <div className="absolute -bottom-6 -left-6 bg-white p-4 rounded-xl shadow-lg border border-slate-100 z-20 flex items-center gap-3">
+                    <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center">
+                       <ShieldCheck className="h-6 w-6 text-green-600" />
+                    </div>
+                    <div>
+                       <div className="text-xs text-slate-500 uppercase font-bold tracking-wide">Status</div>
+                       <div className="font-bold text-slate-900">HCPC Verified</div>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </section>
+
+        {/* CTA */}
+        <section className="py-24 bg-slate-900 text-white text-center">
+           <div className="container max-w-3xl">
+              <GraduationCap className="h-12 w-12 mx-auto text-indigo-400 mb-6" />
+              <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to modernize your practice?</h2>
+              <p className="text-lg text-slate-300 mb-10">
+                 Join 500+ Educational Psychologists and LEAs using MindKindler to deliver better outcomes for children.
               </p>
-            </div>
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature, index) => (
-                <Card key={index} className="flex flex-col hover:shadow-lg transition-all">
-                  <CardHeader className="flex flex-row items-center gap-4">
-                    {feature.icon}
-                    <CardTitle className="text-xl">{feature.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">
-                      {feature.description}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
+              <Link href="/signup">
+                <Button size="lg" className="bg-white text-slate-900 hover:bg-slate-100 h-14 px-8 text-lg font-semibold">
+                   Start Your Free Trial
+                </Button>
+              </Link>
+              <p className="mt-6 text-sm text-slate-500">No credit card required for demo.</p>
+           </div>
         </section>
 
-        <section className="container mx-auto px-4 py-12 md:px-6 md:py-24">
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-             <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-1">
-                <div className="text-center">
-                  <Globe className="h-12 w-12 text-primary/80 mx-auto mb-4" />
-                  <h3 className="text-xl font-bold">
-                    For Governments
-                  </h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Simulate policy rollouts, track readiness, and benchmark performance globally.
-                  </p>
-                  <Button variant="link" className="px-0 mt-2" asChild>
-                      <Link href="/signup">Request Demo &rarr;</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800">
-              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-1">
-                <div className="text-center">
-                  <ShieldCheck className="h-12 w-12 text-indigo-500 mx-auto mb-4" />
-                  <h3 className="text-xl font-bold">
-                    For Clinicians
-                  </h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Automate reports, ingest data effortlessly, and focus on student outcomes.
-                  </p>
-                   <Button variant="link" className="px-0 mt-2 text-indigo-600" asChild>
-                      <Link href="/signup">Start Free Trial &rarr;</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800">
-              <CardContent className="grid items-center gap-8 p-8 md:grid-cols-1">
-                <div className="text-center">
-                  <Briefcase className="h-12 w-12 text-orange-500 mx-auto mb-4" />
-                  <h3 className="text-xl font-bold">
-                    For Partners
-                  </h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Monetize templates, training, and expertise in our global marketplace.
-                  </p>
-                   <Button variant="link" className="px-0 mt-2 text-orange-600" asChild>
-                      <Link href="/dashboard/partner-portal/apply">Apply Now &rarr;</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
       </main>
 
-      <footer className="border-t bg-secondary/50">
-        <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 py-8 md:flex-row md:px-6">
-          <Logo />
-          <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} MindKindler, a product of DeRisk Technologies Group. All rights reserved.
-          </p>
-          <nav className="flex gap-4">
-            <Link
-              href="#"
-              className="text-sm hover:underline underline-offset-4"
-            >
-              Terms of Service
-            </Link>
-            <Link
-              href="#"
-              className="text-sm hover:underline underline-offset-4"
-            >
-              Privacy Policy
-            </Link>
-          </nav>
-        </div>
+      <footer className="py-8 bg-white border-t text-center text-sm text-slate-500">
+         <div className="container">
+            <p>&copy; 2024 MindKindler. All rights reserved. Built for the future of education.</p>
+         </div>
       </footer>
     </div>
   );
-}
-
-function Building2({ className }: { className?: string }) {
-    return <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>;
 }
