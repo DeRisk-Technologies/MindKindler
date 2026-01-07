@@ -782,3 +782,29 @@ export interface PolicyRuleDraft {
     reviewedBy?: string;
     reviewedAt?: string;
 }
+
+// PHASE 14: Professional Verification (HCPC)
+export interface VerificationRecord {
+    hcpcNumber?: string; // e.g. "PYL043132"
+    status: 'unverified' | 'pending' | 'verified' | 'rejected';
+    verifiedAt?: string;
+    verifiedBy?: string; // Admin User ID
+    verificationNote?: string;
+    documents?: { url: string; name: string }[];
+}
+
+// Update UserProfile or create StaffProfile interface extension
+export interface StaffProfile {
+    id: string; // userId
+    tenantId: string;
+    role: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    
+    // Phase 14: Trust Engine
+    verification?: VerificationRecord;
+    
+    // Country OS Extensions (SCR)
+    extensions?: Record<string, any>;
+}
