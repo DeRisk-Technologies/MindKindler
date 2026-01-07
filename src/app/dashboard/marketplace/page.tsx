@@ -9,10 +9,19 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { Loader2, Globe, ShieldCheck, Download, CheckCircle, AlertTriangle } from 'lucide-react';
-import { installMarketplacePack } from '@/app/actions/install-pack';
+// FIX: Import the client-side installer function directly
+import { installPack } from '@/marketplace/installer';
+// import { installMarketplacePack } from '@/app/actions/install-pack'; // Removed Server Action import
 
 // Mock Catalog (In prod, fetch from API)
-const catalog = [
+import ukPack from "@/marketplace/catalog/uk_la_pack.json";
+// In a real app, these would be fetched dynamically. 
+// For now, we manually map the ID to the JSON import for the client-side call.
+const CATALOG: Record<string, any> = {
+    'uk_la_pack': ukPack
+};
+
+const catalogDisplay = [
     {
         id: 'uk_la_pack',
         name: 'UK Local Authority Standard',
@@ -43,23 +52,21 @@ export default function MarketplacePage() {
             return;
         }
 
-        // Fallback for Dev: If SuperAdmin has no tenantId, use 'default'
-        const tenantId = user.tenantId || (user.email?.includes('admin') ? 'default' : null);
-
-        if (!tenantId) {
-            toast({ 
-                variant: "destructive", 
-                title: "Configuration Error", 
-                description: "Your user account is not linked to a Tenant ID. Please contact support." 
-            });
-            return;
-        }
-
         setInstalling(packId);
 
         try {
-            console.log(`Installing pack ${packId} for tenant ${tenantId}...`);
-            const res = await installMarketplacePack(tenantId, packId);
+            // Get the manifest JSON
+            const manifest = CATALOG[packId];
+            if (!manifest) {
+                // Fallback for demo packs that don't have a JSON file yet
+                throw new Error("Pack manifest not found in catalog (Demo Only).");
+            }
+
+            console.log(`Installing pack ${packId}...`);
+            
+            // Client-Side Install
+            // This runs in the browser context, using the active User session.
+            const res = await installPack(manifest);
             
             if (res.success) {
                 toast({
@@ -68,11 +75,11 @@ export default function MarketplacePage() {
                 });
                 setInstalled(prev => ({ ...prev, [packId]: true }));
             } else {
-                console.error("Install Action Failed:", res.error);
+                console.error("Install Failed:", res.errors);
                 toast({
                     variant: "destructive",
                     title: "Installation Failed",
-                    description: res.error || "Unknown server error.",
+                    description: res.errors?.join(", ") || "Unknown error.",
                 });
             }
         } catch (e: any) {
@@ -91,7 +98,7 @@ export default function MarketplacePage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {catalog.map(pack => (
+                {catalogDisplay.map(pack => (
                     <Card key={pack.id} className="flex flex-col">
                         <CardHeader>
                             <div className="flex justify-between items-start">
