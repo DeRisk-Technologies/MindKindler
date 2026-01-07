@@ -1,79 +1,142 @@
 // src/marketplace/installer.ts
 
-import { db, auth } from "@/lib/firebase";
-import { addDoc, collection, updateDoc, doc, getDoc, deleteDoc } from "firebase/firestore";
-import { MarketplaceManifest, InstallAction } from "./types";
-import { InstalledPack } from "@/types/schema";
+import { db } from "@/lib/firebase";
+import { doc, setDoc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
+import { MarketplaceManifest, CountryPackConfig } from "./types";
 
-export async function installPack(manifest: MarketplaceManifest): Promise<string> {
-    console.log(`[Installer] Installing pack: ${manifest.id}`);
-
-    const artifacts: { collection: string; id: string }[] = [];
-    const tenantId = "default";
-    const userId = auth.currentUser?.uid || "unknown";
-
-    try {
-        for (const action of manifest.actions) {
-            let ref;
-            if (action.type === 'createPolicyRule') {
-                ref = await addDoc(collection(db, "policyRules"), {
-                    ...action.payload,
-                    tenantId,
-                    createdAt: new Date().toISOString(),
-                    enabled: true,
-                    status: 'active'
-                });
-                artifacts.push({ collection: "policyRules", id: ref.id });
-            } else if (action.type === 'createTrainingModule') {
-                ref = await addDoc(collection(db, "trainingModules"), {
-                    ...action.payload,
-                    tenantId,
-                    createdAt: new Date().toISOString(),
-                    status: 'published'
-                });
-                artifacts.push({ collection: "trainingModules", id: ref.id });
-            }
-            // Add other types as needed
-        }
-
-        const installRecord: InstalledPack = {
-            id: `install_${Date.now()}`, // Temp ID, firestore overwrites
-            tenantId,
-            packId: manifest.id,
-            version: manifest.version,
-            installedAt: new Date().toISOString(),
-            installedByUserId: userId,
-            status: 'installed',
-            artifacts
-        };
-
-        const installRef = await addDoc(collection(db, "installedPacks"), installRecord);
-        return installRef.id;
-
-    } catch (e) {
-        console.error("Installation failed", e);
-        // Rollback created artifacts if partial failure (simplified)
-        throw e;
-    }
+export interface InstallationResult {
+    success: boolean;
+    manifestId: string;
+    installedVersion: string;
+    errors?: string[];
+    logs: string[];
 }
 
-export async function rollbackPack(installedPackId: string): Promise<void> {
-    console.log(`[Installer] Rolling back: ${installedPackId}`);
+export class MarketplaceInstaller {
     
-    const snap = await getDoc(doc(db, "installedPacks", installedPackId));
-    if (!snap.exists()) throw new Error("Install record not found");
-    
-    const record = snap.data() as InstalledPack;
-    if (record.status === 'rolledBack') return;
+    /**
+     * Installs or Updates a Country Pack for a specific Tenant.
+     * Idempotent: Can be run multiple times safely.
+     */
+    async installPack(tenantId: string, manifest: MarketplaceManifest): Promise<InstallationResult> {
+        const logs: string[] = [];
+        logs.push(`Starting installation of ${manifest.id} (v${manifest.version}) for tenant ${tenantId}...`);
 
-    // Delete artifacts
-    for (const artifact of record.artifacts) {
         try {
-            await deleteDoc(doc(db, artifact.collection, artifact.id));
-        } catch (e) {
-            console.warn(`Failed to delete artifact ${artifact.id}`, e);
+            // 1. Validation
+            this.validateManifest(manifest);
+            logs.push("Manifest validation passed.");
+
+            // 2. Install Capabilities (The Core "Country OS" Logic)
+            if (manifest.capabilities) {
+                await this.installCapabilities(tenantId, manifest.capabilities, logs);
+            }
+
+            // 3. Install Actions (Legacy / Standard Actions)
+            if (manifest.actions && manifest.actions.length > 0) {
+                // Future implementation: Execute standard actions like 'createPolicyRule'
+                // For now, we focus on the new 'capabilities' engine.
+                logs.push(`Skipping ${manifest.actions.length} legacy actions (not implemented in V2 installer).`);
+            }
+
+            // 4. Update Tenant Metadata (Record of Installation)
+            await this.recordInstallation(tenantId, manifest);
+            logs.push("Installation record updated.");
+
+            return {
+                success: true,
+                manifestId: manifest.id,
+                installedVersion: manifest.version,
+                logs
+            };
+
+        } catch (error: any) {
+            console.error("Installation Failed", error);
+            return {
+                success: false,
+                manifestId: manifest.id,
+                installedVersion: manifest.version,
+                errors: [error.message],
+                logs
+            };
         }
     }
 
-    await updateDoc(doc(db, "installedPacks", installedPackId), { status: "rolledBack" });
+    private validateManifest(manifest: MarketplaceManifest) {
+        if (!manifest.id || !manifest.version) {
+            throw new Error("Invalid Manifest: Missing ID or Version.");
+        }
+        if (manifest.capabilities) {
+            const caps = manifest.capabilities;
+            if (!caps.countryCode) throw new Error("Invalid Capabilities: Missing countryCode.");
+            if (!caps.psychometricConfig) throw new Error("Invalid Capabilities: Missing psychometricConfig.");
+        }
+    }
+
+    private async installCapabilities(tenantId: string, config: CountryPackConfig, logs: string[]) {
+        
+        // A. Schema Extensions -> tenant_settings/schema_config
+        if (config.schemaExtensions) {
+            const schemaRef = doc(db, `tenants/${tenantId}/settings/schema_config`);
+            await setDoc(schemaRef, {
+                studentFields: config.schemaExtensions.student,
+                schoolFields: config.schemaExtensions.school,
+                staffFields: config.schemaExtensions.staff || [], // New for SCR
+                updatedAt: new Date().toISOString(),
+                installedPackId: "uk_la_pack" // dynamic in real world
+            }, { merge: true });
+            logs.push("Schema Extensions injected into tenant settings.");
+        }
+
+        // B. Compliance Workflows -> tenant_settings/workflows
+        if (config.complianceWorkflows) {
+            const workflowRef = doc(db, `tenants/${tenantId}/settings/workflows`);
+            // We use merge: true to avoid wiping existing workflows from other packs
+            // But we ideally want to replace workflows *from this pack*.
+            // For MVP, simple merge is acceptable.
+            await setDoc(workflowRef, {
+                workflows: config.complianceWorkflows, // Warning: Overwrites all workflows for now (MVP simplifiction)
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+            logs.push(`Registered ${config.complianceWorkflows.length} compliance workflows.`);
+        }
+
+        // C. Psychometrics -> tenant_settings/analytics
+        if (config.psychometricConfig) {
+            const analyticsRef = doc(db, `tenants/${tenantId}/settings/analytics`);
+            
+            // Phase 10: Inject Intervention Logic
+            const payload: any = {
+                psychometrics: config.psychometricConfig,
+                updatedAt: new Date().toISOString()
+            };
+            if (config.interventionLogic) {
+                payload.interventionLogic = config.interventionLogic;
+            }
+
+            await setDoc(analyticsRef, payload, { merge: true });
+            logs.push("Psychometric Engine & Intervention Logic configured.");
+        }
+
+        // D. Statutory Reports -> tenant_settings/reporting
+        if (config.statutoryReports) {
+            const reportingRef = doc(db, `tenants/${tenantId}/settings/reporting`);
+            await setDoc(reportingRef, {
+                templates: config.statutoryReports,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+            logs.push(`Installed ${config.statutoryReports.length} statutory report templates.`);
+        }
+    }
+
+    private async recordInstallation(tenantId: string, manifest: MarketplaceManifest) {
+        const installRef = doc(db, `tenants/${tenantId}/settings/installed_packs`);
+        await setDoc(installRef, {
+            [manifest.id]: {
+                version: manifest.version,
+                installedAt: new Date().toISOString(),
+                status: 'active'
+            }
+        }, { merge: true });
+    }
 }

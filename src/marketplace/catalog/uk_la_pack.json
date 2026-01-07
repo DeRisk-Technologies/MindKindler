@@ -1,38 +1,178 @@
 {
-    "id": "uk_la_pack",
-    "name": "UK Local Authority Starter Pack",
-    "description": "Essential compliance and training for UK Councils. Includes KCSIE safeguarding rules and GDPR policies.",
-    "version": "1.0.0",
-    "regionTags": ["UK", "Europe"],
-    "actions": [
+  "id": "uk_la_pack",
+  "name": "UK Local Authority Standard (EYFS 2025)",
+  "description": "Statutory compliance pack including First Day Calling, WISC-V norms, and EHCP templates.",
+  "version": "2.2.0",
+  "regionTags": [
+    "UK",
+    "Europe"
+  ],
+  "actions": [],
+  "capabilities": {
+    "countryCode": "UK",
+    "schemaExtensions": {
+      "student": [
         {
-            "type": "createPolicyRule",
-            "payload": {
-                "title": "KCSIE: Safeguarding Reporting",
-                "description": "Requires immediate reporting of safeguarding concerns.",
-                "severity": "critical",
-                "mode": "enforce",
-                "blockActions": true,
-                "appliesToActions": ["assessment.finalize"],
-                "triggerEvent": "assessment.finalize",
-                "triggerCondition": "safeguarding_recommended",
-                "remediation": "Raise a formal incident in the Safeguarding module.",
-                "jurisdiction": "UK"
-            }
+          "fieldName": "uk_upn",
+          "label": "Unique Pupil Number (UPN)",
+          "type": "string",
+          "validationRegex": "^[A-Z][0-9]{12}$",
+          "required": true,
+          "encrypt": false
         },
         {
-            "type": "createTrainingModule",
-            "payload": {
-                "title": "KCSIE Basics 2024",
-                "category": "safeguarding",
-                "audience": "teacher",
-                "level": "beginner",
-                "format": "microLesson",
-                "contentBlocks": [
-                    { "type": "text", "content": "Keeping Children Safe in Education is statutory guidance..." }
-                ],
-                "verified": true
-            }
+          "fieldName": "uk_pupil_premium",
+          "label": "Pupil Premium Eligible",
+          "type": "boolean",
+          "required": false,
+          "encrypt": false
+        },
+        {
+          "fieldName": "uk_sen_status",
+          "label": "SEN Status",
+          "type": "enum",
+          "options": [
+            "E",
+            "K",
+            "N"
+          ],
+          "required": true,
+          "encrypt": false,
+          "description": "E = EHCP, K = SEN Support, N = No SEN"
+        },
+        {
+          "fieldName": "uk_fsm_eligible",
+          "label": "Free School Meals (FSM)",
+          "type": "boolean",
+          "required": false,
+          "encrypt": false
         }
+      ],
+      "school": [],
+      "staff": [
+        {
+          "fieldName": "scr_dbs_number",
+          "label": "DBS Certificate Number",
+          "type": "string",
+          "required": true,
+          "encrypt": true,
+          "description": "Enhanced DBS Number for Single Central Record (SCR)"
+        },
+        {
+          "fieldName": "scr_dbs_issue_date",
+          "label": "DBS Issue Date",
+          "type": "date",
+          "required": true,
+          "encrypt": false
+        },
+        {
+          "fieldName": "scr_prohibition_check",
+          "label": "Prohibition from Teaching Check",
+          "type": "boolean",
+          "required": true,
+          "encrypt": false
+        },
+        {
+          "fieldName": "scr_right_to_work",
+          "label": "Right to Work in UK Verified",
+          "type": "boolean",
+          "required": true,
+          "encrypt": false
+        }
+      ]
+    },
+    "complianceWorkflows": [
+      {
+        "id": "uk_first_day_calling",
+        "name": "First Day Calling (EYFS)",
+        "trigger": "attendance_logged",
+        "condition": "status == 'unexplained'",
+        "action": "create_case",
+        "slaHours": 0.5
+      },
+      {
+        "id": "uk_scr_dbs_renewal",
+        "name": "DBS Renewal Warning (SCR)",
+        "trigger": "schedule_daily",
+        "target": "StaffProfile",
+        "condition": "scr_dbs_issue_date < (NOW - 3 years + 90 days)",
+        "action": "create_notification",
+        "payload": {
+          "message": "Urgent: Staff member {{name}} requires DBS renewal in <90 days. Statutory breach risk.",
+          "priority": "high"
+        }
+      }
+    ],
+    "psychometricConfig": {
+      "standardScoreMean": 100,
+      "standardScoreSD": 15,
+      "deviationThresholds": {
+        "mild": 85,
+        "significant": 70
+      },
+      "confidenceInterval": 95,
+      "discrepancySignificance": 15
+    },
+    "statutoryReports": [
+      {
+        "id": "ehcp_needs_assessment",
+        "name": "EHCP Needs Assessment",
+        "sections": [
+          {
+            "id": "section_a",
+            "title": "Section A: Views of Child",
+            "promptId": "ehcp_sec_a"
+          },
+          {
+            "id": "section_b",
+            "title": "Section B: Special Educational Needs",
+            "promptId": "ehcp_sec_b"
+          },
+          {
+            "id": "section_f",
+            "title": "Section F: Provision",
+            "promptId": "ehcp_sec_f"
+          }
+        ],
+        "constraints": [
+          "no_medical_diagnosis",
+          "use_tentative_language"
+        ]
+      }
+    ],
+    "interventionLogic": [
+      {
+        "id": "uk_elklan_vci",
+        "domain": "VCI",
+        "threshold": 85,
+        "programName": "ELKLAN Language Builders",
+        "description": "Structured oral language support for low Verbal Comprehension.",
+        "evidenceLevel": "gold"
+      },
+      {
+        "id": "uk_talk_boost_vci",
+        "domain": "VCI",
+        "threshold": 85,
+        "programName": "Talk Boost (KS1/KS2)",
+        "description": "Targeted intervention for narrowing the language gap.",
+        "evidenceLevel": "silver"
+      },
+      {
+        "id": "uk_cogmed_wmi",
+        "domain": "WMI",
+        "threshold": 80,
+        "programName": "Cogmed Working Memory Training",
+        "description": "Digital adaptive training for working memory deficits.",
+        "evidenceLevel": "silver"
+      },
+      {
+        "id": "uk_memory_fix_wmi",
+        "domain": "WMI",
+        "threshold": 80,
+        "programName": "Memory Fix Strategies",
+        "description": "Compensatory classroom strategies (chunking, visual aids).",
+        "evidenceLevel": "gold"
+      }
     ]
+  }
 }

@@ -1,79 +1,125 @@
+// src/app/dashboard/marketplace/page.tsx
+
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Download, Globe, Shield, BookOpen, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Input } from "@/components/ui/input";
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
+import { Loader2, Globe, ShieldCheck, Download, CheckCircle } from 'lucide-react';
+import { installMarketplacePack } from '@/app/actions/install-pack';
 
-// Mock Catalog Loader
-import ukPack from "@/marketplace/catalog/uk_la_pack.json";
-import usPack from "@/marketplace/catalog/us_district_pack.json";
-import ngPack from "@/marketplace/catalog/nigeria_foundation_pack.json";
-import dachPack from "@/marketplace/catalog/dach_pack.json";
-import gulfPack from "@/marketplace/catalog/gulf_pack.json";
-
-const CATALOG = [ukPack, usPack, ngPack, dachPack, gulfPack];
+// Mock Catalog (In prod, fetch from API)
+const catalog = [
+    {
+        id: 'uk_la_pack',
+        name: 'UK Local Authority Standard',
+        description: 'Complete compliance suite for UK Schools (EYFS 2025, KCSIE). Includes First Day Calling workflow, WISC-V Norms, and Single Central Record (SCR).',
+        version: '2.1.0',
+        region: 'UK',
+        tags: ['Statutory', 'Safety', 'Analytics']
+    },
+    {
+        id: 'us_district_pack',
+        name: 'US District Standard (FERPA)',
+        description: 'FERPA-compliant safeguarding, IDEA workflows for IEPs, and Woodcock-Johnson IV norms.',
+        version: '1.0.0',
+        region: 'US',
+        tags: ['Statutory', 'Legal']
+    }
+];
 
 export default function MarketplacePage() {
-    const router = useRouter();
-    const [search, setSearch] = useState("");
-    const [filterRegion, setFilterRegion] = useState("All");
+    const { user } = useAuth();
+    const { toast } = useToast();
+    const [installing, setInstalling] = useState<string | null>(null);
+    const [installed, setInstalled] = useState<Record<string, boolean>>({});
 
-    const filteredPacks = CATALOG.filter(p => 
-        (filterRegion === "All" || p.regionTags.includes(filterRegion)) &&
-        (p.name.toLowerCase().includes(search.toLowerCase()) || p.description.toLowerCase().includes(search.toLowerCase()))
-    );
+    const handleInstall = async (packId: string) => {
+        if (!user?.tenantId) return;
+        setInstalling(packId);
 
-    const regions = Array.from(new Set(CATALOG.flatMap(p => p.regionTags)));
+        try {
+            const res = await installMarketplacePack(user.tenantId, packId);
+            
+            if (res.success) {
+                toast({
+                    title: "Installation Complete",
+                    description: "The Country Pack has been successfully configured for your tenant.",
+                });
+                setInstalled(prev => ({ ...prev, [packId]: true }));
+            } else {
+                toast({
+                    variant: "destructive",
+                    title: "Installation Failed",
+                    description: res.error,
+                });
+            }
+        } catch (e) {
+            console.error(e);
+            toast({ variant: "destructive", title: "Error", description: "System error during installation." });
+        } finally {
+            setInstalling(null);
+        }
+    };
 
     return (
-        <div className="p-8 space-y-8">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold">Integration Marketplace</h1>
-                    <p className="text-muted-foreground">Accelerate deployment with pre-configured packs.</p>
-                </div>
-                <Button variant="outline" onClick={() => router.push('/dashboard/marketplace/installed')}>
-                    Manage Installed
-                </Button>
+        <div className="p-8 space-y-8 max-w-7xl mx-auto">
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Marketplace</h1>
+                <p className="text-muted-foreground">Install regulatory packs, compliance workflows, and analytic engines.</p>
             </div>
 
-            <div className="flex gap-4">
-                <div className="relative flex-1 max-w-sm">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search packs..." className="pl-8" value={search} onChange={e => setSearch(e.target.value)} />
-                </div>
-                <div className="flex gap-2">
-                    <Button variant={filterRegion === 'All' ? 'secondary' : 'ghost'} onClick={() => setFilterRegion('All')}>All</Button>
-                    {regions.map(r => (
-                        <Button key={r} variant={filterRegion === r ? 'secondary' : 'ghost'} onClick={() => setFilterRegion(r)}>{r}</Button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {filteredPacks.map(pack => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {catalog.map(pack => (
                     <Card key={pack.id} className="flex flex-col">
                         <CardHeader>
                             <div className="flex justify-between items-start">
-                                <Badge variant="outline">{pack.version}</Badge>
-                                <Globe className="h-4 w-4 text-muted-foreground" />
+                                <Badge variant="outline" className="mb-2">{pack.region}</Badge>
+                                {pack.region === 'UK' && <Badge className="bg-indigo-600">Recommended</Badge>}
                             </div>
-                            <CardTitle className="mt-2">{pack.name}</CardTitle>
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Globe className="h-5 w-5 text-slate-500" />
+                                {pack.name}
+                            </CardTitle>
+                            <CardDescription className="pt-2 min-h-[60px]">
+                                {pack.description}
+                            </CardDescription>
                         </CardHeader>
-                        <CardContent className="flex-1 flex flex-col gap-4">
-                            <p className="text-sm text-muted-foreground flex-1">{pack.description}</p>
-                            <div className="flex gap-2 flex-wrap">
-                                {pack.actions.some((a: any) => a.type === 'createPolicyRule') && <Badge variant="secondary" className="text-[10px]"><Shield className="h-3 w-3 mr-1"/> Policies</Badge>}
-                                {pack.actions.some((a: any) => a.type === 'createTrainingModule') && <Badge variant="secondary" className="text-[10px]"><BookOpen className="h-3 w-3 mr-1"/> Training</Badge>}
+                        <CardContent className="flex-grow">
+                            <div className="flex flex-wrap gap-2 mt-2">
+                                {pack.tags.map(tag => (
+                                    <span key={tag} className="text-xs bg-slate-100 px-2 py-1 rounded text-slate-600 flex items-center gap-1">
+                                        <ShieldCheck className="h-3 w-3" /> {tag}
+                                    </span>
+                                ))}
                             </div>
-                            <Button className="w-full mt-4" onClick={() => router.push(`/dashboard/marketplace/${pack.id}`)}>
-                                View Details
-                            </Button>
                         </CardContent>
+                        <CardFooter className="pt-4 border-t bg-slate-50">
+                            {installed[pack.id] ? (
+                                <Button variant="outline" className="w-full text-green-600 border-green-200 bg-green-50" disabled>
+                                    <CheckCircle className="mr-2 h-4 w-4" /> Installed
+                                </Button>
+                            ) : (
+                                <Button 
+                                    className="w-full" 
+                                    onClick={() => handleInstall(pack.id)} 
+                                    disabled={!!installing}
+                                >
+                                    {installing === pack.id ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Configuring Tenant...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download className="mr-2 h-4 w-4" /> Install Pack
+                                        </>
+                                    )}
+                                </Button>
+                            )}
+                        </CardFooter>
                     </Card>
                 ))}
             </div>

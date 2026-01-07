@@ -5,13 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { ParentEntryForm } from './ParentEntryForm';
-import { Student360Service } from '@/services/student360-service'; // Assumed client-side wrap or server action
-import { Loader2, ArrowRight, Save, Shield } from 'lucide-react';
+import { Loader2, Save, Shield, Map } from 'lucide-react';
+import { useSchemaExtensions } from '@/hooks/use-schema-extensions'; // NEW
+import { DynamicFormField } from '@/components/ui/dynamic-form-field'; // NEW
 
 // Default values structure
 const defaultValues = {
@@ -29,7 +28,8 @@ const defaultValues = {
   family: {
     parents: []
   },
-  health: { // Just basic init
+  extensions: {}, // Dynamic bucket
+  health: { 
       allergies: { value: [], metadata: { source: 'manual', verified: false } },
       conditions: { value: [], metadata: { source: 'manual', verified: false } },
       medications: { value: [], metadata: { source: 'manual', verified: false } }
@@ -41,6 +41,9 @@ export function StudentEntryForm() {
   const router = useRouter();
   const { toast } = useToast();
   
+  // Phase 7: Inject Country OS Extensions
+  const { config: schemaConfig, loading: loadingExtensions } = useSchemaExtensions();
+
   const form = useForm({
     defaultValues
   });
@@ -48,10 +51,6 @@ export function StudentEntryForm() {
   const onSubmit = async (data: any) => {
     setIsSubmitting(true);
     try {
-        // In a real app, you'd call a Server Action or API route here
-        // Simulating the service call for now since we are in a client component
-        // const studentId = await Student360Service.createStudentWithParents('tenant-1', data, data.family.parents, 'user-1');
-        
         console.log("Submitting 360 Record:", data);
         
         // Simulating delay
@@ -62,8 +61,6 @@ export function StudentEntryForm() {
             description: "Student and parent records have been saved successfully. Verification tasks generated.",
         });
 
-        // Redirect to new student profile (using a dummy ID for now)
-        // router.push(`/dashboard/students/${studentId}`); 
         router.push(`/dashboard/students`);
 
     } catch (error) {
@@ -178,42 +175,64 @@ export function StudentEntryForm() {
                             </CardContent>
                         </Card>
 
+                        {/* ACADEMIC INFO - Including Dynamic Country Fields */}
                         <Card>
                             <CardHeader>
                                 <CardTitle className="text-base">Education Status</CardTitle>
                             </CardHeader>
-                            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FormField
-                                    control={form.control}
-                                    name="education.currentSchoolId.value"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Current School</FormLabel>
-                                            {/* In real app, this is a ComboBox searching schools */}
-                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                <FormControl>
-                                                    <SelectTrigger><SelectValue placeholder="Select School" /></SelectTrigger>
-                                                </FormControl>
-                                                <SelectContent>
-                                                    <SelectItem value="school-1">Springfield Elementary</SelectItem>
-                                                    <SelectItem value="school-2">West High</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={form.control}
-                                    name="education.enrollmentDate.value"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Enrollment Date</FormLabel>
-                                            <FormControl><Input {...field} type="date" /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
+                            <CardContent className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <FormField
+                                        control={form.control}
+                                        name="education.currentSchoolId.value"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Current School</FormLabel>
+                                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                    <FormControl>
+                                                        <SelectTrigger><SelectValue placeholder="Select School" /></SelectTrigger>
+                                                    </FormControl>
+                                                    <SelectContent>
+                                                        <SelectItem value="school-1">Springfield Elementary</SelectItem>
+                                                        <SelectItem value="school-2">West High</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={form.control}
+                                        name="education.enrollmentDate.value"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Enrollment Date</FormLabel>
+                                                <FormControl><Input {...field} type="date" /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+
+                                {/* Dynamic Country OS Fields */}
+                                {schemaConfig.studentFields.length > 0 && (
+                                    <>
+                                        <div className="flex items-center gap-2 my-2 pt-4 border-t">
+                                            <Map className="h-4 w-4 text-indigo-600" />
+                                            <h3 className="text-sm font-semibold text-indigo-900">Regional Requirements</h3>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-indigo-50/50 p-4 rounded-md border border-indigo-100">
+                                            {schemaConfig.studentFields.map((field) => (
+                                                <DynamicFormField 
+                                                    key={field.fieldName}
+                                                    field={field} 
+                                                    control={form.control}
+                                                    baseName="extensions"
+                                                />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
                             </CardContent>
                         </Card>
                     </div>
