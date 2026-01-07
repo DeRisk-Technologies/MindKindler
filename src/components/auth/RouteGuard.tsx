@@ -14,35 +14,37 @@ interface Props {
 export function RouteGuard({ children }: Props) {
     const router = useRouter();
     const pathname = usePathname();
-    const { can, user } = usePermissions(); // Assuming loading state is handled in useAuth
+    const { can, user, loading } = usePermissions(); // FIX: Destructure loading
 
     useEffect(() => {
-        if (!user) return; // Allow Layout to redirect to login if auth missing
+        // 1. If still loading permissions, do nothing yet
+        if (loading) return;
 
-        // 1. Staff SCR Protection
+        // 2. If no user, Layout usually handles redirect to login, but we can double check
+        if (!user) return; 
+
+        // 3. Staff SCR Protection
         if (pathname.startsWith('/dashboard/staff') && !can('view_staff_scr')) {
-            console.warn(`Access Denied: ${user.role} cannot view Staff SCR.`);
+            console.warn(`Access Denied: ${user.email} (Role: ${JSON.stringify(user)}) cannot view Staff SCR.`);
             router.replace('/dashboard');
         }
 
-        // 2. GovIntel Protection
+        // 4. GovIntel Protection
         if (pathname.startsWith('/dashboard/govintel') && !can('view_gov_intel')) {
-            console.warn(`Access Denied: ${user.role} cannot view GovIntel.`);
+            console.warn(`Access Denied: cannot view GovIntel.`);
             router.replace('/dashboard');
         }
 
-        // 3. Marketplace Admin
-        if (pathname.startsWith('/dashboard/marketplace') && !can('manage_compliance_packs')) {
-             // Allow viewing? No, safer to block manage actions.
-             // Maybe allow EPP to browse but not install.
-             // For now, strict block for safety.
-             // router.replace('/dashboard'); 
-        }
+    }, [pathname, user, can, loading, router]);
 
-    }, [pathname, user, can, router]);
-
-    // Optional: Add a loading spinner if auth is initializing
-    // if (loading) return <Loader2 ... />
+    // Show spinner while checking permissions to prevent flash of content or premature redirect
+    if (loading) {
+        return (
+            <div className="h-screen w-full flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
 
     return <>{children}</>;
 }

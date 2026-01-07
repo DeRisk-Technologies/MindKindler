@@ -26,6 +26,8 @@ export function ParentEntryForm({ form }: { form: any }) {
     append({
         firstName: '',
         lastName: '',
+        email: '', // Initialize explicitly to empty string
+        phone: '', // Initialize explicitly
         relationshipType: 'Mother',
         hasParentalResponsibility: false,
         isPrimaryContact: fields.length === 0, // First one is primary by default
@@ -86,7 +88,7 @@ export function ParentEntryForm({ form }: { form: any }) {
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel className="text-xs">First Name</FormLabel>
-                                        <FormControl><Input {...field} placeholder="Jane" /></FormControl>
+                                        <FormControl><Input {...field} value={field.value ?? ''} placeholder="Jane" /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -97,7 +99,7 @@ export function ParentEntryForm({ form }: { form: any }) {
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel className="text-xs">Last Name</FormLabel>
-                                        <FormControl><Input {...field} placeholder="Doe" /></FormControl>
+                                        <FormControl><Input {...field} value={field.value ?? ''} placeholder="Doe" /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -164,7 +166,7 @@ export function ParentEntryForm({ form }: { form: any }) {
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel className="text-xs">Email</FormLabel>
-                                        <FormControl><Input {...field} type="email" /></FormControl>
+                                        <FormControl><Input {...field} value={field.value ?? ''} type="email" /></FormControl>
                                     </FormItem>
                                 )}
                             />
@@ -174,7 +176,7 @@ export function ParentEntryForm({ form }: { form: any }) {
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel className="text-xs">Phone</FormLabel>
-                                        <FormControl><Input {...field} type="tel" /></FormControl>
+                                        <FormControl><Input {...field} value={field.value ?? ''} type="tel" /></FormControl>
                                     </FormItem>
                                 )}
                             />

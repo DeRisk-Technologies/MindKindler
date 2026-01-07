@@ -19,10 +19,6 @@ import { StudentRecord } from "@/types/schema";
 import { Student360Service } from "@/services/student360-service";
 import { ProvenanceBadge } from "./ProvenanceBadge";
 
-// Import existing tabs/sub-components (Assuming these exist or will be restored/refactored)
-// For now, I'll inline simplified versions or placeholders for the sections to guarantee compilation
-// while mirroring the rich structure you had.
-
 interface Student360MainProps {
   studentId: string;
 }
@@ -36,7 +32,6 @@ export function Student360Main({ studentId }: Student360MainProps) {
     async function loadData() {
       try {
         setLoading(true);
-        // Use the SECURE fetch which calls the Cloud Function
         const data = await Student360Service.getStudent(studentId, 'Dashboard View');
         setStudent(data);
       } catch (err: any) {
@@ -143,8 +138,9 @@ export function Student360Main({ studentId }: Student360MainProps) {
                  <CardContent className="text-sm">
                     {student.discipline && student.discipline.length > 0 ? (
                         <ul className="list-disc pl-4 space-y-1">
-                           {student.discipline.slice(0, 3).map(d => (
-                               <li key={d.id} className="text-orange-700">{d.type} ({d.severity})</li>
+                           {/* FIXED: Added index fallback for key */}
+                           {student.discipline.slice(0, 3).map((d, index) => (
+                               <li key={d.id || index} className="text-orange-700">{d.type} ({d.severity})</li>
                            ))}
                         </ul>
                     ) : (
@@ -165,8 +161,9 @@ export function Student360Main({ studentId }: Student360MainProps) {
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
-                        {student.family.parents.map(parent => (
-                            <div key={parent.id} className="flex justify-between items-start p-3 border rounded-lg bg-gray-50">
+                        {/* FIXED: Added index fallback for key */}
+                        {student.family.parents.map((parent, index) => (
+                            <div key={parent.id || index} className="flex justify-between items-start p-3 border rounded-lg bg-gray-50">
                                 <div>
                                     <p className="font-semibold">{parent.firstName} {parent.lastName}</p>
                                     <p className="text-sm text-muted-foreground">{parent.relationshipType}</p>
@@ -195,8 +192,9 @@ export function Student360Main({ studentId }: Student360MainProps) {
                     <CardContent>
                         <p className="text-sm text-purple-900 mb-2">Looked After Status: <strong>{student.careHistory.isLookedAfter ? 'Yes' : 'No'}</strong></p>
                         <div className="space-y-2">
-                            {student.careHistory.placements.map(p => (
-                                <div key={p.id} className="bg-white p-2 rounded border border-purple-100 text-sm">
+                            {/* FIXED: Added index fallback for key */}
+                            {student.careHistory.placements.map((p, index) => (
+                                <div key={p.id || index} className="bg-white p-2 rounded border border-purple-100 text-sm">
                                     {p.agencyName} ({p.startDate} - {p.endDate || 'Present'})
                                 </div>
                             ))}
@@ -214,14 +212,16 @@ export function Student360Main({ studentId }: Student360MainProps) {
                         <div>
                             <h4 className="font-semibold mb-2 flex items-center gap-2"><Activity className="h-4 w-4"/> Allergies</h4>
                             <div className="flex flex-wrap gap-2">
-                                {student.health.allergies.value.map(a => <Badge key={a} variant="outline">{a}</Badge>)}
+                                {/* FIXED: Added index fallback for key */}
+                                {student.health.allergies.value.map((a, i) => <Badge key={i} variant="outline">{a}</Badge>)}
                                 {student.health.allergies.value.length === 0 && <span className="text-muted-foreground text-sm">None recorded</span>}
                             </div>
                         </div>
                         <div>
                              <h4 className="font-semibold mb-2">Conditions</h4>
                              <div className="flex flex-wrap gap-2">
-                                {student.health.conditions.value.map(c => <Badge key={c} variant="destructive" className="opacity-80">{c}</Badge>)}
+                                {/* FIXED: Added index fallback for key */}
+                                {student.health.conditions.value.map((c, i) => <Badge key={i} variant="destructive" className="opacity-80">{c}</Badge>)}
                             </div>
                         </div>
                      </div>

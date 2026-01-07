@@ -2,58 +2,105 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useFirestoreCollection } from '@/hooks/use-firestore';
 import { StaffProfile } from '@/types/schema';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckCircle, ExternalLink, XCircle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, CheckCircle, ExternalLink, XCircle, Undo2 } from 'lucide-react';
 import { updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
 export default function VerificationQueuePage() {
     const { toast } = useToast();
-    // In prod: filter where role == 'EPP' and status == 'pending'
     const { data: users, loading, refresh } = useFirestoreCollection<StaffProfile>('users'); 
+
+    // Filters
+    const practitioners = users.filter(u => u.role === 'EPP' || u.role === 'EducationalPsychologist');
     
-    // Filter locally for MVP demo
-    const pendingVerifications = users.filter(u => 
-        (u.role === 'EPP' || u.role === 'EducationalPsychologist') && 
-        u.verification?.status === 'pending'
+    const pending = practitioners.filter(u => {
+        const s = u.verification?.status;
+        return !s || s === 'pending' || s === 'unverified';
+    });
+    
+    const verified = practitioners.filter(u => u.verification?.status === 'verified');
+    const rejected = practitioners.filter(u => u.verification?.status === 'rejected');
+
+    const updateStatus = async (userId: string, status: 'verified' | 'rejected' | 'pending') => {
+        try {
+            await updateDoc(doc(db, 'users', userId), {
+                verification: {
+                    status: status,
+                    verifiedAt: new Date().toISOString(),
+                    verifiedBy: auth.currentUser?.uid,
+                    hcpcNumber: 'MANUAL_OVERRIDE' 
+                }
+            });
+            toast({ title: `Practitioner ${status}`, description: "Status updated." });
+            refresh();
+        } catch (e) {
+            toast({ title: "Error", variant: "destructive" });
+        }
+    };
+
+    const VerificationTable = ({ list, showActions = true }: { list: StaffProfile[], showActions?: boolean }) => (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>HCPC Number</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {list.length === 0 && (
+                    <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No records found.</TableCell></TableRow>
+                )}
+                {list.map(user => (
+                    <TableRow key={user.id}>
+                        <TableCell className="font-medium">{user.firstName || 'New'} {user.lastName || 'User'}</TableCell>
+                        <TableCell className="font-mono">{user.verification?.hcpcNumber || 'Not Provided'}</TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>
+                            <Badge variant={user.verification?.status === 'verified' ? 'outline' : 'secondary'} className="capitalize border-green-200">
+                                {user.verification?.status || 'New'}
+                            </Badge>
+                        </TableCell>
+                        <TableCell className="flex gap-2">
+                            {showActions && (
+                                <>
+                                    <Button variant="outline" size="sm" asChild>
+                                        <a href={`https://www.hcpc-uk.org/check-the-register/`} target="_blank" rel="noopener noreferrer">
+                                            <ExternalLink className="mr-2 h-3 w-3"/> Check
+                                        </a>
+                                    </Button>
+                                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus(user.id, 'verified')}>
+                                        <CheckCircle className="mr-2 h-3 w-3"/> Approve
+                                    </Button>
+                                    <Button size="sm" variant="destructive" onClick={() => updateStatus(user.id, 'rejected')}>
+                                        <XCircle className="h-4 w-4"/>
+                                    </Button>
+                                </>
+                            )}
+                            {!showActions && user.verification?.status === 'verified' && (
+                                <Button size="sm" variant="ghost" onClick={() => updateStatus(user.id, 'pending')}>
+                                    <Undo2 className="mr-2 h-3 w-3"/> Revoke
+                                </Button>
+                            )}
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
     );
 
-    const handleApprove = async (userId: string) => {
-        try {
-            await updateDoc(doc(db, 'users', userId), {
-                'verification.status': 'verified',
-                'verification.verifiedAt': new Date().toISOString(),
-                'verification.verifiedBy': auth.currentUser?.uid
-            });
-            toast({ title: "Practitioner Verified", description: "Access granted to clinical tools." });
-            refresh();
-        } catch (e) {
-            console.error(e);
-            toast({ title: "Error", variant: "destructive" });
-        }
-    };
-
-    const handleReject = async (userId: string) => {
-        if (!confirm("Reject this practitioner? They will lose access.")) return;
-        try {
-            await updateDoc(doc(db, 'users', userId), {
-                'verification.status': 'rejected',
-                'verification.verifiedAt': new Date().toISOString(),
-                'verification.verifiedBy': auth.currentUser?.uid
-            });
-            toast({ title: "Practitioner Rejected" });
-            refresh();
-        } catch (e) {
-            toast({ title: "Error", variant: "destructive" });
-        }
-    };
+    if (loading) return <div className="flex h-96 justify-center items-center"><Loader2 className="animate-spin h-8 w-8 text-primary"/></div>;
 
     return (
         <div className="p-8 space-y-8">
@@ -62,50 +109,34 @@ export default function VerificationQueuePage() {
                 <p className="text-muted-foreground">Verify HCPC registration for Educational Psychologists.</p>
             </div>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Pending Verifications ({pendingVerifications.length})</CardTitle>
-                    <CardDescription>Practitioners awaiting approval to practice.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>HCPC Number</TableHead>
-                                <TableHead>Email</TableHead>
-                                <TableHead>Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {loading && <TableRow><TableCell colSpan={4} className="text-center"><Loader2 className="animate-spin inline"/></TableCell></TableRow>}
-                            {!loading && pendingVerifications.length === 0 && (
-                                <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No pending verifications.</TableCell></TableRow>
-                            )}
-                            {pendingVerifications.map(user => (
-                                <TableRow key={user.id}>
-                                    <TableCell className="font-medium">{user.firstName} {user.lastName}</TableCell>
-                                    <TableCell className="font-mono">{user.verification?.hcpcNumber || 'N/A'}</TableCell>
-                                    <TableCell>{user.email}</TableCell>
-                                    <TableCell className="flex gap-2">
-                                        <Button variant="outline" size="sm" asChild>
-                                            <a href={`https://www.hcpc-uk.org/check-the-register/`} target="_blank" rel="noopener noreferrer">
-                                                <ExternalLink className="mr-2 h-3 w-3"/> Check Register
-                                            </a>
-                                        </Button>
-                                        <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleApprove(user.id)}>
-                                            <CheckCircle className="mr-2 h-3 w-3"/> Approve
-                                        </Button>
-                                        <Button size="sm" variant="destructive" onClick={() => handleReject(user.id)}>
-                                            <XCircle className="h-4 w-4"/>
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+            <Tabs defaultValue="pending" className="w-full">
+                <TabsList>
+                    <TabsTrigger value="pending">Pending ({pending.length})</TabsTrigger>
+                    <TabsTrigger value="verified">Verified Workforce ({verified.length})</TabsTrigger>
+                    <TabsTrigger value="rejected">Rejected ({rejected.length})</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="pending" className="mt-4">
+                    <Card>
+                        <CardHeader><CardTitle>Pending Approval</CardTitle><CardDescription>New sign-ups or profile updates requiring review.</CardDescription></CardHeader>
+                        <CardContent><VerificationTable list={pending} /></CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="verified" className="mt-4">
+                    <Card>
+                        <CardHeader><CardTitle>Active Practitioners</CardTitle><CardDescription>Fully vetted staff with clinical access.</CardDescription></CardHeader>
+                        <CardContent><VerificationTable list={verified} showActions={false} /></CardContent>
+                    </Card>
+                </TabsContent>
+                
+                 <TabsContent value="rejected" className="mt-4">
+                    <Card>
+                        <CardHeader><CardTitle>Rejected Applications</CardTitle></CardHeader>
+                        <CardContent><VerificationTable list={rejected} showActions={false} /></CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

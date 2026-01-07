@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, use } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/use-permissions';
 import { PsychometricProfileChart } from '@/components/analytics/PsychometricProfileChart';
@@ -12,11 +12,10 @@ import { Student360Main } from '@/components/student360/Student360Main';
 import { Shield } from 'lucide-react';
 
 // Mock Data for Assessment/Progress (Demo Purposes)
-// In production, these would be fetched via a dedicated hook or service
 const MOCK_SCORES = [
     { name: 'VCI', score: 82, ciLow: 77, ciHigh: 87 },
     { name: 'VSI', score: 95, ciLow: 90, ciHigh: 100 },
-    { name: 'FRI', score: 74, ciLow: 69, ciHigh: 79 }, // Significant Low
+    { name: 'FRI', score: 74, ciLow: 69, ciHigh: 79 }, 
     { name: 'WMI', score: 88, ciLow: 83, ciHigh: 93 },
     { name: 'PSI', score: 92, ciLow: 87, ciHigh: 97 },
 ];
@@ -24,28 +23,26 @@ const MOCK_SCORES = [
 const MOCK_PROGRESS = [
     { date: '2023-09-01', score: 70, domain: 'Reading' },
     { date: '2023-12-01', score: 75, domain: 'Reading' },
-    { date: '2024-03-01', score: 82, domain: 'Reading' }, // Improved
+    { date: '2024-03-01', score: 82, domain: 'Reading' }, 
 ];
 
 const MOCK_INTERVENTIONS = [
     { date: '2023-10-01', label: 'Start Catch Up Literacy' }
 ];
 
-export default function StudentProfilePage({ params }: { params: { id: string } }) {
+export default function StudentProfilePage({ params }: { params: Promise<{ id: string }> }) {
     const { can } = usePermissions();
     const [activeTab, setActiveTab] = useState("identity");
 
+    // UNWRAP PARAMS (Next.js 15 Fix)
+    const { id } = use(params);
+
     return (
         <div className="p-8 space-y-8">
-            {/* 
-              Page Level Header 
-              Note: Detailed Student Identity (Name, Photo, Trust Score) is rendered inside Student360Main.
-              We keep a minimal breadcrumb-like header here or rely on the inner component.
-            */}
             <div className="flex justify-between items-start">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">Student Profile</h1>
-                    <p className="text-muted-foreground">System ID: {params.id}</p>
+                    <p className="text-muted-foreground">System ID: {id}</p>
                 </div>
             </div>
 
@@ -56,26 +53,15 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
                     <TabsTrigger value="progress">Longitudinal Progress</TabsTrigger>
                 </TabsList>
 
-                {/* 
-                   Tab 1: Identity & Records 
-                   Encapsulates the Secure Student 360 View (Demographics, Safeguarding, Family, Health)
-                */}
                 <TabsContent value="identity" className="mt-0">
-                    <Student360Main studentId={params.id} />
+                    <Student360Main studentId={id} />
                 </TabsContent>
 
-                {/* 
-                   Tab 2: Clinical Assessment (Country OS Engines) 
-                   Protected by RBAC: Only Clinicians can view detailed psychometrics.
-                */}
                 <TabsContent value="assessment" className="mt-0 space-y-8">
                     {can('view_sensitive_notes') ? (
                         <>
                             <div className="grid gap-6">
-                                {/* 1. Visualization Engine: WISC-V Error Bars */}
                                 <PsychometricProfileChart data={MOCK_SCORES} />
-                                
-                                {/* 2. Recommendation Engine: Assess -> Plan */}
                                 <SmartInterventionMapper scores={MOCK_SCORES} />
                             </div>
                         </>
@@ -88,10 +74,6 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
                     )}
                 </TabsContent>
 
-                {/* 
-                   Tab 3: Longitudinal Progress (Spaghetti Plot)
-                   Visualizes the impact of interventions over time.
-                */}
                 <TabsContent value="progress" className="mt-0">
                     <LongitudinalProgressChart 
                         data={MOCK_PROGRESS} 

@@ -11,19 +11,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Plus, Trash2, Pencil, Search, KeyRound, UploadCloud, User, Mail, ShieldAlert, Building } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Search, KeyRound, UploadCloud, User, Mail, ShieldAlert, Building, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { addDoc, collection, serverTimestamp, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
+import { addDoc, collection, serverTimestamp, deleteDoc, doc, updateDoc, Firestore } from "firebase/firestore";
+import { db, auth, getRegionalDb } from "@/lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface UserData {
   id: string;
@@ -58,9 +59,43 @@ const CUSTOMER_ROLES = [
   "GovAnalyst"
 ];
 
+// Available Shards for Admin View
+const AVAILABLE_SHARDS = [
+    { id: 'default', name: 'Global / Default', region: 'global' },
+    { id: 'mindkindler-uk', name: 'UK Shard', region: 'uk' },
+    { id: 'mindkindler-us', name: 'US Shard', region: 'us' },
+    { id: 'mindkindler-eu', name: 'EU Shard', region: 'eu' },
+    { id: 'mindkindler-asia', name: 'Asia Shard', region: 'asia' },
+    { id: 'mindkindler-me', name: 'Middle East Shard', region: 'me' }
+];
+
 export default function AdminUsersPage() {
-  const { data: users, loading: loadingUsers } = useFirestoreCollection<UserData>("users", "createdAt", "desc");
+  const { shardId: myShardId, hasRole } = usePermissions();
+  const isSuperAdmin = hasRole(['SuperAdmin']);
+
+  // Admin View Control
+  const [viewShard, setViewShard] = useState<string>('default');
+
+  // Sync viewShard with myShardId initially if not SuperAdmin (locked to region)
+  useEffect(() => {
+      if (myShardId && !isSuperAdmin) {
+          setViewShard(myShardId);
+      } else if (myShardId && isSuperAdmin && viewShard === 'default') {
+          // SuperAdmins start at default but can switch. 
+          // If myShardId is region specific, they might want to see that first?
+          // Let's keep default for SuperAdmin.
+      }
+  }, [myShardId, isSuperAdmin]);
+
+  const { data: users, loading: loadingUsers } = useFirestoreCollection<UserData>(
+      "users", 
+      "createdAt", 
+      "desc",
+      { targetShard: viewShard }
+  );
+  
   const { data: departments } = useFirestoreCollection<any>("departments", "name", "asc");
+  const { data: tenants, loading: loadingTenants } = useFirestoreCollection<any>("organizations", "name", "asc"); 
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
@@ -88,14 +123,21 @@ export default function AdminUsersPage() {
       }
   });
 
+  const getTargetDb = () => {
+      if (viewShard === 'default') return db;
+      const region = viewShard.replace('mindkindler-', '');
+      return getRegionalDb(region);
+  };
+
   const handleSaveUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
     
     const role = formData.get("role") as string;
-    // Auto-assign tenantId based on role
-    const tenantId = STAFF_ROLES.includes(role) ? "mindkindler-hq" : (formData.get("tenantId") || "default-tenant");
+    // Auto-assign tenantId based on role, fallback to form value
+    const formTenantId = formData.get("tenantId") as string;
+    const tenantId = STAFF_ROLES.includes(role) ? "mindkindler-hq" : (formTenantId || "default");
 
     const data = {
         displayName: formData.get("name"),
@@ -109,12 +151,14 @@ export default function AdminUsersPage() {
     };
     
     try {
+      const targetDb = getTargetDb();
+
       if (editingId) {
-         await updateDoc(doc(db, "users", editingId), data);
+         await updateDoc(doc(targetDb, "users", editingId), data);
          toast({ title: "User Updated", description: "Profile details saved." });
       } else {
          // Create dummy placeholder for now
-         await addDoc(collection(db, "users"), {
+         await addDoc(collection(targetDb, "users"), {
             ...data,
             uid: "generated_" + Math.random().toString(36),
             createdAt: new Date().toISOString(), 
@@ -147,7 +191,8 @@ export default function AdminUsersPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure? This removes the profile.")) return;
     try {
-      await deleteDoc(doc(db, "users", id));
+      const targetDb = getTargetDb();
+      await deleteDoc(doc(targetDb, "users", id));
       toast({ title: "Deleted", description: "User removed." });
     } catch (e: any) {
       toast({ title: "Error", variant: "destructive", description: e.message });
@@ -158,93 +203,135 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <h1 className="text-3xl font-bold tracking-tight text-primary">Global User Directory</h1>
             <p className="text-muted-foreground">Manage internal staff and customer accounts.</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) setEditingId(null); }}>
-            <DialogTrigger asChild>
-                <Button>
-                <Plus className="mr-2 h-4 w-4" /> Add User
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                <DialogTitle>{editingId ? "Edit Profile" : "Create User"}</DialogTitle>
-                <DialogDescription>Provision access for staff or customers.</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleSaveUser} className="space-y-4">
-                <Tabs defaultValue="account" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="account">Account</TabsTrigger>
-                        <TabsTrigger value="profile">Profile</TabsTrigger>
-                    </TabsList>
-                    
-                    <TabsContent value="account" className="space-y-4 pt-4">
-                            <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="name">Full Name</Label>
-                                <Input id="name" name="name" required defaultValue={editingId ? users.find(u => u.id === editingId)?.displayName : ""} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
-                                <Input id="email" name="email" type="email" required defaultValue={editingId ? users.find(u => u.id === editingId)?.email : ""} />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Role Category</Label>
-                                <Select name="role" defaultValue={editingId ? users.find(u => u.id === editingId)?.role : "Teacher"}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <div className="px-2 py-1 text-xs font-bold text-muted-foreground">Internal Staff</div>
-                                        {STAFF_ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                                        <div className="px-2 py-1 text-xs font-bold text-muted-foreground border-t mt-1">Customers</div>
-                                        {CUSTOMER_ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Department</Label>
-                                <Select name="departmentId" defaultValue={editingId ? users.find(u => u.id === editingId)?.departmentId : "none"}>
-                                    <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">None</SelectItem>
-                                        {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                    </TabsContent>
+        
+        <div className="flex items-center gap-2">
+            {/* Shard Selector */}
+            <div className="flex items-center bg-muted/50 p-1 rounded-lg border">
+                <Globe className="h-4 w-4 ml-2 text-muted-foreground" />
+                <Select value={viewShard} onValueChange={setViewShard} disabled={!isSuperAdmin}>
+                    <SelectTrigger className="border-0 bg-transparent shadow-none w-[180px] h-8 text-xs font-medium">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {AVAILABLE_SHARDS.map(s => (
+                            <SelectItem key={s.id} value={s.id}>
+                                {s.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
 
-                    <TabsContent value="profile" className="space-y-4 pt-4">
-                            <div className="flex items-center gap-4 mb-2">
-                            <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center border-2 border-dashed">
-                                <User className="h-8 w-8 text-muted-foreground" />
-                            </div>
-                            <Button size="sm" variant="secondary" type="button">Upload Photo</Button>
-                            </div>
-                            <div className="space-y-2">
-                            <Label htmlFor="phone">Phone</Label>
-                            <Input id="phone" name="phone" defaultValue={editingId ? users.find(u => u.id === editingId)?.phone : ""} />
-                            </div>
-                            <div className="space-y-2">
-                            <Label htmlFor="address">Address</Label>
-                            <Textarea id="address" name="address" defaultValue={editingId ? users.find(u => u.id === editingId)?.address : ""} />
-                            </div>
-                    </TabsContent>
-                </Tabs>
-
-                <DialogFooter>
-                    <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Save
+            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) setEditingId(null); }}>
+                <DialogTrigger asChild>
+                    <Button>
+                    <Plus className="mr-2 h-4 w-4" /> Add User
                     </Button>
-                </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                    <DialogTitle>{editingId ? "Edit Profile" : "Create User"}</DialogTitle>
+                    <DialogDescription>Provision access in <b>{AVAILABLE_SHARDS.find(s=>s.id===viewShard)?.name}</b>.</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSaveUser} className="space-y-4">
+                    <Tabs defaultValue="account" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="account">Account</TabsTrigger>
+                            <TabsTrigger value="profile">Profile</TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="account" className="space-y-4 pt-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="name">Full Name</Label>
+                                    <Input id="name" name="name" required defaultValue={editingId ? users.find(u => u.id === editingId)?.displayName : ""} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="email">Email</Label>
+                                    <Input id="email" name="email" type="email" required defaultValue={editingId ? users.find(u => u.id === editingId)?.email : ""} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Role Category</Label>
+                                    <Select name="role" defaultValue={editingId ? users.find(u => u.id === editingId)?.role : "Teacher"}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <div className="px-2 py-1 text-xs font-bold text-muted-foreground">Internal Staff</div>
+                                            {STAFF_ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                                            <div className="px-2 py-1 text-xs font-bold text-muted-foreground border-t mt-1">Customers</div>
+                                            {CUSTOMER_ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Department</Label>
+                                    <Select name="departmentId" defaultValue={editingId ? users.find(u => u.id === editingId)?.departmentId : "none"}>
+                                        <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">None</SelectItem>
+                                            {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            {/* NEW: Tenant Selector (Replacing Input) */}
+                            <div className="space-y-2">
+                                <Label htmlFor="tenantId" className="flex items-center gap-2">
+                                    <Building className="h-4 w-4 text-slate-500" />
+                                    Tenant Context
+                                </Label>
+                                <Select name="tenantId" defaultValue={editingId ? users.find(u => u.id === editingId)?.tenantId : "default"}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Organization" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="default">System Default (Dev)</SelectItem>
+                                        {tenants.map(t => (
+                                            <SelectItem key={t.id} value={t.id}>{t.name} ({t.region})</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Assign this user to an organization workspace.
+                                </p>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="profile" className="space-y-4 pt-4">
+                                <div className="flex items-center gap-4 mb-2">
+                                <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center border-2 border-dashed">
+                                    <User className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                                <Button size="sm" variant="secondary" type="button">Upload Photo</Button>
+                                </div>
+                                <div className="space-y-2">
+                                <Label htmlFor="phone">Phone</Label>
+                                <Input id="phone" name="phone" defaultValue={editingId ? users.find(u => u.id === editingId)?.phone : ""} />
+                                </div>
+                                <div className="space-y-2">
+                                <Label htmlFor="address">Address</Label>
+                                <Textarea id="address" name="address" defaultValue={editingId ? users.find(u => u.id === editingId)?.address : ""} />
+                                </div>
+                        </TabsContent>
+                    </Tabs>
+
+                    <DialogFooter>
+                        <Button type="submit" disabled={isSubmitting}>
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Save
+                        </Button>
+                    </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </div>
       </div>
 
       <Tabs defaultValue="customers" value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -297,7 +384,7 @@ export default function AdminUsersPage() {
                         {filteredUsers.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                                    No users found in this category.
+                                    No users found in {AVAILABLE_SHARDS.find(s=>s.id===viewShard)?.name}.
                                 </TableCell>
                             </TableRow>
                         ) : (

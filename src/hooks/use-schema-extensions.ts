@@ -18,11 +18,15 @@ export function useSchemaExtensions() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user?.tenantId) return;
+        if (!user) return;
+
+        // Fallback Logic: Match the installer's logic.
+        // If no tenantId is on the user object, assume 'default' for SuperAdmins/Devs.
+        const tenantId = (user as any).tenantId || 'default'; 
 
         async function fetchConfig() {
             try {
-                const ref = doc(db, `tenants/${user?.tenantId}/settings/schema_config`);
+                const ref = doc(db, `tenants/${tenantId}/settings/schema_config`);
                 const snap = await getDoc(ref);
                 if (snap.exists()) {
                     const data = snap.data();
@@ -31,6 +35,8 @@ export function useSchemaExtensions() {
                         schoolFields: data.schoolFields || [],
                         staffFields: data.staffFields || []
                     });
+                } else {
+                    console.log(`[Schema Hook] No config found at tenants/${tenantId}/settings/schema_config`);
                 }
             } catch (e) {
                 console.error("Failed to load schema extensions", e);
@@ -40,7 +46,7 @@ export function useSchemaExtensions() {
         }
 
         fetchConfig();
-    }, [user?.tenantId]);
+    }, [user]);
 
     return { config, loading };
 }

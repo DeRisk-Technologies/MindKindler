@@ -37,6 +37,13 @@ service cloud.firestore {
 
     // --- 1. GLOBAL REGISTRIES & CONFIG ---
     
+    // CRITICAL: User Routing for Sharding
+    // Allows users to read their own routing info to find their shard
+    match /user_routing/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
+      allow write: if isSystemAdmin();
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated();
       // Allow user to write their own profile (e.g. initial setup) or Admin
@@ -45,11 +52,8 @@ service cloud.firestore {
 
     // Paying Tenants (Organizations)
     match /organizations/{orgId} {
-      // Allow list/read for hierarchy building
       allow read: if isAuthenticated();
-      // Allow creation/update by SuperAdmin
       allow create: if isSystemAdmin();
-      // Allow update by Tenant Admin (their own org) OR SuperAdmin
       allow update: if isSystemAdmin() || (isAuthenticated() && getTenantId() == orgId);
     }
 
@@ -61,10 +65,11 @@ service cloud.firestore {
     }
 
     // --- 2. ROOT LEVEL CLINICAL DATA (Legacy / Default DB) ---
-    match /students/{id} { allow read, write: if isAuthenticated(); } // Relaxed for MVP Demo
-    match /cases/{id} { allow read, write: if isAuthenticated(); }
-    match /reports/{id} { allow read, write: if isAuthenticated(); }
-    match /consultation_sessions/{id} { allow read, write: if isAuthenticated(); }
+    // Recursive wildcard {document=**} to allow subcollections (family_members, tasks)
+    match /students/{document=**} { allow read, write: if isAuthenticated(); } 
+    match /cases/{document=**} { allow read, write: if isAuthenticated(); }
+    match /reports/{document=**} { allow read, write: if isAuthenticated(); }
+    match /consultation_sessions/{document=**} { allow read, write: if isAuthenticated(); }
     
     match /assessment_templates/{id} { allow read: if isAuthenticated(); allow write: if isAuthenticated(); }
     match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
@@ -114,7 +119,6 @@ service cloud.firestore {
       
       // Explicitly allow settings/i18n for 'global' tenant or authorized users
       match /settings/{document=**} {
-        // Critical Fix for Installer: Allow write if user doc has Admin role
         allow read: if true; 
         allow write: if isSystemAdmin() || (isAuthenticated() && getTenantId() == tenantId);
       }
@@ -126,6 +130,10 @@ service cloud.firestore {
 
       match /community/{feature}/{sub=**} {
         allow read, write: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
+      }
+      
+      match /staff/{document=**} {
+         allow read, write: if isAuthenticated(); 
       }
 
       match /{allSubcollections=**} {

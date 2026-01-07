@@ -2,30 +2,27 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // --- Helper Functions ---
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    function getRole() {
-      return request.auth.token.role;
+    function getUserRole() {
+      return request.auth.token.role != null ? request.auth.token.role : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     function getTenantId() {
-      return request.auth.token.tenantId;
+      return request.auth.token.tenantId != null ? request.auth.token.tenantId : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
     }
 
     function isSystemAdmin() {
-      let role = getRole();
       return isAuthenticated() && (
-        role in ['SuperAdmin', 'Admin', 'admin', 'superadmin']
+        getUserRole() in ['SuperAdmin', 'Admin', 'admin', 'superadmin']
       );
     }
 
     function isClinician(tenantId) {
-       let role = getRole();
        return isAuthenticated() && (
-         role in [
+         getUserRole() in [
             'EPP', 'epp', 'EducationalPsychologist', 'educationalpsychologist', 
             'ClinicalPsychologist', 'clinicalpsychologist', 'SchoolPsychologist', 
             'TenantAdmin', 'SuperAdmin', 'Admin', 'SchoolAdministrator', 'admin', 'tenantadmin'
@@ -33,41 +30,37 @@ service cloud.firestore {
        );
     }
 
-    // --- 1. GLOBAL REGISTRIES & CONFIG ---
-    
+    match /user_routing/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
+      allow write: if isSystemAdmin();
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow write: if isSystemAdmin() || request.auth.uid == userId;
     }
 
-    // Paying Tenants (Organizations)
     match /organizations/{orgId} {
-      // Allow list/read for hierarchy building
       allow read: if isAuthenticated();
-      // Allow creation/update by SuperAdmin
       allow create: if isSystemAdmin();
-      // Allow update by Tenant Admin (their own org) OR SuperAdmin
       allow update: if isSystemAdmin() || (isAuthenticated() && getTenantId() == orgId);
     }
 
-    // Universal Hierarchy (The "Global Registry" Tree)
     match /org_units/{id} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isSystemAdmin();
     }
 
-    // --- 2. ROOT LEVEL CLINICAL DATA (Legacy / Default DB) ---
-    match /students/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
-    match /cases/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
-    match /reports/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
-    match /consultation_sessions/{id} { allow read, write: if isClinician(null); }
+    match /students/{document=**} { allow read, write: if isAuthenticated(); } 
+    match /cases/{document=**} { allow read, write: if isAuthenticated(); }
+    match /reports/{document=**} { allow read, write: if isAuthenticated(); }
+    match /consultation_sessions/{document=**} { allow read, write: if isAuthenticated(); }
     
-    match /assessment_templates/{id} { allow read: if isAuthenticated(); allow write: if isClinician(null); }
+    match /assessment_templates/{id} { allow read: if isAuthenticated(); allow write: if isAuthenticated(); }
     match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
     match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
     
-    // --- 3. ADMIN & PORTAL MODULES ---
     match /schools/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /districts/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /gov_stats/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
@@ -100,14 +93,15 @@ service cloud.firestore {
       match /messages/{mId} { allow read, write: if isAuthenticated(); }
     }
 
-    // --- 4. TENANT-NESTED SHARDS (Enterprise) ---
+    match /marketplaceItems/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /marketplaceReviews/{id} { allow read, write: if isAuthenticated(); }
+    match /marketplacePurchases/{id} { allow read, write: if isAuthenticated(); }
+
     match /tenants/{tenantId} {
-      // Allow reading tenant root doc if member or if global settings
-      allow read: if (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin())) || tenantId == 'global';
+      allow read: if (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin())) || tenantId == 'global' || tenantId == 'default';
       
-      // Explicitly allow settings/i18n for 'global' tenant or authorized users
       match /settings/{document=**} {
-        allow read: if tenantId == 'global' || (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin()));
+        allow read: if true; 
         allow write: if isSystemAdmin() || (isAuthenticated() && getTenantId() == tenantId);
       }
       
@@ -119,13 +113,16 @@ service cloud.firestore {
       match /community/{feature}/{sub=**} {
         allow read, write: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
       }
+      
+      match /staff/{document=**} {
+         allow read, write: if isAuthenticated(); 
+      }
 
       match /{allSubcollections=**} {
         allow read, write: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
       }
     }
 
-    // --- Default Deny ---
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,47 +1,62 @@
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 
-const getDb = () => {
-    if (admin.apps.length === 0) {
-        admin.initializeApp();
-    }
-    return admin.firestore();
-};
+if (admin.apps.length === 0) {
+    admin.initializeApp();
+}
 
+/**
+ * Smart Cleanup Script
+ * Only removes records tagged with 'isSeed: true'
+ */
 export const clearDemoDataHandler = async (request: CallableRequest) => {
-    const db = getDb();
+    const region = request.data.region || 'uk';
+    const tenantId = request.data.tenantId || 'default';
     
-    try {
-        const studentsSnap = await db.collection("students").where("schoolId", "==", "sch_demo_1").get();
-        const studentIds = studentsSnap.docs.map(d => d.id);
-        
-        const batch = db.batch();
-        let count = 0;
+    // Connect to correct shard
+    const shardId = `mindkindler-${region}`;
+    const targetDb = region === 'default' ? admin.firestore() : getFirestore(admin.app(), shardId);
 
-        // Delete Students
-        studentsSnap.docs.forEach(doc => {
-            batch.delete(doc.ref);
-            count++;
-        });
+    const batch = targetDb.batch();
+    let deleteCount = 0;
 
-        // Delete associated Results, Cases
-        if (studentIds.length > 0) {
-            // Assessment Results (chunked for safety if > 10 IDs, but here simplified)
-            const resultsSnap = await db.collection("assessment_results").where("studentId", "in", studentIds.slice(0, 10)).get();
-            resultsSnap.docs.forEach(doc => { batch.delete(doc.ref); count++; });
+    // 1. Find Seed Students
+    const studentsQuery = await targetDb.collection("students")
+        .where("tenantId", "==", tenantId)
+        .where("isSeed", "==", true)
+        .limit(500) // Safety limit
+        .get();
 
-            // Cases
-            const casesSnap = await db.collection("cases").where("studentId", "in", studentIds.slice(0, 10)).get();
-            casesSnap.docs.forEach(doc => { batch.delete(doc.ref); count++; });
-        }
+    studentsQuery.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deleteCount++;
+    });
 
-        if (count > 0) {
-            await batch.commit();
-        }
+    // 2. Find Seed Staff (if any)
+    const staffQuery = await targetDb.collection(`tenants/${tenantId}/staff`)
+        .where("isSeed", "==", true)
+        .get();
 
-        return { success: true, message: `Deleted ${count} demo records.` };
-    } catch (e: any) {
-        console.error("Clear Failed", e);
-        return { success: false, message: e.message };
+    staffQuery.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deleteCount++;
+    });
+
+    // 3. Find Seed Cases
+    const casesQuery = await targetDb.collection("cases")
+        .where("tenantId", "==", tenantId)
+        .where("isSeed", "==", true)
+        .get();
+    
+    casesQuery.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deleteCount++;
+    });
+
+    if (deleteCount > 0) {
+        await batch.commit();
     }
+
+    return { success: true, message: `Cleaned ${deleteCount} seed records from ${shardId}. Real data preserved.` };
 };

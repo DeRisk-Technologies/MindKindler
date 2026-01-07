@@ -11,7 +11,7 @@ import { ParentEntryForm } from './ParentEntryForm';
 import { Loader2, Save, Shield, Map } from 'lucide-react';
 import { useSchemaExtensions } from '@/hooks/use-schema-extensions';
 import { DynamicFormField } from '@/components/ui/dynamic-form-field';
-import { Student360Service } from '@/services/student360-service'; // Use real service
+import { Student360Service } from '@/services/student360-service'; 
 import { useAuth } from '@/hooks/use-auth';
 
 // Default values structure
@@ -51,16 +51,25 @@ export function StudentEntryForm() {
   });
 
   const onSubmit = async (data: any) => {
-    if (!user?.tenantId) return;
+    // FALLBACK LOGIC: Same as Marketplace. 
+    // If Admin has no tenantId, default to 'default' to allow creation.
+    const tenantId = (user as any)?.tenantId || (user?.email?.includes('admin') ? 'default' : null);
+
+    if (!tenantId) {
+        toast({
+            variant: "destructive",
+            title: "Configuration Error",
+            description: "No Tenant Context found. Cannot create record."
+        });
+        return;
+    }
+
     setIsSubmitting(true);
     
     try {
+        console.log("Submitting Student Record to tenant:", tenantId);
+
         // Prepare Payload for Service
-        // Merge the dynamic 'extensions' into the main payload if the service supports it
-        // The Student360Service types might need to be updated to accept 'extensions'
-        // For now, we assume strict typing, so we might need to cast or update the type definition
-        // Let's pass it as part of studentData.
-        
         const studentData = {
             identity: data.identity,
             education: data.education,
@@ -70,10 +79,10 @@ export function StudentEntryForm() {
         };
 
         const studentId = await Student360Service.createStudentWithParents(
-            user.tenantId, 
-            studentData as any, // Cast to any until interface is fully updated
+            tenantId, 
+            studentData as any, 
             data.family.parents, 
-            user.uid
+            user?.uid || 'system'
         );
         
         toast({
@@ -83,16 +92,26 @@ export function StudentEntryForm() {
 
         router.push(`/dashboard/students/${studentId}`);
 
-    } catch (error) {
-        console.error(error);
+    } catch (error: any) {
+        console.error("Submission Error:", error);
         toast({
             variant: "destructive",
             title: "Error",
-            description: "Failed to create record. Please try again.",
+            description: error.message || "Failed to create record. Please try again.",
         });
     } finally {
         setIsSubmitting(false);
     }
+  };
+
+  // Debug: Log validation errors if submission fails
+  const onError = (errors: any) => {
+      console.error("Form Validation Failed:", errors);
+      toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: "Please check the highlighted fields."
+      });
   };
 
   return (
@@ -104,7 +123,8 @@ export function StudentEntryForm() {
             </div>
             <div className="flex gap-2">
                 <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-                <Button onClick={form.handleSubmit(onSubmit)} disabled={isSubmitting}>
+                {/* Bind handleSubmit with both Success and Error handlers */}
+                <Button onClick={form.handleSubmit(onSubmit, onError)} disabled={isSubmitting}>
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                     Create Record
                 </Button>
@@ -112,7 +132,7 @@ export function StudentEntryForm() {
         </div>
 
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-8">
                 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Left Column: Student Details */}
@@ -129,6 +149,7 @@ export function StudentEntryForm() {
                                 <FormField
                                     control={form.control}
                                     name="identity.firstName.value"
+                                    rules={{ required: "First Name is required" }}
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>First Name</FormLabel>
@@ -140,6 +161,7 @@ export function StudentEntryForm() {
                                 <FormField
                                     control={form.control}
                                     name="identity.lastName.value"
+                                    rules={{ required: "Last Name is required" }}
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Last Name</FormLabel>
@@ -151,6 +173,7 @@ export function StudentEntryForm() {
                                 <FormField
                                     control={form.control}
                                     name="identity.dateOfBirth.value"
+                                    rules={{ required: "Date of Birth is required" }}
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Date of Birth</FormLabel>
@@ -184,10 +207,16 @@ export function StudentEntryForm() {
                                 <FormField
                                     control={form.control}
                                     name="identity.nationalId.value"
+                                    rules={{ 
+                                        pattern: {
+                                            value: /^[A-Z0-9-]{5,20}$/i,
+                                            message: "Invalid ID format (5-20 alphanumeric characters)"
+                                        }
+                                    }}
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>National ID / NHS No</FormLabel>
-                                            <FormControl><Input {...field} /></FormControl>
+                                            <FormControl><Input {...field} placeholder="e.g. 123 456 7890" /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}

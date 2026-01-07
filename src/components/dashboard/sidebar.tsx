@@ -39,7 +39,9 @@ import {
   ClipboardList,
   BookUser,
   Eye,
-  Shield
+  Shield,
+  CheckCircle2,
+  FileCheck
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -50,11 +52,9 @@ import { usePermissions } from "@/hooks/use-permissions";
 
 export function DashboardSidebar() {
   const pathname = usePathname();
-  const { can, hasRole } = usePermissions(); // Use the robust RBAC hook
+  const { can, hasRole } = usePermissions(); 
   const [role, setRole] = useState<string | null>(null);
 
-  // Still fetch raw role for logic that hasn't been migrated to permissions yet
-  // Ideally, everything should move to 'can()' calls.
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
@@ -67,9 +67,7 @@ export function DashboardSidebar() {
 
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
 
-  // Simple roles for basic layout logic
   const isClinician = hasRole(['EPP', 'TenantAdmin', 'SuperAdmin']);
-  const isGov = hasRole(['GovAnalyst', 'SuperAdmin']);
   const isSuperAdmin = hasRole(['SuperAdmin']);
 
   return (
@@ -206,11 +204,30 @@ export function DashboardSidebar() {
         <SidebarGroup className="mt-auto">
             <SidebarGroupLabel>System</SidebarGroupLabel>
             <SidebarMenu>
-                 <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={isActive("/dashboard/settings")} tooltip="Settings">
-                        <Link href="/dashboard/settings"><Settings /><span>Settings</span></Link>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
+                 <Collapsible defaultOpen={isActive("/dashboard/settings")} className="group/collapsible">
+                     <SidebarMenuItem>
+                         <CollapsibleTrigger asChild>
+                            <SidebarMenuButton tooltip="Settings">
+                                <Settings /><span>Settings</span>
+                                <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                            </SidebarMenuButton>
+                         </CollapsibleTrigger>
+                         <CollapsibleContent>
+                             <SidebarMenuSub>
+                                 <SidebarMenuSubItem>
+                                     <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/compliance")}>
+                                         <Link href="/dashboard/settings/compliance"><FileCheck className="h-4 w-4 mr-2"/><span>My Compliance</span></Link>
+                                     </SidebarMenuSubButton>
+                                 </SidebarMenuSubItem>
+                                 <SidebarMenuSubItem>
+                                     <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/profile")}>
+                                         <Link href="/dashboard/settings/profile"><span>Profile</span></Link>
+                                     </SidebarMenuSubButton>
+                                 </SidebarMenuSubItem>
+                             </SidebarMenuSub>
+                         </CollapsibleContent>
+                     </SidebarMenuItem>
+                 </Collapsible>
                 
                 {isSuperAdmin && (
                     <Collapsible defaultOpen={isActive("/dashboard/admin")} className="group/collapsible">
@@ -226,6 +243,26 @@ export function DashboardSidebar() {
                                     <SidebarMenuSubItem>
                                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/tenants")}>
                                             <Link href="/dashboard/admin/tenants"><List className="h-4 w-4 mr-2"/><span>All Tenants</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/enterprise/new")}>
+                                            <Link href="/dashboard/admin/enterprise/new"><Building2 className="h-4 w-4 mr-2"/><span>Provision Tenant</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/users")}>
+                                            <Link href="/dashboard/admin/users"><Users className="h-4 w-4 mr-2"/><span>Global Users</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/verification")}>
+                                            <Link href="/dashboard/admin/verification"><CheckCircle2 className="h-4 w-4 mr-2"/><span>Verification Queue</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/localization")}>
+                                            <Link href="/dashboard/settings/localization"><Globe className="h-4 w-4 mr-2"/><span>Localization</span></Link>
                                         </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
                                 </SidebarMenuSub>

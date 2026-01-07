@@ -21,13 +21,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Logo } from "@/components/logo";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, getRegionalDb } from "@/lib/firebase"; // Import Regional DB Loader
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
-// Add this to force dynamic rendering
 export const dynamic = 'force-dynamic';
 
 const roles = [
@@ -43,50 +42,83 @@ const roles = [
   "HR",
 ];
 
+const regions = [
+    { code: "uk", label: "United Kingdom (GDPR)" },
+    { code: "us", label: "United States (FERPA)" },
+    { code: "eu", label: "European Union (GDPR)" },
+    { code: "ae", label: "UAE (Local)" },
+    { code: "sa", label: "Saudi Arabia (Local)" },
+];
+
 export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   const [selectedRole, setSelectedRole] = useState("");
+  const [selectedRegion, setSelectedRegion] = useState("");
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsLoading(true);
 
     const formData = new FormData(event.currentTarget);
-    const name = formData.get("name") as string;
+    const firstName = formData.get("firstName") as string;
+    const lastName = formData.get("lastName") as string;
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
     
-    // Fallback if formData doesn't catch the select value (common issue)
-    const role = (formData.get("role") as string) || selectedRole;
-
-    if (!role) {
+    // Validate Selects
+    if (!selectedRole) {
        toast({ title: "Role required", description: "Please select a role.", variant: "destructive" });
        setIsLoading(false);
        return;
     }
+    if (!selectedRegion) {
+        toast({ title: "Region required", description: "Please select your data residency region.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+    }
 
     try {
+      // 1. Create Auth User (Global Identity)
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
       await updateProfile(user, {
-        displayName: name,
+        displayName: `${firstName} ${lastName}`,
       });
 
-      // Create user document in Firestore
-      await setDoc(doc(db, "users", user.uid), {
+      // 2. Strict Data Sovereignty Logic
+      // Step A: Write NON-PII Routing Info to Global DB
+      // This allows the login process to find "Where is this user's data?"
+      await setDoc(doc(db, "user_routing", user.uid), {
+          uid: user.uid,
+          region: selectedRegion,
+          shardId: `mindkindler-${selectedRegion}`, // Convention
+          email: user.email, // Needed for routing/recovery, generally acceptable
+          createdAt: serverTimestamp()
+      });
+
+      // Step B: Write FULL PII Profile to Regional Shard
+      // This ensures names/roles/verification never live in the wrong jurisdiction.
+      const regionalDb = getRegionalDb(selectedRegion);
+      
+      await setDoc(doc(regionalDb, "users", user.uid), {
         uid: user.uid,
         email: user.email,
-        displayName: name,
-        role: role,
+        firstName: firstName, 
+        lastName: lastName,
+        displayName: `${firstName} ${lastName}`,
+        role: selectedRole,
+        region: selectedRegion, 
+        tenantId: "pending", 
+        verification: { status: 'pending' }, 
         createdAt: serverTimestamp(),
       });
 
       toast({
         title: "Account created",
-        description: "Welcome to MindKindler!",
+        description: "Welcome to MindKindler! Your data is securely stored in your selected region.",
       });
 
       router.push("/dashboard");
@@ -104,7 +136,7 @@ export default function SignupPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-secondary/50 p-4">
-      <Card className="mx-auto w-full max-w-sm">
+      <Card className="mx-auto w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">
             <Logo />
@@ -116,10 +148,18 @@ export default function SignupPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input id="name" name="name" placeholder="John Doe" required />
+            
+            <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input id="firstName" name="firstName" placeholder="Jane" required />
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input id="lastName" name="lastName" placeholder="Doe" required />
+                </div>
             </div>
+
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -130,14 +170,29 @@ export default function SignupPage() {
                 required
               />
             </div>
+            
             <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
               <Input id="password" name="password" type="password" required />
             </div>
+
+            <div className="grid gap-2">
+                <Label htmlFor="region">Data Residency Region</Label>
+                <Select onValueChange={setSelectedRegion} required>
+                    <SelectTrigger id="region">
+                        <SelectValue placeholder="Select Region (GDPR Compliance)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {regions.map((r) => (
+                            <SelectItem key={r.code} value={r.code}>{r.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">Your data will be stored physically in this jurisdiction.</p>
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="role">Your Role</Label>
-              {/* Hidden input to pass the select value to formData explicitly if needed, but state is safer */}
-              <input type="hidden" name="role" value={selectedRole} />
               <Select onValueChange={setSelectedRole} required>
                 <SelectTrigger id="role">
                   <SelectValue placeholder="Select your role" />
@@ -151,6 +206,7 @@ export default function SignupPage() {
                 </SelectContent>
               </Select>
             </div>
+
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Create account
