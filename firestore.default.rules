@@ -2,15 +2,20 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // --- Helper Functions (Expression Style) ---
+    
     function isAuthenticated() {
       return request.auth != null;
     }
     
+    // Helper to get role from Token OR Firestore Doc (Robust RBAC)
     function getUserRole() {
+      // Priority 1: Custom Claim (Fastest) -> Priority 2: Firestore Doc
       return request.auth.token.role != null ? request.auth.token.role : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     function getTenantId() {
+      // Priority 1: Custom Claim -> Priority 2: Firestore Doc
       return request.auth.token.tenantId != null ? request.auth.token.tenantId : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
     }
 
@@ -30,28 +35,38 @@ service cloud.firestore {
        );
     }
 
+    // --- 1. GLOBAL REGISTRIES & CONFIG ---
+    
+    // CRITICAL: User Routing for Sharding
+    // Allows users to read their own routing info to find their shard
+    // Also allow new users to write their routing info during signup
     match /user_routing/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
-      allow write: if isSystemAdmin();
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated();
+      // Allow user to write their own profile (e.g. initial setup) or Admin
       allow write: if isSystemAdmin() || request.auth.uid == userId;
     }
 
+    // Paying Tenants (Organizations)
     match /organizations/{orgId} {
       allow read: if isAuthenticated();
       allow create: if isSystemAdmin();
       allow update: if isSystemAdmin() || (isAuthenticated() && getTenantId() == orgId);
     }
 
+    // Universal Hierarchy (The "Global Registry" Tree)
     match /org_units/{id} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isSystemAdmin();
     }
 
+    // --- 2. ROOT LEVEL CLINICAL DATA (Legacy / Default DB) ---
+    // Recursive wildcard {document=**} to allow subcollections (family_members, tasks)
     match /students/{document=**} { allow read, write: if isAuthenticated(); } 
     match /cases/{document=**} { allow read, write: if isAuthenticated(); }
     match /reports/{document=**} { allow read, write: if isAuthenticated(); }
@@ -61,6 +76,7 @@ service cloud.firestore {
     match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
     match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
     
+    // --- 3. ADMIN & PORTAL MODULES ---
     match /schools/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /districts/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /gov_stats/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
@@ -97,9 +113,12 @@ service cloud.firestore {
     match /marketplaceReviews/{id} { allow read, write: if isAuthenticated(); }
     match /marketplacePurchases/{id} { allow read, write: if isAuthenticated(); }
 
+    // --- 4. TENANT-NESTED SHARDS (Enterprise) ---
     match /tenants/{tenantId} {
+      // Allow reading tenant root doc if member or if global settings
       allow read: if (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin())) || tenantId == 'global' || tenantId == 'default';
       
+      // Explicitly allow settings/i18n for 'global' tenant or authorized users
       match /settings/{document=**} {
         allow read: if true; 
         allow write: if isSystemAdmin() || (isAuthenticated() && getTenantId() == tenantId);
@@ -123,6 +142,7 @@ service cloud.firestore {
       }
     }
 
+    // --- Default Deny ---
     match /{document=**} {
       allow read, write: if false;
     }

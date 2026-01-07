@@ -39,9 +39,10 @@ service cloud.firestore {
     
     // CRITICAL: User Routing for Sharding
     // Allows users to read their own routing info to find their shard
+    // Also allow new users to write their routing info during signup
     match /user_routing/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
-      allow write: if isSystemAdmin();
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
     }
 
     match /users/{userId} {
