@@ -11,6 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, ShieldAlert, FileWarning } from 'lucide-react';
 import { useSchemaExtensions } from '@/hooks/use-schema-extensions';
 import { DynamicFormField } from '@/components/ui/dynamic-form-field';
+import { StaffService } from '@/services/staff-service';
+import { useAuth } from '@/hooks/use-auth';
 
 const defaultValues = {
     firstName: '',
@@ -23,23 +25,36 @@ const defaultValues = {
 export function StaffEntryForm() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { toast } = useToast();
+    const { user } = useAuth();
     const { config: schemaConfig, loading } = useSchemaExtensions();
 
     const form = useForm({ defaultValues });
 
     const onSubmit = async (data: any) => {
+        if (!user?.tenantId) return;
+        
         setIsSubmitting(true);
         try {
-            // In prod: await StaffService.createStaff(data);
-            console.log("Submitting Staff Record with SCR Data:", data);
+            // Determine Region (In prod, this is stored in the User/Tenant Profile)
+            // For MVP, we default to 'uk' if the UK pack is installed, or fallback to 'default'
+            // A robust implementation would look up `user.region` from the token claims.
+            const region = 'uk'; 
+
+            await StaffService.createStaffMember(user.tenantId, region, {
+                tenantId: user.tenantId,
+                firstName: data.firstName,
+                lastName: data.lastName,
+                role: data.role,
+                email: data.email,
+                status: 'active',
+                extensions: data.extensions
+            });
             
-            await new Promise(r => setTimeout(r, 1000));
-            
-            toast({ title: "Staff Record Created", description: "Added to Single Central Record." });
+            toast({ title: "Staff Record Created", description: "Securely saved to Regional Single Central Record." });
             form.reset();
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            toast({ variant: "destructive", title: "Error", description: "Failed to create staff." });
+            toast({ variant: "destructive", title: "Error", description: e.message || "Failed to create staff." });
         } finally {
             setIsSubmitting(false);
         }

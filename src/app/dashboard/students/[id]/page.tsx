@@ -4,14 +4,15 @@
 
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { usePermissions } from '@/hooks/use-permissions';
 import { PsychometricProfileChart } from '@/components/analytics/PsychometricProfileChart';
 import { SmartInterventionMapper } from '@/components/interventions/SmartInterventionMapper';
 import { LongitudinalProgressChart } from '@/components/analytics/LongitudinalProgressChart';
-import { Shield, Brain, TrendingUp, FileText } from 'lucide-react';
+import { Student360Main } from '@/components/student360/Student360Main';
+import { Shield } from 'lucide-react';
 
-// Mock Data for Demo
+// Mock Data for Assessment/Progress (Demo Purposes)
+// In production, these would be fetched via a dedicated hook or service
 const MOCK_SCORES = [
     { name: 'VCI', score: 82, ciLow: 77, ciHigh: 87 },
     { name: 'VSI', score: 95, ciLow: 90, ciHigh: 100 },
@@ -32,51 +33,66 @@ const MOCK_INTERVENTIONS = [
 
 export default function StudentProfilePage({ params }: { params: { id: string } }) {
     const { can } = usePermissions();
-    const [activeTab, setActiveTab] = useState("overview");
+    const [activeTab, setActiveTab] = useState("identity");
 
     return (
         <div className="p-8 space-y-8">
+            {/* 
+              Page Level Header 
+              Note: Detailed Student Identity (Name, Photo, Trust Score) is rendered inside Student360Main.
+              We keep a minimal breadcrumb-like header here or rely on the inner component.
+            */}
             <div className="flex justify-between items-start">
                 <div>
-                    <h1 className="text-3xl font-bold">Student Profile</h1>
-                    <p className="text-muted-foreground">ID: {params.id}</p>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Student Profile</h1>
+                    <p className="text-muted-foreground">System ID: {params.id}</p>
                 </div>
             </div>
 
-            <Tabs defaultValue="overview" onValueChange={setActiveTab}>
-                <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    {can('view_psychometrics') && <TabsTrigger value="assessment">Assessment</TabsTrigger>}
-                    <TabsTrigger value="progress">Progress</TabsTrigger>
-                    {can('view_sensitive_notes') && <TabsTrigger value="safeguarding" className="text-red-600">Safeguarding</TabsTrigger>}
+            <Tabs defaultValue="identity" onValueChange={setActiveTab} className="space-y-6">
+                <TabsList className="bg-slate-100 p-1 rounded-lg">
+                    <TabsTrigger value="identity">Identity & Records</TabsTrigger>
+                    {can('view_psychometrics') && <TabsTrigger value="assessment">Clinical Assessment</TabsTrigger>}
+                    <TabsTrigger value="progress">Longitudinal Progress</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="overview" className="mt-6">
-                    <Card>
-                        <CardHeader><CardTitle>Identity & Context</CardTitle></CardHeader>
-                        <CardContent>Basic profile info here...</CardContent>
-                    </Card>
+                {/* 
+                   Tab 1: Identity & Records 
+                   Encapsulates the Secure Student 360 View (Demographics, Safeguarding, Family, Health)
+                */}
+                <TabsContent value="identity" className="mt-0">
+                    <Student360Main studentId={params.id} />
                 </TabsContent>
 
-                <TabsContent value="assessment" className="mt-6 space-y-6">
-                    {/* 1. Psychometric Chart (Restricted) */}
+                {/* 
+                   Tab 2: Clinical Assessment (Country OS Engines) 
+                   Protected by RBAC: Only Clinicians can view detailed psychometrics.
+                */}
+                <TabsContent value="assessment" className="mt-0 space-y-8">
                     {can('view_sensitive_notes') ? (
-                        <div className="space-y-6">
-                            <PsychometricProfileChart data={MOCK_SCORES} />
-                            
-                            {/* 2. Automated Recommendations (Phase 10) */}
-                            <SmartInterventionMapper scores={MOCK_SCORES} />
-                        </div>
+                        <>
+                            <div className="grid gap-6">
+                                {/* 1. Visualization Engine: WISC-V Error Bars */}
+                                <PsychometricProfileChart data={MOCK_SCORES} />
+                                
+                                {/* 2. Recommendation Engine: Assess -> Plan */}
+                                <SmartInterventionMapper scores={MOCK_SCORES} />
+                            </div>
+                        </>
                     ) : (
-                        <div className="p-12 text-center border rounded bg-slate-50 text-slate-500">
-                            <Shield className="mx-auto h-8 w-8 mb-2" />
-                            Detailed psychometrics are restricted to Clinical Staff.
+                        <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 text-slate-500">
+                            <Shield className="h-12 w-12 mb-4 text-slate-400" />
+                            <h3 className="text-lg font-semibold">Restricted Access</h3>
+                            <p className="text-sm">Detailed psychometric data is restricted to Clinical Staff (EPP/DSL).</p>
                         </div>
                     )}
                 </TabsContent>
 
-                <TabsContent value="progress" className="mt-6">
-                    {/* 3. Longitudinal Tracking (Phase 10) */}
+                {/* 
+                   Tab 3: Longitudinal Progress (Spaghetti Plot)
+                   Visualizes the impact of interventions over time.
+                */}
+                <TabsContent value="progress" className="mt-0">
                     <LongitudinalProgressChart 
                         data={MOCK_PROGRESS} 
                         interventions={MOCK_INTERVENTIONS}
