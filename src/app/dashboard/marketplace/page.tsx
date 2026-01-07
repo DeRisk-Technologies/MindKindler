@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { Loader2, Globe, ShieldCheck, Download, CheckCircle } from 'lucide-react';
+import { Loader2, Globe, ShieldCheck, Download, CheckCircle, AlertTriangle } from 'lucide-react';
 import { installMarketplacePack } from '@/app/actions/install-pack';
 
 // Mock Catalog (In prod, fetch from API)
@@ -38,11 +38,28 @@ export default function MarketplacePage() {
     const [installed, setInstalled] = useState<Record<string, boolean>>({});
 
     const handleInstall = async (packId: string) => {
-        if (!user?.tenantId) return;
+        if (!user) {
+            toast({ variant: "destructive", title: "Authentication Required", description: "Please log in to install packs." });
+            return;
+        }
+
+        // Fallback for Dev: If SuperAdmin has no tenantId, use 'default'
+        const tenantId = user.tenantId || (user.email?.includes('admin') ? 'default' : null);
+
+        if (!tenantId) {
+            toast({ 
+                variant: "destructive", 
+                title: "Configuration Error", 
+                description: "Your user account is not linked to a Tenant ID. Please contact support." 
+            });
+            return;
+        }
+
         setInstalling(packId);
 
         try {
-            const res = await installMarketplacePack(user.tenantId, packId);
+            console.log(`Installing pack ${packId} for tenant ${tenantId}...`);
+            const res = await installMarketplacePack(tenantId, packId);
             
             if (res.success) {
                 toast({
@@ -51,15 +68,16 @@ export default function MarketplacePage() {
                 });
                 setInstalled(prev => ({ ...prev, [packId]: true }));
             } else {
+                console.error("Install Action Failed:", res.error);
                 toast({
                     variant: "destructive",
                     title: "Installation Failed",
-                    description: res.error,
+                    description: res.error || "Unknown server error.",
                 });
             }
-        } catch (e) {
-            console.error(e);
-            toast({ variant: "destructive", title: "Error", description: "System error during installation." });
+        } catch (e: any) {
+            console.error("Client Error during Install:", e);
+            toast({ variant: "destructive", title: "Error", description: e.message || "System error during installation." });
         } finally {
             setInstalling(null);
         }
@@ -110,7 +128,7 @@ export default function MarketplacePage() {
                                 >
                                     {installing === pack.id ? (
                                         <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Configuring Tenant...
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Configuring...
                                         </>
                                     ) : (
                                         <>
