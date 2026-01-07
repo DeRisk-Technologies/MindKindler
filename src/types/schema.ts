@@ -808,3 +808,51 @@ export interface StaffProfile {
     // Country OS Extensions (SCR)
     extensions?: Record<string, any>;
 }
+
+export interface MarketplaceItem {
+    id: string;
+    type: 'pack' | 'template' | 'workflow';
+    title: string;
+    description: string;
+    version: string;
+    publisherId: string;
+    publisherOrg: string;
+    regionTags: string[]; // e.g. 'UK', 'US', 'Global'
+    categories: string[]; // e.g. 'Compliance', 'Assessment'
+    
+    licensing: {
+        licenseType: 'free' | 'per_seat' | 'site_license';
+        price?: { amount: number; currency: string };
+    };
+    
+    installManifest: any; // The JSON blob
+    certified: boolean; // MindKindler Verified
+    
+    stats: {
+        installs: number;
+        rating: number;
+    };
+    
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface MarketplaceReview {
+    id: string;
+    itemId: string;
+    userId: string;
+    rating: number; // 1-5
+    comment?: string;
+    createdAt: string;
+}
+
+export interface InstalledPack {
+    id: string;
+    tenantId: string;
+    packId: string;
+    version: string;
+    status: 'installed' | 'updating' | 'error';
+    installedAt: string;
+    installedBy: string;
+    configSnapshot?: any;
+}

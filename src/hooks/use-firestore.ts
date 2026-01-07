@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { collection, query, orderBy, onSnapshot, DocumentData, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -12,6 +12,12 @@ export function useFirestoreCollection<T = DocumentData>(
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  // Add a refresh trigger
+  const [refreshCount, setRefreshCount] = useState(0);
+
+  const refresh = useCallback(() => {
+    setRefreshCount(prev => prev + 1);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -36,9 +42,9 @@ export function useFirestoreCollection<T = DocumentData>(
       setError(err);
       setLoading(false);
     }
-  }, [collectionName, sortField, direction]);
+  }, [collectionName, sortField, direction, refreshCount]);
 
-  return { data, loading, error };
+  return { data, loading, error, refresh };
 }
 
 export function useFirestoreDocument<T = DocumentData>(
