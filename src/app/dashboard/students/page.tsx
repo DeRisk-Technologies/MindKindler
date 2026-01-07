@@ -14,11 +14,8 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
-import { Plus, Search, Loader2, UploadCloud, User, AlertTriangle, Pencil, Trash2, Users, FileText, ExternalLink } from "lucide-react";
+import { Plus, Search, Loader2, User, AlertTriangle, Pencil, Trash2, Users, ExternalLink, UploadCloud } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import {
@@ -40,7 +37,6 @@ import { db } from "@/lib/firebase";
 import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -52,7 +48,6 @@ export default function StudentsPage() {
   const { data: users, loading: loadingUsers } = useFirestoreCollection<any>("users", "displayName", "asc");
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -64,7 +59,6 @@ export default function StudentsPage() {
 
   const parents = users.filter(u => u.role === 'parent');
 
-  // SAFE FILTERING: Handle potentially undefined fields
   const filteredStudents = students.filter(
     (student) =>
       (student.firstName?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
@@ -77,50 +71,11 @@ export default function StudentsPage() {
       (p.email?.toLowerCase() || "").includes(searchTerm.toLowerCase())
   );
 
-  // --- STUDENT LOGIC ---
-  const handleSaveStudent = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    const formData = new FormData(e.currentTarget);
-    const data = {
-        firstName: formData.get("firstName"),
-        lastName: formData.get("lastName"),
-        dateOfBirth: formData.get("dob"),
-        gender: formData.get("gender"),
-        schoolId: formData.get("schoolId"), 
-        parentId: formData.get("parentId"), 
-        address: formData.get("address"),
-        updatedAt: serverTimestamp(),
-    };
-    
-    try {
-      if (editingId) {
-        await updateDoc(doc(db, "students", editingId), data);
-        toast({ title: "Updated", description: "Student profile updated." });
-      } else {
-        await addDoc(collection(db, "students"), { 
-            ...data, 
-            history: [], 
-            alerts: [], 
-            createdAt: serverTimestamp() 
-        });
-        toast({ title: "Created", description: "Successfully added new student." });
-      }
-      setIsDialogOpen(false);
-      setEditingId(null);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleDeleteStudent = async (id: string) => {
     if(!confirm("Are you sure you want to delete this student?")) return;
     await deleteDoc(doc(db, "students", id));
   };
 
-  // Helper with safe fallback for potentially undefined IDs
   const getSchoolName = (id?: string) => {
       if (!id) return "Unknown School";
       return schools.find(s => s.id === id)?.name || id;
@@ -137,8 +92,6 @@ export default function StudentsPage() {
     e.preventDefault();
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
-    
-    // Logic for linking to student on creation
     const linkedStudentId = formData.get("linkedStudentId");
 
     const data = {
@@ -158,7 +111,6 @@ export default function StudentsPage() {
             await updateDoc(parentRef, data);
             toast({ title: "Updated", description: "Parent profile updated." });
         } else {
-             // Mock UID for prototype
              const newDoc = await addDoc(collection(db, "users"), { 
                  ...data, 
                  uid: "gen_parent_" + Math.random().toString(36),
@@ -168,11 +120,8 @@ export default function StudentsPage() {
              toast({ title: "Created", description: "Parent profile added." });
         }
 
-        // If a student was linked, we should ideally update the student record too (bidirectional)
         if (linkedStudentId && linkedStudentId !== "none") {
              const studentRef = doc(db, "students", linkedStudentId as string);
-             // We update the student to point to this parent
-             // Note: In real app, consider using a batch write for atomicity
              await updateDoc(studentRef, { parentId: editingParentId || parentRef?.id });
         }
 
@@ -189,7 +138,6 @@ export default function StudentsPage() {
       if(!confirm("Delete this parent profile?")) return;
       await deleteDoc(doc(db, "users", id));
   };
-
 
   return (
     <div className="space-y-8">
@@ -215,110 +163,13 @@ export default function StudentsPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                 <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) setEditingId(null); }}>
-                  <DialogTrigger asChild>
+                
+                {/* FIXED: Link to New Full Page Form instead of Dialog */}
+                <Link href="/dashboard/students/new">
                     <Button>
                       <Plus className="mr-2 h-4 w-4" /> Add Student
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-                    <DialogHeader>
-                      <DialogTitle>{editingId ? "Edit Student Profile" : "Add New Student Profile"}</DialogTitle>
-                      <DialogDescription>Enter comprehensive details. Use tabs for different sections.</DialogDescription>
-                    </DialogHeader>
-                    <ScrollArea className="flex-1 pr-4">
-                      <form id="student-form" onSubmit={handleSaveStudent} className="space-y-4 p-1">
-                        <Tabs defaultValue="personal" className="w-full">
-                          <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="personal">Personal & School</TabsTrigger>
-                            <TabsTrigger value="family">Family & Guardian</TabsTrigger>
-                          </TabsList>
-                          
-                          <TabsContent value="personal" className="space-y-4 pt-4">
-                            <div className="flex items-center gap-4 mb-4">
-                              <div className="h-24 w-24 rounded-full bg-secondary flex items-center justify-center border-2 border-dashed border-muted-foreground/50 cursor-pointer hover:bg-secondary/80">
-                                <User className="h-8 w-8 text-muted-foreground" />
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                <p>Upload Student Photo</p>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="firstName">First Name</Label>
-                                <Input id="firstName" name="firstName" required defaultValue={editingId ? students.find(s => s.id === editingId)?.firstName : ""} />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="lastName">Last Name</Label>
-                                <Input id="lastName" name="lastName" required defaultValue={editingId ? students.find(s => s.id === editingId)?.lastName : ""} />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="dob">Date of Birth</Label>
-                                <Input id="dob" name="dob" type="date" required defaultValue={editingId ? students.find(s => s.id === editingId)?.dateOfBirth : ""} />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="gender">Gender</Label>
-                                <Select name="gender" defaultValue={editingId ? students.find(s => s.id === editingId)?.gender : "Male"}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Male">Male</SelectItem>
-                                    <SelectItem value="Female">Female</SelectItem>
-                                    <SelectItem value="Other">Other</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="address">Residential Address</Label>
-                              <Textarea id="address" name="address" required defaultValue={editingId ? students.find(s => s.id === editingId)?.address : ""} />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="schoolId">Current School</Label>
-                              <Select name="schoolId" required defaultValue={editingId ? students.find(s => s.id === editingId)?.schoolId : ""}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select School" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {schools.map(s => (
-                                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                            </div>
-                          </TabsContent>
-
-                          <TabsContent value="family" className="space-y-4 pt-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="parentId">Link Parent</Label>
-                                <Select name="parentId" defaultValue={editingId ? students.find(s => s.id === editingId)?.parentId : ""}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select Existing Parent" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {parents.map(p => (
-                                        <SelectItem key={p.id} value={p.id}>{p.displayName} ({p.email})</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">Select an existing parent user account.</p>
-                            </div>
-                          </TabsContent>
-                        </Tabs>
-                      </form>
-                    </ScrollArea>
-                    <DialogFooter className="py-4">
-                        <Button form="student-form" type="submit" disabled={isSubmitting} className="w-full">
-                          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          Save Student Profile
-                        </Button>
-                      </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                </Link>
             </div>
 
             <Card>
@@ -404,7 +255,6 @@ export default function StudentsPage() {
                               <span className="text-sm">{getParentName(student.parentId)}</span>
                             </TableCell>
                             <TableCell>
-                              {/* Mock logic for alert display */}
                               {Math.random() > 0.8 && (
                                 <Badge variant="outline" className="text-yellow-600 border-yellow-200 bg-yellow-50">
                                   <AlertTriangle className="h-3 w-3 mr-1" />
@@ -414,9 +264,6 @@ export default function StudentsPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
-                                  <Button variant="ghost" size="icon" onClick={() => { setEditingId(student.id); setIsDialogOpen(true); }}>
-                                      <Pencil className="h-4 w-4" />
-                                  </Button>
                                   <Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(student.id)}>
                                       <Trash2 className="h-4 w-4 text-destructive" />
                                   </Button>
@@ -463,7 +310,6 @@ export default function StudentsPage() {
                         <Textarea id="address" name="address" defaultValue={editingParentId ? parents.find(p => p.id === editingParentId)?.address : ""} />
                       </div>
                       
-                      {/* Linking Student Section */}
                       <div className="space-y-2 pt-2 border-t">
                          <Label htmlFor="linkedStudentId">Link to Student</Label>
                          <Select name="linkedStudentId">
@@ -516,7 +362,6 @@ export default function StudentsPage() {
                     </TableHeader>
                     <TableBody>
                       {filteredParents.map((p) => {
-                          // Find children linked to this parent
                           const children = students.filter(s => s.parentId === p.id || s.parentId === p.uid);
                           
                           return (
