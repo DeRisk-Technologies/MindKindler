@@ -40,7 +40,10 @@ import {
   BrainCircuit,
   PieChart,
   Import,
-  PlusCircle
+  PlusCircle,
+  Video,
+  Stethoscope,
+  Sparkles
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
@@ -76,7 +79,7 @@ export function DashboardSidebar() {
       </SidebarHeader>
       <SidebarContent className="px-2 py-4">
         
-        {/* 1. CLINICAL OPERATIONS */}
+        {/* 1. CLINICAL OPERATIONS (Core Workflow) */}
         <SidebarGroup>
           <SidebarGroupLabel>Clinical Operations</SidebarGroupLabel>
           <SidebarMenu>
@@ -113,6 +116,17 @@ export function DashboardSidebar() {
                 </Collapsible>
             )}
 
+            {/* AI CONSULTATION ROOM (NEW INTEGRATION) */}
+            {can('access_consultations') && (
+               <SidebarMenuItem>
+                   <SidebarMenuButton asChild isActive={isActive("/dashboard/consultations")} tooltip="Consultation Room">
+                       <Link href="/dashboard/consultations">
+                           <Stethoscope className="text-pink-600" /><span>Consultation Room</span>
+                       </Link>
+                   </SidebarMenuButton>
+               </SidebarMenuItem>
+            )}
+
             {can('view_psychometrics') && (
                <SidebarMenuItem>
                    <SidebarMenuButton asChild isActive={isActive("/dashboard/assessments/mobile")} tooltip="Observation Mode">
@@ -134,15 +148,29 @@ export function DashboardSidebar() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                     <SidebarMenuSub>
+                        
+                        {/* Standard Library */}
                         <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/assessments/library")}>
-                            <Link href="/dashboard/assessments/library"><span>Assessment Library</span></Link>
-                        </SidebarMenuSubButton>
+                            <SidebarMenuSubButton asChild isActive={isActive("/dashboard/assessments/library")}>
+                                <Link href="/dashboard/assessments/library"><span>Assessment Library</span></Link>
+                            </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
+
+                        {/* AI Creator (NEW) */}
+                        {can('create_assessments') && (
+                            <SidebarMenuSubItem>
+                                <SidebarMenuSubButton asChild isActive={isActive("/dashboard/assessments/builder")}>
+                                    <Link href="/dashboard/assessments/builder" className="text-purple-600">
+                                        <Sparkles className="h-3 w-3 mr-2"/><span>AI Assessment Creator</span>
+                                    </Link>
+                                </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                        )}
+
                         <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/reports/builder")}>
-                            <Link href="/dashboard/reports/builder"><FilePlus className="mr-2 h-4 w-4"/><span>Report Writer</span></Link>
-                        </SidebarMenuSubButton>
+                            <SidebarMenuSubButton asChild isActive={isActive("/dashboard/reports/builder")}>
+                                <Link href="/dashboard/reports/builder"><FilePlus className="mr-2 h-4 w-4"/><span>Report Writer</span></Link>
+                            </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                     </SidebarMenuSub>
                     </CollapsibleContent>
@@ -188,7 +216,38 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* 3. PROFESSIONAL GROWTH */}
+        {/* 3. PRACTICE MANAGEMENT (Partners, Assistants, Schools) */}
+        {isPracticeOwner && (
+            <SidebarGroup>
+                <SidebarGroupLabel>Practice Management</SidebarGroupLabel>
+                <SidebarMenu>
+                    {/* Reorganized these into main list for better visibility for small practices */}
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/admin/enterprise/new")} tooltip="Add School">
+                            <Link href="/dashboard/admin/enterprise/new">
+                                <PlusCircle className="text-blue-600" /><span>Add Client School</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/schools")} tooltip="My Client Schools">
+                            <Link href="/dashboard/schools">
+                                <Building2 className="text-slate-600" /><span>Client Schools</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/staff")} tooltip="Team & Assistants">
+                            <Link href="/dashboard/staff">
+                                <Users className="text-slate-600" /><span>My Team</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                </SidebarMenu>
+            </SidebarGroup>
+        )}
+
+        {/* 4. PROFESSIONAL GROWTH */}
         {(can('access_community') || can('access_marketplace')) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Professional Growth</SidebarGroupLabel>
@@ -224,7 +283,7 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* 4. COMMUNICATION */}
+        {/* 5. COMMUNICATION */}
         <SidebarGroup>
             <SidebarGroupLabel>Communication</SidebarGroupLabel>
             <SidebarMenu>
@@ -246,93 +305,73 @@ export function DashboardSidebar() {
             </SidebarMenu>
         </SidebarGroup>
 
-        {/* 5. OWNER CONSOLE (Practice Management) */}
-        {(isGlobalSuperAdmin || isPracticeOwner) && (
-             <SidebarGroup className="mt-auto">
-                <SidebarGroupLabel>Practice Management</SidebarGroupLabel>
-                <SidebarMenu>
-                    <Collapsible defaultOpen={isActive("/dashboard/admin") || isActive("/dashboard/settings")} className="group/collapsible">
+        {/* 6. SYSTEM & ADMIN (Bottom) */}
+        <SidebarGroup className="mt-auto">
+            <SidebarGroupLabel>System</SidebarGroupLabel>
+            <SidebarMenu>
+                 <Collapsible defaultOpen={isActive("/dashboard/settings")} className="group/collapsible">
+                     <SidebarMenuItem>
+                         <CollapsibleTrigger asChild>
+                            <SidebarMenuButton tooltip="Settings">
+                                <Settings /><span>Settings</span>
+                                <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                            </SidebarMenuButton>
+                         </CollapsibleTrigger>
+                         <CollapsibleContent>
+                             <SidebarMenuSub>
+                                 <SidebarMenuSubItem>
+                                     <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/compliance")}>
+                                         <Link href="/dashboard/settings/compliance"><FileCheck className="h-4 w-4 mr-2"/><span>My Compliance</span></Link>
+                                     </SidebarMenuSubButton>
+                                 </SidebarMenuSubItem>
+                                 <SidebarMenuSubItem>
+                                     <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/profile")}>
+                                         <Link href="/dashboard/settings/profile"><span>Profile</span></Link>
+                                     </SidebarMenuSubButton>
+                                 </SidebarMenuSubItem>
+                             </SidebarMenuSub>
+                         </CollapsibleContent>
+                     </SidebarMenuItem>
+                 </Collapsible>
+                
+                {isGlobalSuperAdmin && (
+                    <Collapsible defaultOpen={isActive("/dashboard/admin")} className="group/collapsible">
                         <SidebarMenuItem>
                             <CollapsibleTrigger asChild>
-                                <SidebarMenuButton tooltip="Owner Console" className="text-slate-800 hover:text-slate-900 font-medium">
-                                    <Briefcase className="text-slate-600" /><span>Owner Console</span>
+                                <SidebarMenuButton tooltip="Global Admin" className="text-red-600 hover:text-red-700">
+                                    <ShieldAlert /><span>Global Admin</span>
                                     <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
                                 </SidebarMenuButton>
                             </CollapsibleTrigger>
                             <CollapsibleContent>
                                 <SidebarMenuSub>
-                                    
-                                    {/* EPP / PRACTICE OWNER FEATURES */}
-                                    {isPracticeOwner && (
-                                        <>
-                                            {/* CRITICAL FEATURE: Add Client School/District */}
-                                            <SidebarMenuSubItem>
-                                                <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/enterprise/new")}>
-                                                    <Link href="/dashboard/admin/enterprise/new" className="text-blue-600 font-medium">
-                                                        <PlusCircle className="h-4 w-4 mr-2"/><span>Register New School</span>
-                                                    </Link>
-                                                </SidebarMenuSubButton>
-                                            </SidebarMenuSubItem>
-
-                                            <SidebarMenuSubItem>
-                                                <SidebarMenuSubButton asChild isActive={isActive("/dashboard/schools")}>
-                                                    <Link href="/dashboard/schools"><Building2 className="h-4 w-4 mr-2"/><span>My Client Schools</span></Link>
-                                                </SidebarMenuSubButton>
-                                            </SidebarMenuSubItem>
-                                            <SidebarMenuSubItem>
-                                                <SidebarMenuSubButton asChild isActive={isActive("/dashboard/staff")}>
-                                                    <Link href="/dashboard/staff"><Users className="h-4 w-4 mr-2"/><span>My Team (Assistants)</span></Link>
-                                                </SidebarMenuSubButton>
-                                            </SidebarMenuSubItem>
-                                            <SidebarMenuSubItem>
-                                                <SidebarMenuSubButton asChild isActive={isActive("/dashboard/partners")}>
-                                                    <Link href="/dashboard/partners"><Network className="h-4 w-4 mr-2"/><span>Partners</span></Link>
-                                                </SidebarMenuSubButton>
-                                            </SidebarMenuSubItem>
-                                        </>
-                                    )}
-
-                                    {/* SUPER ADMIN ONLY EXTRAS */}
-                                    {isGlobalSuperAdmin && (
-                                        <>
-                                            <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground mt-2 border-t pt-2">GLOBAL ADMIN</div>
-                                            <SidebarMenuSubItem>
-                                                <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/tenants")}>
-                                                    <Link href="/dashboard/admin/tenants"><List className="h-4 w-4 mr-2"/><span>All Tenants</span></Link>
-                                                </SidebarMenuSubButton>
-                                            </SidebarMenuSubItem>
-                                            <SidebarMenuSubItem>
-                                                <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/users")}>
-                                                    <Link href="/dashboard/admin/users"><Users className="h-4 w-4 mr-2"/><span>Global Users</span></Link>
-                                                </SidebarMenuSubButton>
-                                            </SidebarMenuSubItem>
-                                            <SidebarMenuSubItem>
-                                                <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/verification")}>
-                                                    <Link href="/dashboard/admin/verification"><ShieldAlert className="h-4 w-4 mr-2 text-red-500"/><span>Verification Queue</span></Link>
-                                                </SidebarMenuSubButton>
-                                            </SidebarMenuSubItem>
-                                        </>
-                                    )}
-
-                                    {/* SETTINGS (Common) */}
-                                     <SidebarMenuSubItem>
-                                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/compliance")}>
-                                             <Link href="/dashboard/settings/compliance"><FileCheck className="h-4 w-4 mr-2"/><span>Compliance</span></Link>
-                                         </SidebarMenuSubButton>
-                                     </SidebarMenuSubItem>
-                                     <SidebarMenuSubItem>
-                                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/profile")}>
-                                             <Link href="/dashboard/settings/profile"><Settings className="h-4 w-4 mr-2"/><span>Settings</span></Link>
-                                         </SidebarMenuSubButton>
-                                     </SidebarMenuSubItem>
-
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/tenants")}>
+                                            <Link href="/dashboard/admin/tenants"><List className="h-4 w-4 mr-2"/><span>All Tenants</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/users")}>
+                                            <Link href="/dashboard/admin/users"><Users className="h-4 w-4 mr-2"/><span>Global Users</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/verification")}>
+                                            <Link href="/dashboard/admin/verification"><CheckCircle2 className="h-4 w-4 mr-2"/><span>Verification Queue</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/localization")}>
+                                            <Link href="/dashboard/settings/localization"><Globe className="h-4 w-4 mr-2"/><span>Localization</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
                                 </SidebarMenuSub>
                             </CollapsibleContent>
                         </SidebarMenuItem>
                     </Collapsible>
-                </SidebarMenu>
-             </SidebarGroup>
-        )}
+                )}
+            </SidebarMenu>
+        </SidebarGroup>
 
       </SidebarContent>
     </>
