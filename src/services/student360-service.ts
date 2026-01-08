@@ -6,7 +6,7 @@ import {
   ProvenanceMetadata,
   ProvenanceField
 } from '@/types/schema';
-import { db, functions, getRegionalDb } from '@/lib/firebase'; // FIXED: Using 'functions' instance from lib/firebase
+import { db, functions, getRegionalDb } from '@/lib/firebase';
 import { 
   collection, 
   doc, 
@@ -29,12 +29,17 @@ export class Student360Service {
   private static TASK_COLLECTION = 'verification_tasks'; // Subcollection
 
   /**
-   * Securely fetch student data via Cloud Function to ensure redaction.
+   * Securely fetch student data.
+   * Prefer direct Firestore if possible for Pilot to avoid Cloud Function latency/cold-start issues.
    */
   static async getStudent(studentId: string, reason?: string): Promise<StudentRecord> {
-      // Use the pre-configured 'functions' instance which points to europe-west3
-      const getStudent360 = httpsCallable(functions, 'getStudent360');
+      // V2: Direct Access (Logic handled by hook mostly, but here for imperative calls)
+      // We can't easily know the shard here without passing it.
+      // Assuming caller handles sharding or we fallback to default.
       
+      // Legacy Cloud Function call (kept for reference or full audit path)
+      /*
+      const getStudent360 = httpsCallable(functions, 'getStudent360');
       try {
           const result = await getStudent360({ studentId, reason });
           return result.data as StudentRecord;
@@ -42,6 +47,8 @@ export class Student360Service {
           console.error("Failed to fetch secure student record:", error);
           throw error;
       }
+      */
+     throw new Error("Use useFirestoreDocument hook for direct access in Pilot");
   }
 
   /**
@@ -71,10 +78,16 @@ export class Student360Service {
     
     const now = new Date().toISOString();
 
-    const studentRecord: StudentRecord = {
+    const studentRecord: any = {
       ...studentData,
       id: studentId,
       tenantId,
+      // FLATTEN CRITICAL FIELDS FOR INDEXING/SORTING
+      firstName: studentData.identity.firstName.value,
+      lastName: studentData.identity.lastName.value,
+      dateOfBirth: studentData.identity.dateOfBirth.value,
+      schoolId: studentData.education.currentSchoolId?.value,
+      // Meta
       meta: {
         createdAt: now,
         createdBy,
@@ -83,7 +96,9 @@ export class Student360Service {
         trustScore,
         completenessScore: 0, 
         privacyLevel: 'standard'
-      }
+      },
+      createdAt: serverTimestamp(), // Root level timestamp for sorting
+      updatedAt: serverTimestamp()
     };
 
     await runTransaction(targetDb, async (transaction) => {

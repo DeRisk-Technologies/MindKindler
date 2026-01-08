@@ -1,173 +1,250 @@
+// src/app/dashboard/settings/integrations/page.tsx
+
 "use client";
 
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-    CloudCog, 
-    Video, 
-    Calendar, 
-    ShieldCheck, 
-    Key, 
-    Lock,
-    Globe,
-    Server
+    Plug, 
+    CheckCircle2, 
+    AlertTriangle, 
+    RefreshCcw, 
+    ExternalLink, 
+    Server,
+    BookOpen,
+    Calendar,
+    Video,
+    FileSpreadsheet,
+    Loader2
 } from 'lucide-react';
+import { useFirestoreCollection } from '@/hooks/use-firestore';
+import { useAuth } from '@/hooks/use-auth';
+import { useToast } from '@/hooks/use-toast';
+import { addDoc, collection, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 
-interface IntegrationConfig {
-    id: string;
-    name: string;
-    description: string;
-    provider: string;
-    status: 'connected' | 'disconnected' | 'error';
-    isAdminOnly: boolean;
-    configFields: { key: string; label: string; type: 'text' | 'password'; value: string }[];
-}
-
-const INITIAL_INTEGRATIONS: IntegrationConfig[] = [
-    // Admin Managed - System Wide
+// Available Connectors Registry
+const AVAILABLE_CONNECTORS = [
     {
-        id: 'nylas',
-        name: 'Unified Calendar Sync (Nylas)',
-        description: 'Enables Google/Outlook sync for all users. Requires Client ID/Secret.',
-        provider: 'Nylas',
-        status: 'disconnected',
-        isAdminOnly: true,
-        configFields: [
-            { key: 'client_id', label: 'Client ID', type: 'text', value: '' },
-            { key: 'client_secret', label: 'Client Secret', type: 'password', value: '' }
-        ]
+        id: 'oneroster',
+        name: 'OneRoster 1.1',
+        description: 'Sync students, staff, and classes from compliant MIS/SIS.',
+        icon: <BookOpen className="h-6 w-6 text-orange-600"/>,
+        type: 'sis',
+        fields: ['endpointUrl', 'clientId', 'clientSecret']
     },
     {
-        id: 'teams_admin',
-        name: 'Microsoft Teams (Enterprise)',
-        description: 'Tenant-wide Teams integration for meeting generation.',
-        provider: 'Microsoft',
-        status: 'connected',
-        isAdminOnly: true,
-        configFields: [
-            { key: 'tenant_id', label: 'Tenant ID', type: 'text', value: '********' },
-            { key: 'client_secret', label: 'Client Secret', type: 'password', value: '********' }
-        ]
+        id: 'wonde',
+        name: 'Wonde',
+        description: 'Universal API for UK School MIS (SIMS, Arbor, Bromcom).',
+        icon: <Server className="h-6 w-6 text-blue-600"/>,
+        type: 'sis',
+        fields: ['apiKey', 'schoolId']
     },
-    // User Managed (But Admins can see status)
     {
-        id: 'zoom_user',
-        name: 'Zoom (Personal)',
-        description: 'Connect your personal Zoom account for video calls.',
-        provider: 'Zoom',
-        status: 'disconnected',
-        isAdminOnly: false,
-        configFields: [] // OAuth flow usually doesn't need manual field entry here
+        id: 'google_workspace',
+        name: 'Google Workspace',
+        description: 'Sync Calendar, Meet, and Classroom rosters.',
+        icon: <Video className="h-6 w-6 text-green-600"/>,
+        type: 'productivity',
+        fields: ['domain', 'serviceAccountJson']
+    },
+    {
+        id: 'microsoft_365',
+        name: 'Microsoft 365',
+        description: 'Integration with Outlook, Teams, and Entra ID.',
+        icon: <Calendar className="h-6 w-6 text-blue-500"/>,
+        type: 'productivity',
+        fields: ['tenantId', 'clientId', 'clientSecret']
     }
 ];
 
 export default function IntegrationsSettingsPage() {
-    const [integrations, setIntegrations] = useState(INITIAL_INTEGRATIONS);
+    const { user } = useAuth();
     const { toast } = useToast();
-    const [isAdmin, setIsAdmin] = useState(true); // Mock role check
+    
+    // Fetch user's active integrations (from global or region? Integrations are usually tenant-level config)
+    // Storing in 'integrations' collection at root, filtered by tenantId.
+    const { data: integrations, loading, refresh } = useFirestoreCollection(
+        'integrations', 
+        'updatedAt', 
+        'desc',
+        { filter: { field: 'tenantId', operator: '==', value: user?.tenantId || 'none' } }
+    );
 
-    const handleSave = (id: string) => {
-        // API call to save config securely
-        toast({ title: "Configuration Saved", description: "Integration settings updated." });
+    const [isConfigureOpen, setIsConfigureOpen] = useState(false);
+    const [selectedConnector, setSelectedConnector] = useState<any>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const handleConfigure = (connector: any) => {
+        setSelectedConnector(connector);
+        setIsConfigureOpen(true);
     };
 
-    const toggleStatus = (id: string) => {
-        setIntegrations(prev => prev.map(i => {
-            if (i.id === id) {
-                const newStatus = i.status === 'connected' ? 'disconnected' : 'connected';
-                toast({ title: newStatus === 'connected' ? "Connected" : "Disconnected", description: `${i.name} is now ${newStatus}.` });
-                return { ...i, status: newStatus };
+    const handleSaveConfig = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        if (!user?.tenantId) return;
+        setIsSaving(true);
+        
+        const formData = new FormData(e.currentTarget);
+        const configData: any = {};
+        selectedConnector.fields.forEach((f: string) => {
+            configData[f] = formData.get(f);
+        });
+
+        const payload = {
+            connectorId: selectedConnector.id,
+            connectorName: selectedConnector.name,
+            tenantId: user.tenantId,
+            type: selectedConnector.type,
+            status: 'active',
+            config: configData,
+            updatedAt: serverTimestamp(),
+            updatedBy: user.uid
+        };
+
+        try {
+            // Check if exists to update, or create new. 
+            // Simplified: Just add new or update existing if found in local list.
+            const existing = integrations.find(i => i.connectorId === selectedConnector.id);
+            
+            if (existing) {
+                await updateDoc(doc(db, 'integrations', existing.id), payload);
+                toast({ title: "Integration Updated", description: "Configuration saved." });
+            } else {
+                await addDoc(collection(db, 'integrations'), { ...payload, createdAt: serverTimestamp() });
+                toast({ title: "Integration Enabled", description: "Connection established." });
             }
-            return i;
-        }));
+            
+            setIsConfigureOpen(false);
+            refresh();
+        } catch (err: any) {
+            toast({ variant: "destructive", title: "Error", description: err.message });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const getStatus = (connectorId: string) => {
+        const integration = integrations.find(i => i.connectorId === connectorId);
+        if (!integration) return 'inactive';
+        return integration.status; // 'active', 'error', 'syncing'
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h3 className="text-2xl font-bold tracking-tight">Integrations & API Connections</h3>
-                    <p className="text-muted-foreground">Manage external tools. Some settings require Admin privileges.</p>
-                </div>
-                <div className="flex items-center gap-2 bg-muted p-2 rounded-lg">
-                    <Label>View as:</Label>
-                    <Switch checked={isAdmin} onCheckedChange={setIsAdmin} />
-                    <span className="text-sm">{isAdmin ? 'Admin' : 'User'}</span>
-                </div>
+        <div className="space-y-8">
+            <div>
+                <h2 className="text-3xl font-bold tracking-tight">Integrations</h2>
+                <p className="text-muted-foreground">Connect your practice with external systems and data sources.</p>
             </div>
 
-            <Tabs defaultValue="all">
-                <TabsList>
-                    <TabsTrigger value="all">All Integrations</TabsTrigger>
-                    <TabsTrigger value="communication">Communication</TabsTrigger>
-                    <TabsTrigger value="calendar">Calendar</TabsTrigger>
-                </TabsList>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {AVAILABLE_CONNECTORS.map((connector) => {
+                    const status = getStatus(connector.id);
+                    const isConnected = status !== 'inactive';
 
-                <TabsContent value="all" className="space-y-6 mt-6">
-                    {integrations.filter(i => isAdmin || !i.isAdminOnly).map(integration => (
-                        <Card key={integration.id} className="overflow-hidden">
-                            <CardHeader className="bg-muted/30 pb-4">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-white rounded-md border shadow-sm">
-                                            {integration.provider === 'Microsoft' && <Server className="h-6 w-6 text-blue-600"/>}
-                                            {integration.provider === 'Nylas' && <Calendar className="h-6 w-6 text-emerald-600"/>}
-                                            {integration.provider === 'Zoom' && <Video className="h-6 w-6 text-blue-500"/>}
-                                        </div>
-                                        <div>
-                                            <CardTitle className="text-lg flex items-center gap-2">
-                                                {integration.name}
-                                                {integration.isAdminOnly && <Badge variant="secondary" className="text-xs font-normal"><ShieldCheck className="mr-1 h-3 w-3"/> Admin Managed</Badge>}
-                                            </CardTitle>
-                                            <CardDescription>{integration.description}</CardDescription>
-                                        </div>
+                    return (
+                        <Card key={connector.id} className={isConnected ? "border-indigo-200 bg-indigo-50/20" : ""}>
+                            <CardHeader className="flex flex-row items-start justify-between pb-2">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-white rounded-md border shadow-sm">
+                                        {connector.icon}
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                         <Badge variant={integration.status === 'connected' ? 'default' : 'outline'}>
-                                            {integration.status === 'connected' ? 'Active' : 'Inactive'}
-                                         </Badge>
-                                         {!integration.isAdminOnly || isAdmin ? (
-                                             <Button variant="outline" size="sm" onClick={() => toggleStatus(integration.id)}>
-                                                 {integration.status === 'connected' ? 'Disconnect' : 'Connect'}
-                                             </Button>
-                                         ) : null}
+                                    <div>
+                                        <CardTitle className="text-base">{connector.name}</CardTitle>
+                                        <CardDescription className="text-xs">{connector.type.toUpperCase()}</CardDescription>
                                     </div>
                                 </div>
+                                {isConnected ? (
+                                    <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">
+                                        <CheckCircle2 className="w-3 h-3 mr-1"/> Active
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="outline" className="text-slate-500">
+                                        Not Connected
+                                    </Badge>
+                                )}
                             </CardHeader>
-                            
-                            {(isAdmin && integration.configFields.length > 0) && (
-                                <CardContent className="pt-6 border-t">
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        {integration.configFields.map(field => (
-                                            <div key={field.key} className="space-y-2">
-                                                <Label>{field.label}</Label>
-                                                <div className="relative">
-                                                    <Input 
-                                                        type={field.type} 
-                                                        defaultValue={field.value} 
-                                                        placeholder={`Enter ${field.label}`}
-                                                    />
-                                                    {field.type === 'password' && <Lock className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground"/>}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="mt-4 flex justify-end">
-                                        <Button size="sm" onClick={() => handleSave(integration.id)}>Save Configuration</Button>
-                                    </div>
-                                </CardContent>
-                            )}
+                            <CardContent>
+                                <p className="text-sm text-muted-foreground">{connector.description}</p>
+                            </CardContent>
+                            <CardFooter className="pt-0">
+                                <Button 
+                                    variant={isConnected ? "outline" : "default"} 
+                                    className="w-full"
+                                    onClick={() => handleConfigure(connector)}
+                                >
+                                    {isConnected ? "Manage Configuration" : "Connect"}
+                                </Button>
+                            </CardFooter>
                         </Card>
-                    ))}
-                </TabsContent>
-            </Tabs>
+                    );
+                })}
+            </div>
+
+            {/* Custom CSV Import Card */}
+            <Card className="border-dashed">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <FileSpreadsheet className="h-5 w-5"/> Manual Import
+                    </CardTitle>
+                    <CardDescription>
+                        Don't have an API? Upload CSV files for students, staff, or timetables.
+                    </CardDescription>
+                </CardHeader>
+                <CardFooter>
+                     <Button variant="secondary" onClick={() => window.location.href='/dashboard/data-ingestion/import'}>
+                        Go to Import Tool
+                     </Button>
+                </CardFooter>
+            </Card>
+
+            {/* Configuration Dialog */}
+            <Dialog open={isConfigureOpen} onOpenChange={setIsConfigureOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Configure {selectedConnector?.name}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleSaveConfig} className="space-y-4">
+                        <div className="bg-yellow-50 p-3 rounded-md border border-yellow-200 text-xs text-yellow-800 flex items-start gap-2">
+                             <AlertTriangle className="h-4 w-4 shrink-0"/>
+                             <div>
+                                 <strong>Security Notice:</strong> Credentials are encrypted at rest. Ensure you have proper authorization from the data controller (School/LEA).
+                             </div>
+                        </div>
+                        
+                        {selectedConnector?.fields.map((field: string) => (
+                            <div key={field} className="space-y-2">
+                                <Label className="capitalize">{field.replace(/([A-Z])/g, ' $1').trim()}</Label>
+                                <Input 
+                                    name={field} 
+                                    type={field.toLowerCase().includes('secret') || field.toLowerCase().includes('key') ? "password" : "text"}
+                                    placeholder={`Enter ${field}...`}
+                                    defaultValue={integrations.find(i => i.connectorId === selectedConnector.id)?.config[field] || ''}
+                                />
+                            </div>
+                        ))}
+
+                        <div className="flex items-center space-x-2 pt-2">
+                            <Switch id="sync-active" defaultChecked={true} />
+                            <Label htmlFor="sync-active">Enable Nightly Sync</Label>
+                        </div>
+
+                        <DialogFooter>
+                            <Button type="submit" disabled={isSaving}>
+                                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Save Configuration
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

@@ -9,59 +9,76 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { User, Mail, Shield, Building2, MapPin, Loader2 } from 'lucide-react';
-import { UserProfile } from '@/types/user-profile';
-
-// Mock current user
-const MOCK_USER: UserProfile = {
-    id: 'user_123',
-    email: 'sarah.jones@example.com',
-    displayName: 'Dr. Sarah Jones',
-    role: 'EPP',
-    tenantId: 'tenant_abc',
-    orgMemberships: [
-        { orgId: 'tenant_abc', role: 'EPP', status: 'active', joinedAt: '2023-01-01' },
-        { orgId: 'lea_north', role: 'GovAnalyst', status: 'active', joinedAt: '2023-06-01' }
-    ],
-    contactInfo: {
-        phone: '+15550101',
-    },
-    preferences: {
-        language: 'en-US',
-        theme: 'light',
-        notifications: { email: true, push: false, sms: false },
-        timezone: 'America/New_York'
-    },
-    metadata: {
-        lastLogin: '2023-10-27T10:00:00Z',
-        createdAt: '2023-01-01T00:00:00Z',
-        region: 'us-central1'
-    }
-};
+import { User, Mail, Shield, Building2, MapPin, Loader2, Save } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export default function UserProfilePage() {
     const { toast } = useToast();
-    const [user, setUser] = useState<UserProfile | null>(null);
+    const { user: authUser } = useAuth(); // Use real auth
+    const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        // In prod: fetch from Firestore via useAuth()
-        setTimeout(() => {
-            setUser(MOCK_USER);
-            setLoading(false);
-        }, 800);
-    }, []);
+        const fetchProfile = async () => {
+            if (!authUser) return;
+            try {
+                // Fetch from Firestore
+                const userRef = doc(db, 'users', authUser.uid);
+                const snap = await getDoc(userRef);
+                
+                if (snap.exists()) {
+                    setProfile(snap.data());
+                } else {
+                    // Fallback to Auth Data if no Firestore Profile (unlikely in this flow)
+                    setProfile({
+                        displayName: authUser.displayName,
+                        email: authUser.email,
+                        role: 'User',
+                        tenantId: 'default',
+                        contactInfo: { phone: '' },
+                        preferences: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }
+                    });
+                }
+            } catch (error) {
+                console.error("Error fetching profile:", error);
+                toast({ variant: "destructive", title: "Fetch Error", description: "Could not load profile." });
+            } finally {
+                setLoading(false);
+            }
+        };
 
-    const handleSave = () => {
+        fetchProfile();
+    }, [authUser]);
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!authUser) return;
         setIsSaving(true);
-        setTimeout(() => {
-            setIsSaving(false);
+        
+        try {
+            // Update Firestore
+            const userRef = doc(db, 'users', authUser.uid);
+            await updateDoc(userRef, {
+                displayName: profile.displayName,
+                'contactInfo.phone': profile.contactInfo?.phone || '',
+                'contactInfo.jobTitle': profile.contactInfo?.jobTitle || '',
+                'preferences.timezone': profile.preferences?.timezone || '',
+                updatedAt: new Date().toISOString()
+            });
+
             toast({ title: "Profile Updated", description: "Your changes have been saved." });
-        }, 1000);
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    if (loading || !user) return <div className="p-8 text-center">Loading profile...</div>;
+    if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto"/> Loading profile...</div>;
+    if (!profile) return <div className="p-8 text-center">No profile found.</div>;
 
     return (
         <div className="space-y-6">
@@ -70,10 +87,6 @@ export default function UserProfilePage() {
                     <h2 className="text-3xl font-bold tracking-tight">My Profile</h2>
                     <p className="text-muted-foreground">Manage your identity, roles, and organization memberships.</p>
                 </div>
-                <Button onClick={handleSave} disabled={isSaving}>
-                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    Save Changes
-                </Button>
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
@@ -85,23 +98,29 @@ export default function UserProfilePage() {
                     </CardHeader>
                     <CardContent className="flex flex-col items-center text-center space-y-4">
                         <Avatar className="h-24 w-24">
-                            <AvatarImage src={user.avatarUrl} />
-                            <AvatarFallback className="text-2xl">{user.displayName.charAt(0)}</AvatarFallback>
+                            <AvatarImage src={authUser?.photoURL || undefined} />
+                            <AvatarFallback className="text-2xl">{profile.displayName?.charAt(0)}</AvatarFallback>
                         </Avatar>
                         <div>
-                            <h3 className="font-semibold text-lg">{user.displayName}</h3>
+                            <h3 className="font-semibold text-lg">{profile.displayName}</h3>
                             <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
-                                <Mail className="h-3 w-3"/> {user.email}
+                                <Mail className="h-3 w-3"/> {profile.email}
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-2 justify-center">
                             <Badge variant="secondary" className="flex items-center gap-1">
-                                <Shield className="h-3 w-3"/> {user.role}
+                                <Shield className="h-3 w-3"/> {profile.role}
                             </Badge>
+                            {/* Region Badge - Assuming its stored in profile or determined by routing */}
                             <Badge variant="outline" className="flex items-center gap-1">
-                                <MapPin className="h-3 w-3"/> {user.metadata.region}
+                                <MapPin className="h-3 w-3"/> {profile.region || 'Global'}
                             </Badge>
                         </div>
+                         {profile.tenantId && (
+                             <div className="text-xs text-muted-foreground mt-2 bg-slate-100 px-2 py-1 rounded">
+                                 Tenant: {profile.tenantId}
+                             </div>
+                         )}
                     </CardContent>
                 </Card>
 
@@ -116,35 +135,66 @@ export default function UserProfilePage() {
                             </TabsList>
                             
                             <div className="mt-4">
-                                <TabsContent value="general" className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Display Name</Label>
-                                            <Input defaultValue={user.displayName} />
+                                <TabsContent value="general">
+                                    <form onSubmit={handleSave} className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Display Name</Label>
+                                                <Input 
+                                                    value={profile.displayName || ''} 
+                                                    onChange={(e) => setProfile({...profile, displayName: e.target.value})}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Job Title</Label>
+                                                <Input 
+                                                    value={profile.contactInfo?.jobTitle || ''} 
+                                                    onChange={(e) => setProfile({
+                                                        ...profile, 
+                                                        contactInfo: { ...profile.contactInfo, jobTitle: e.target.value }
+                                                    })}
+                                                    placeholder="e.g. Educational Psychologist" 
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Phone Number</Label>
+                                                <Input 
+                                                    value={profile.contactInfo?.phone || ''} 
+                                                    onChange={(e) => setProfile({
+                                                        ...profile, 
+                                                        contactInfo: { ...profile.contactInfo, phone: e.target.value }
+                                                    })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Timezone</Label>
+                                                <Input 
+                                                    value={profile.preferences?.timezone || ''} 
+                                                    onChange={(e) => setProfile({
+                                                        ...profile, 
+                                                        preferences: { ...profile.preferences, timezone: e.target.value }
+                                                    })}
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label>Job Title</Label>
-                                            <Input placeholder="e.g. Senior Psychologist" />
+                                        <div className="flex justify-end pt-4">
+                                            <Button type="submit" disabled={isSaving}>
+                                                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                                <Save className="mr-2 h-4 w-4" /> Save Changes
+                                            </Button>
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label>Phone Number</Label>
-                                            <Input defaultValue={user.contactInfo.phone} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Timezone</Label>
-                                            <Input defaultValue={user.preferences.timezone} />
-                                        </div>
-                                    </div>
+                                    </form>
                                 </TabsContent>
 
                                 <TabsContent value="orgs" className="space-y-4">
                                     <div className="space-y-3">
-                                        {user.orgMemberships.map((org, i) => (
+                                        {/* Mocking Org Memberships if not in profile yet */}
+                                        {(profile.orgMemberships || [{ orgId: profile.tenantId, role: profile.role, status: 'active', joinedAt: new Date().toISOString() }]).map((org: any, i: number) => (
                                             <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-muted/20">
                                                 <div className="flex items-center gap-3">
                                                     <Building2 className="h-5 w-5 text-slate-500"/>
                                                     <div>
-                                                        <div className="font-medium">Organization ID: {org.orgId}</div>
+                                                        <div className="font-medium">Organization: {org.orgId}</div>
                                                         <div className="text-xs text-muted-foreground">Joined {new Date(org.joinedAt).toLocaleDateString()}</div>
                                                     </div>
                                                 </div>
@@ -170,9 +220,9 @@ export default function UserProfilePage() {
                                         <div className="flex items-center justify-between p-3 border rounded">
                                             <div className="space-y-0.5">
                                                 <Label>Password</Label>
-                                                <p className="text-sm text-muted-foreground">Last changed 3 months ago.</p>
+                                                <p className="text-sm text-muted-foreground">Managed by Google Auth Provider.</p>
                                             </div>
-                                            <Button variant="outline" size="sm">Change Password</Button>
+                                            <Button variant="outline" size="sm" disabled>Change via Provider</Button>
                                         </div>
                                     </div>
                                 </TabsContent>

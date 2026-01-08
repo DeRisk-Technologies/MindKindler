@@ -2,14 +2,16 @@
 
 "use client";
 
-import React, { useState, use } from 'react';
+import React, { useState, use, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/use-permissions';
 import { PsychometricProfileChart } from '@/components/analytics/PsychometricProfileChart';
 import { SmartInterventionMapper } from '@/components/interventions/SmartInterventionMapper';
 import { LongitudinalProgressChart } from '@/components/analytics/LongitudinalProgressChart';
 import { Student360Main } from '@/components/student360/Student360Main';
-import { Shield } from 'lucide-react';
+import { Shield, Loader2 } from 'lucide-react';
+import { useFirestoreDocument } from '@/hooks/use-firestore'; // Use client-side hook
+import { StudentRecord } from "@/types/schema";
 
 // Mock Data for Assessment/Progress (Demo Purposes)
 const MOCK_SCORES = [
@@ -37,11 +39,36 @@ export default function StudentProfilePage({ params }: { params: Promise<{ id: s
     // UNWRAP PARAMS (Next.js 15 Fix)
     const { id } = use(params);
 
+    // V2 FIX: Use direct Firestore Access instead of broken Cloud Function
+    // This uses the hook which is "Shard-Aware" via context, bypassing the "Not Found" error 
+    // from the single-region Cloud Function.
+    const { data: student, loading } = useFirestoreDocument<StudentRecord>('students', id);
+
+    if (loading) {
+        return (
+            <div className="flex h-screen items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
+
+    if (!student) {
+        return (
+            <div className="p-8 text-center text-red-500 bg-red-50 rounded-lg m-8 border border-red-200">
+                <Shield className="h-12 w-12 mx-auto mb-4 opacity-50"/>
+                <h2 className="text-xl font-bold">Student Record Not Accessible</h2>
+                <p>The record could not be found in your assigned region or you lack permission.</p>
+            </div>
+        );
+    }
+
     return (
         <div className="p-8 space-y-8">
             <div className="flex justify-between items-start">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Student Profile</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+                        {student.identity?.firstName?.value || 'Student'} {student.identity?.lastName?.value || 'Profile'}
+                    </h1>
                     <p className="text-muted-foreground">System ID: {id}</p>
                 </div>
             </div>
@@ -54,7 +81,8 @@ export default function StudentProfilePage({ params }: { params: Promise<{ id: s
                 </TabsList>
 
                 <TabsContent value="identity" className="mt-0">
-                    <Student360Main studentId={id} />
+                    {/* Pass the loaded student object directly to avoid re-fetching */}
+                    <Student360Main studentId={id} initialData={student} />
                 </TabsContent>
 
                 <TabsContent value="assessment" className="mt-0 space-y-8">

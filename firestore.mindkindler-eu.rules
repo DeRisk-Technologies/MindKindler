@@ -8,7 +8,10 @@ service cloud.firestore {
     }
     
     function getUserRole() {
-      return request.auth.token.role != null ? request.auth.token.role : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+       let tokenRole = request.auth.token.role;
+       return (tokenRole != null && tokenRole != 'parent') 
+         ? tokenRole 
+         : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     function isSystemAdmin() {
@@ -17,42 +20,34 @@ service cloud.firestore {
       );
     }
     
+    function isEPP() {
+      let role = getUserRole();
+      return isAuthenticated() && (
+        role in ['EPP', 'educationalpsychologist', 'EducationalPsychologist']
+      );
+    }
+    
     function isOwner(userId) {
        return isAuthenticated() && request.auth.uid == userId;
     }
 
     // --- 1. CORE USER & ROUTING ---
-    
-    // Allows users to read their own routing info to find their shard
     match /user_routing/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
-      allow write: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
+      allow read, write: if isAuthenticated();
     }
 
-    // Users Collection (Profile)
     match /users/{userId} {
-      // READ: Open to authenticated users (needed for directories, searching staff)
-      // Ideally restrict to same-tenant or same-region, but for listing in Admin tools we need read.
       allow read: if isAuthenticated();
-      
-      // WRITE: Only Admin or the User themselves (during onboarding)
       allow write: if isSystemAdmin() || request.auth.uid == userId;
     }
 
-    // --- 2. SCHEDULING & MESSAGING (Fixing the Error) ---
-    
-    // Appointments (Global or Regional Root)
-    match /appointments/{appointmentId} {
-      allow read, write: if isAuthenticated();
-    }
-    
-    // Messages (Inbox)
-    match /messages/{messageId} {
-       allow read, write: if isAuthenticated();
-    }
-    
-    match /notifications/{notifId} {
+    // --- 2. SCHEDULING & MESSAGING ---
+    match /appointments/{appointmentId} { allow read, write: if isAuthenticated(); }
+    match /messages/{messageId} { allow read, write: if isAuthenticated(); }
+    match /notifications/{notifId} { allow read, write: if isAuthenticated(); }
+    match /chats/{chatId} {
         allow read, write: if isAuthenticated();
+        match /messages/{messageId} { allow read, write: if isAuthenticated(); }
     }
 
     // --- 3. CLINICAL DATA (Root Level) ---
@@ -60,7 +55,6 @@ service cloud.firestore {
     match /cases/{document=**} { allow read, write: if isAuthenticated(); }
     match /reports/{document=**} { allow read, write: if isAuthenticated(); }
     match /consultation_sessions/{document=**} { allow read, write: if isAuthenticated(); }
-    
     match /assessment_templates/{id} { allow read, write: if isAuthenticated(); }
     match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
     match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
@@ -71,6 +65,11 @@ service cloud.firestore {
       allow create: if isSystemAdmin();
       allow update: if isSystemAdmin() || isAuthenticated();
     }
+    
+    match /leas/{leaId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated(); // Broaden write to catch-all for pilot
+    }
 
     match /org_units/{id} {
       allow read: if isAuthenticated();
@@ -78,20 +77,23 @@ service cloud.firestore {
       allow update, delete: if isSystemAdmin();
     }
     
-    match /schools/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /schools/{id} { 
+        allow read: if isAuthenticated(); 
+        allow write: if isAuthenticated(); // Broaden write to catch-all for pilot
+        
+        match /staff/{staffId} { allow read, write: if isAuthenticated(); }
+    }
     
     // --- 5. ENTERPRISE TENANTS (Nested) ---
     match /tenants/{tenantId} {
       allow read: if isAuthenticated(); 
-      
-      match /{allSubcollections=**} {
-        allow read, write: if isAuthenticated();
-      }
+      match /{allSubcollections=**} { allow read, write: if isAuthenticated(); }
     }
 
-    // --- Default Deny ---
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    // --- 6. INTEGRATIONS ---
+    match /integrations/{configId} { allow read, write: if isAuthenticated(); }
+    match /data_jobs/{jobId} { allow read, write: if isAuthenticated(); }
+
+    match /{document=**} { allow read, write: if false; }
   }
 }

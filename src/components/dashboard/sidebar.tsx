@@ -43,7 +43,9 @@ import {
   CheckCircle2,
   FileCheck,
   Search,
-  Building
+  Building,
+  Plug,
+  UserCircle
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -87,7 +89,7 @@ export function DashboardSidebar() {
           <SidebarGroupLabel>Clinical Workspace</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname === "/dashboard"} tooltip="Overview">
+              <SidebarMenuButton asChild isActive={isActive("/dashboard")} tooltip="Overview">
                 <Link href="/dashboard"><LayoutDashboard /><span>Overview</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -120,6 +122,14 @@ export function DashboardSidebar() {
                             <Link href="/dashboard/students?tab=parents"><span>Parents & Guardians</span></Link>
                         </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
+                        
+                        {/* Consultation Link - ADDED as per Request #2 */}
+                        <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isActive("/dashboard/consultations")}>
+                                <Link href="/dashboard/consultations"><span>Consultations</span></Link>
+                            </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        
                     </SidebarMenuSub>
                     </CollapsibleContent>
                 </SidebarMenuItem>
@@ -186,6 +196,20 @@ export function DashboardSidebar() {
                         <SidebarMenuButton asChild isActive={isActive("/dashboard/practice/team")} tooltip="My Team">
                             <Link href="/dashboard/practice/team">
                                 <Briefcase className="text-indigo-600" /><span>Practice Team</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/practice/verifications")} tooltip="Verifications">
+                            <Link href="/dashboard/practice/verifications">
+                                <CheckCircle2 className="text-indigo-600" /><span>Verification Queue</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                     <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/settings/integrations")} tooltip="Integrations">
+                            <Link href="/dashboard/settings/integrations">
+                                <Plug className="text-indigo-600" /><span>Integrations</span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -362,6 +386,11 @@ export function DashboardSidebar() {
                                  <SidebarMenuSubItem>
                                      <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/profile")}>
                                          <Link href="/dashboard/settings/profile"><span>Profile</span></Link>
+                                     </SidebarMenuSubButton>
+                                 </SidebarMenuSubItem>
+                                 <SidebarMenuSubItem>
+                                     <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/account")}>
+                                         <Link href="/dashboard/settings/account"><UserCircle className="h-4 w-4 mr-2"/><span>Account</span></Link>
                                      </SidebarMenuSubButton>
                                  </SidebarMenuSubItem>
                              </SidebarMenuSub>

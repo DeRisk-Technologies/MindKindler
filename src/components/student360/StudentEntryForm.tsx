@@ -13,10 +13,9 @@ import { useSchemaExtensions } from '@/hooks/use-schema-extensions';
 import { DynamicFormField } from '@/components/ui/dynamic-form-field';
 import { Student360Service } from '@/services/student360-service'; 
 import { useAuth } from '@/hooks/use-auth';
-import { usePermissions } from '@/hooks/use-permissions'; // Import for Shard ID
-import { useFirestoreCollection } from '@/hooks/use-firestore'; // Import hook
+import { usePermissions } from '@/hooks/use-permissions'; 
+import { useFirestoreCollection } from '@/hooks/use-firestore'; 
 
-// Default values structure
 const defaultValues = {
   identity: {
     firstName: { value: '', metadata: { source: 'manual', verified: false } },
@@ -32,7 +31,7 @@ const defaultValues = {
   family: {
     parents: []
   },
-  extensions: {}, // Dynamic bucket
+  extensions: {}, 
   health: { 
       allergies: { value: [], metadata: { source: 'manual', verified: false } },
       conditions: { value: [], metadata: { source: 'manual', verified: false } },
@@ -45,11 +44,9 @@ export function StudentEntryForm() {
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useAuth();
-  const { shardId } = usePermissions(); // Get active shard
+  const { shardId } = usePermissions(); 
   
-  // Fetch Schools from Regional Shard
   const { data: schools, loading: loadingSchools } = useFirestoreCollection('schools', 'name', 'asc');
-
   const { config: schemaConfig, loading: loadingExtensions } = useSchemaExtensions();
 
   const form = useForm({
@@ -57,14 +54,28 @@ export function StudentEntryForm() {
   });
 
   const onSubmit = async (data: any) => {
-    // FALLBACK LOGIC: 
-    const tenantId = (user as any)?.tenantId || (user?.email?.includes('admin') ? 'default' : null);
+    // FIX: Fallback logic for Tenant ID
+    // 1. Try User's Claims
+    // 2. Try LocalStorage (dev mode fallback)
+    // 3. Try Default if admin
+    let tenantId = (user as any)?.tenantId;
+    
+    // DEV/PILOT FIX: If EPP created manually without claim refresh, assume they own their own tenant derived from UID or check session
+    if (!tenantId) {
+        // HACK for Demo: Check if user is an EPP and assign a dummy tenant ID matching their UID if missing
+        if ((user as any)?.role === 'EPP') {
+            tenantId = `practice_${user?.uid}`;
+            console.warn(`[StudentEntry] Using inferred TenantID: ${tenantId}`);
+        } else if (user?.email?.includes('admin')) {
+            tenantId = 'default';
+        }
+    }
 
     if (!tenantId) {
         toast({
             variant: "destructive",
             title: "Configuration Error",
-            description: "No Tenant Context found. Cannot create record."
+            description: "No Tenant Context found. Please re-login or check your practice settings."
         });
         return;
     }
@@ -74,7 +85,6 @@ export function StudentEntryForm() {
     try {
         console.log(`Submitting Student Record to tenant: ${tenantId}, Shard: ${shardId}`);
 
-        // Prepare Payload for Service
         const studentData = {
             identity: data.identity,
             education: data.education,
@@ -88,7 +98,7 @@ export function StudentEntryForm() {
             studentData as any, 
             data.family.parents, 
             user?.uid || 'system',
-            shardId || 'default' // Pass Shard ID
+            shardId || 'default' 
         );
         
         toast({
@@ -128,7 +138,6 @@ export function StudentEntryForm() {
             </div>
             <div className="flex gap-2">
                 <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-                {/* Bind handleSubmit with both Success and Error handlers */}
                 <Button onClick={form.handleSubmit(onSubmit, onError)} disabled={isSubmitting}>
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                     Create Record

@@ -21,17 +21,22 @@ import { ProvenanceBadge } from "./ProvenanceBadge";
 
 interface Student360MainProps {
   studentId: string;
+  initialData?: StudentRecord; // FIX: Accept pre-loaded data
 }
 
-export function Student360Main({ studentId }: Student360MainProps) {
-  const [student, setStudent] = useState<StudentRecord | null>(null);
-  const [loading, setLoading] = useState(true);
+export function Student360Main({ studentId, initialData }: Student360MainProps) {
+  const [student, setStudent] = useState<StudentRecord | null>(initialData || null);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialData) return; // Skip if data provided
+
     async function loadData() {
       try {
         setLoading(true);
+        // Fallback to Service Call (which might use Cloud Function or Direct)
+        // Given the Pilot issues with Cloud Functions, prefer props
         const data = await Student360Service.getStudent(studentId, 'Dashboard View');
         setStudent(data);
       } catch (err: any) {
@@ -42,11 +47,15 @@ export function Student360Main({ studentId }: Student360MainProps) {
       }
     }
     loadData();
-  }, [studentId]);
+  }, [studentId, initialData]);
 
   if (loading) return <div className="flex h-96 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (error) return <div className="p-8 text-center text-red-500 bg-red-50 rounded-lg border border-red-200">{error}</div>;
   if (!student) return <div className="p-8 text-center">Student not found.</div>;
+
+  // Helper for safe access
+  const safeVal = (obj: any, path: string) => obj?.[path]?.value || obj?.[path] || 'N/A';
+  const getParents = () => student.family?.parents || [];
 
   return (
     <div className="space-y-6">
@@ -55,15 +64,15 @@ export function Student360Main({ studentId }: Student360MainProps) {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             {student.identity.firstName.value} {student.identity.lastName.value}
-            <Badge variant={student.meta.privacyLevel === 'restricted' ? 'destructive' : 'outline'} className="text-xs">
-               {student.meta.privacyLevel === 'restricted' ? <Shield className="h-3 w-3 mr-1" /> : null}
-               {student.meta.privacyLevel.toUpperCase()} PRIVACY
+            <Badge variant={student.meta?.privacyLevel === 'restricted' ? 'destructive' : 'outline'} className="text-xs">
+               {student.meta?.privacyLevel === 'restricted' ? <Shield className="h-3 w-3 mr-1" /> : null}
+               {student.meta?.privacyLevel?.toUpperCase() || 'STANDARD'} PRIVACY
             </Badge>
           </h1>
           <p className="text-muted-foreground">
              ID: <span className="font-mono text-xs">{student.identity.nationalId?.value || 'N/A'}</span> • 
              DOB: {student.identity.dateOfBirth.value} • 
-             Trust Score: <span className={student.meta.trustScore > 80 ? 'text-green-600 font-bold' : 'text-orange-600'}>{student.meta.trustScore}%</span>
+             Trust Score: <span className={(student.meta?.trustScore || 0) > 80 ? 'text-green-600 font-bold' : 'text-orange-600'}>{student.meta?.trustScore || 0}%</span>
           </p>
         </div>
         <div className="flex gap-2">
@@ -120,9 +129,9 @@ export function Student360Main({ studentId }: Student360MainProps) {
                        <span className="text-muted-foreground">School:</span>
                        <span>{student.education.currentSchoolId?.value || 'Unknown'}</span>
                        <span className="text-muted-foreground">Year Group:</span>
-                       <span>{student.education.yearGroup?.value}</span>
+                       <span>{student.education.yearGroup?.value || 'N/A'}</span>
                        <span className="text-muted-foreground">Attendance:</span>
-                       <span>{student.education.attendancePercentage?.value}%</span>
+                       <span>{student.education.attendancePercentage?.value || 0}%</span>
                     </div>
                  </CardContent>
               </Card>
@@ -138,8 +147,7 @@ export function Student360Main({ studentId }: Student360MainProps) {
                  <CardContent className="text-sm">
                     {student.discipline && student.discipline.length > 0 ? (
                         <ul className="list-disc pl-4 space-y-1">
-                           {/* FIXED: Added index fallback for key */}
-                           {student.discipline.slice(0, 3).map((d, index) => (
+                           {student.discipline.slice(0, 3).map((d: any, index: number) => (
                                <li key={d.id || index} className="text-orange-700">{d.type} ({d.severity})</li>
                            ))}
                         </ul>
@@ -161,8 +169,8 @@ export function Student360Main({ studentId }: Student360MainProps) {
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
-                        {/* FIXED: Added index fallback for key */}
-                        {student.family.parents.map((parent, index) => (
+                        {getParents().length === 0 && <p className="text-muted-foreground">No parent records found.</p>}
+                        {getParents().map((parent: any, index: number) => (
                             <div key={parent.id || index} className="flex justify-between items-start p-3 border rounded-lg bg-gray-50">
                                 <div>
                                     <p className="font-semibold">{parent.firstName} {parent.lastName}</p>
@@ -192,8 +200,7 @@ export function Student360Main({ studentId }: Student360MainProps) {
                     <CardContent>
                         <p className="text-sm text-purple-900 mb-2">Looked After Status: <strong>{student.careHistory.isLookedAfter ? 'Yes' : 'No'}</strong></p>
                         <div className="space-y-2">
-                            {/* FIXED: Added index fallback for key */}
-                            {student.careHistory.placements.map((p, index) => (
+                            {student.careHistory.placements.map((p: any, index: number) => (
                                 <div key={p.id || index} className="bg-white p-2 rounded border border-purple-100 text-sm">
                                     {p.agencyName} ({p.startDate} - {p.endDate || 'Present'})
                                 </div>
@@ -212,16 +219,14 @@ export function Student360Main({ studentId }: Student360MainProps) {
                         <div>
                             <h4 className="font-semibold mb-2 flex items-center gap-2"><Activity className="h-4 w-4"/> Allergies</h4>
                             <div className="flex flex-wrap gap-2">
-                                {/* FIXED: Added index fallback for key */}
-                                {student.health.allergies.value.map((a, i) => <Badge key={i} variant="outline">{a}</Badge>)}
-                                {student.health.allergies.value.length === 0 && <span className="text-muted-foreground text-sm">None recorded</span>}
+                                {student.health?.allergies?.value?.map((a: string, i: number) => <Badge key={i} variant="outline">{a}</Badge>)}
+                                {(!student.health?.allergies?.value || student.health.allergies.value.length === 0) && <span className="text-muted-foreground text-sm">None recorded</span>}
                             </div>
                         </div>
                         <div>
                              <h4 className="font-semibold mb-2">Conditions</h4>
                              <div className="flex flex-wrap gap-2">
-                                {/* FIXED: Added index fallback for key */}
-                                {student.health.conditions.value.map((c, i) => <Badge key={i} variant="destructive" className="opacity-80">{c}</Badge>)}
+                                {student.health?.conditions?.value?.map((c: string, i: number) => <Badge key={i} variant="destructive" className="opacity-80">{c}</Badge>)}
                             </div>
                         </div>
                      </div>

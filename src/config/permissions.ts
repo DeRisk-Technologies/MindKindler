@@ -66,7 +66,9 @@ export const RBAC_MATRIX: RolePermissions = {
         'access_marketplace',
         'access_community',
         'view_gov_intel', // Intelligence access
-        'manage_data_ingestion' // Ability to import student lists
+        'manage_data_ingestion', // Ability to import student lists
+        'view_staff_scr', // Added for Pilot: EPPs need to check staff credentials (SCR)
+        'edit_staff_scr'  // Added for Pilot: EPPs managing their own practice staff
     ],
     Assistant: [ 
         'view_psychometrics', 

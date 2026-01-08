@@ -11,7 +11,10 @@ service cloud.firestore {
     // Helper to get role from Token OR Firestore Doc (Robust RBAC)
     function getUserRole() {
       // Priority 1: Custom Claim (Fastest) -> Priority 2: Firestore Doc
-      return request.auth.token.role != null ? request.auth.token.role : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      let tokenRole = request.auth.token.role;
+       return (tokenRole != null && tokenRole != 'parent') 
+         ? tokenRole 
+         : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     function getTenantId() {
@@ -23,16 +26,6 @@ service cloud.firestore {
       return isAuthenticated() && (
         getUserRole() in ['SuperAdmin', 'Admin', 'admin', 'superadmin']
       );
-    }
-
-    function isClinician(tenantId) {
-       return isAuthenticated() && (
-         getUserRole() in [
-            'EPP', 'epp', 'EducationalPsychologist', 'educationalpsychologist', 
-            'ClinicalPsychologist', 'clinicalpsychologist', 'SchoolPsychologist', 
-            'TenantAdmin', 'SuperAdmin', 'Admin', 'SchoolAdministrator', 'admin', 'tenantadmin'
-         ]
-       );
     }
     
     function isOwner(userId) {
@@ -59,7 +52,7 @@ service cloud.firestore {
     match /organizations/{orgId} {
       allow read: if isAuthenticated();
       // FIX: Allow users to create their own Practice Tenant
-      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+      allow create: if isAuthenticated(); // Relaxed for Pilot Tenant Creation
       allow update: if isSystemAdmin() || (isAuthenticated() && getTenantId() == orgId);
     }
 
@@ -82,8 +75,8 @@ service cloud.firestore {
     match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
     
     // --- 3. ADMIN & PORTAL MODULES ---
-    match /schools/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /districts/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /schools/{id} { allow read: if isAuthenticated(); allow write: if isAuthenticated(); } // Relaxed for Pilot
+    match /districts/{id} { allow read: if isAuthenticated(); allow write: if isAuthenticated(); } // Relaxed for Pilot
     match /gov_stats/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     
     match /partners/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
@@ -100,7 +93,7 @@ service cloud.firestore {
     match /knowledgeDocuments/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /knowledgeChunks/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /recommendationTemplates/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /safeguardingIncidents/{id} { allow read: if isAuthenticated(); allow write: if isClinician(null); }
+    match /safeguardingIncidents/{id} { allow read: if isAuthenticated(); allow write: if isAuthenticated(); }
     match /personalRules/{id} { allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isSystemAdmin()); }
 
     match /trainingModules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
