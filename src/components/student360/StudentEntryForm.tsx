@@ -13,6 +13,8 @@ import { useSchemaExtensions } from '@/hooks/use-schema-extensions';
 import { DynamicFormField } from '@/components/ui/dynamic-form-field';
 import { Student360Service } from '@/services/student360-service'; 
 import { useAuth } from '@/hooks/use-auth';
+import { usePermissions } from '@/hooks/use-permissions'; // Import for Shard ID
+import { useFirestoreCollection } from '@/hooks/use-firestore'; // Import hook
 
 // Default values structure
 const defaultValues = {
@@ -43,7 +45,11 @@ export function StudentEntryForm() {
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { shardId } = usePermissions(); // Get active shard
   
+  // Fetch Schools from Regional Shard
+  const { data: schools, loading: loadingSchools } = useFirestoreCollection('schools', 'name', 'asc');
+
   const { config: schemaConfig, loading: loadingExtensions } = useSchemaExtensions();
 
   const form = useForm({
@@ -51,8 +57,7 @@ export function StudentEntryForm() {
   });
 
   const onSubmit = async (data: any) => {
-    // FALLBACK LOGIC: Same as Marketplace. 
-    // If Admin has no tenantId, default to 'default' to allow creation.
+    // FALLBACK LOGIC: 
     const tenantId = (user as any)?.tenantId || (user?.email?.includes('admin') ? 'default' : null);
 
     if (!tenantId) {
@@ -67,7 +72,7 @@ export function StudentEntryForm() {
     setIsSubmitting(true);
     
     try {
-        console.log("Submitting Student Record to tenant:", tenantId);
+        console.log(`Submitting Student Record to tenant: ${tenantId}, Shard: ${shardId}`);
 
         // Prepare Payload for Service
         const studentData = {
@@ -75,14 +80,15 @@ export function StudentEntryForm() {
             education: data.education,
             family: data.family,
             health: data.health,
-            extensions: data.extensions // Passing the Country OS fields (UPN etc)
+            extensions: data.extensions 
         };
 
         const studentId = await Student360Service.createStudentWithParents(
             tenantId, 
             studentData as any, 
             data.family.parents, 
-            user?.uid || 'system'
+            user?.uid || 'system',
+            shardId || 'default' // Pass Shard ID
         );
         
         toast({
@@ -104,7 +110,6 @@ export function StudentEntryForm() {
     }
   };
 
-  // Debug: Log validation errors if submission fails
   const onError = (errors: any) => {
       console.error("Form Validation Failed:", errors);
       toast({
@@ -239,11 +244,20 @@ export function StudentEntryForm() {
                                                 <FormLabel>Current School</FormLabel>
                                                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                                                     <FormControl>
-                                                        <SelectTrigger><SelectValue placeholder="Select School" /></SelectTrigger>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder={loadingSchools ? "Loading schools..." : "Select School"} />
+                                                        </SelectTrigger>
                                                     </FormControl>
                                                     <SelectContent>
-                                                        <SelectItem value="school-1">Springfield Elementary</SelectItem>
-                                                        <SelectItem value="school-2">West High</SelectItem>
+                                                        {schools.length === 0 ? (
+                                                            <SelectItem value="none" disabled>No schools found</SelectItem>
+                                                        ) : (
+                                                            schools.map((school: any) => (
+                                                                <SelectItem key={school.id} value={school.id}>
+                                                                    {school.name}
+                                                                </SelectItem>
+                                                            ))
+                                                        )}
                                                     </SelectContent>
                                                 </Select>
                                                 <FormMessage />

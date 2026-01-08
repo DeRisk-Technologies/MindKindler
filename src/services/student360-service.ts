@@ -6,7 +6,7 @@ import {
   ProvenanceMetadata,
   ProvenanceField
 } from '@/types/schema';
-import { db, functions } from '@/lib/firebase'; // FIXED: Using 'functions' instance from lib/firebase
+import { db, functions, getRegionalDb } from '@/lib/firebase'; // FIXED: Using 'functions' instance from lib/firebase
 import { 
   collection, 
   doc, 
@@ -18,7 +18,8 @@ import {
   getDocs, 
   runTransaction,
   serverTimestamp,
-  addDoc
+  addDoc,
+  Firestore
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 
@@ -45,15 +46,25 @@ export class Student360Service {
 
   /**
    * Create a Student and associated Parents in a single atomic transaction.
+   * Region-Aware for Sharding.
    */
   static async createStudentWithParents(
     tenantId: string,
     studentData: Omit<StudentRecord, 'id' | 'meta' | 'tenantId'>,
     parentsData: Omit<ParentRecord, 'id' | 'tenantId'>[],
-    createdBy: string
+    createdBy: string,
+    shardId: string = 'default'
   ): Promise<string> {
+    
+    // Resolve Target Database
+    let targetDb: Firestore = db;
+    if (shardId !== 'default') {
+        const region = shardId.replace('mindkindler-', '');
+        targetDb = getRegionalDb(region);
+    }
+
     const studentId = crypto.randomUUID();
-    const studentRef = doc(db, this.STUDENT_COLLECTION, studentId);
+    const studentRef = doc(targetDb, this.STUDENT_COLLECTION, studentId);
     
     // Calculate initial scores
     const trustScore = this.calculateTrustScore(studentData);
@@ -70,19 +81,19 @@ export class Student360Service {
         updatedAt: now,
         updatedBy: createdBy,
         trustScore,
-        completenessScore: 0, // Todo: Implement completeness logic
+        completenessScore: 0, 
         privacyLevel: 'standard'
       }
     };
 
-    await runTransaction(db, async (transaction) => {
+    await runTransaction(targetDb, async (transaction) => {
       // 1. Create Student
       transaction.set(studentRef, studentRecord);
 
       // 2. Create Parents (as subcollection)
       for (const parent of parentsData) {
         const parentId = crypto.randomUUID();
-        const parentRef = doc(db, this.STUDENT_COLLECTION, studentId, this.PARENT_COLLECTION, parentId);
+        const parentRef = doc(targetDb, this.STUDENT_COLLECTION, studentId, this.PARENT_COLLECTION, parentId);
         
         const parentRecord: ParentRecord = {
           ...parent,
@@ -96,7 +107,7 @@ export class Student360Service {
       // 3. Generate Initial Verification Tasks
       const tasks = this.generateInitialVerificationTasks(studentId, studentRecord, parentsData);
       for (const task of tasks) {
-        const taskRef = doc(collection(db, this.STUDENT_COLLECTION, studentId, this.TASK_COLLECTION));
+        const taskRef = doc(collection(targetDb, this.STUDENT_COLLECTION, studentId, this.TASK_COLLECTION));
         transaction.set(taskRef, task);
       }
     });
@@ -111,11 +122,19 @@ export class Student360Service {
     studentId: string, 
     fieldPath: string, 
     verifierId: string,
-    evidenceRef?: string
+    evidenceRef?: string,
+    shardId: string = 'default'
   ): Promise<void> {
-    const studentRef = doc(db, this.STUDENT_COLLECTION, studentId);
     
-    await runTransaction(db, async (transaction) => {
+    let targetDb: Firestore = db;
+    if (shardId !== 'default') {
+        const region = shardId.replace('mindkindler-', '');
+        targetDb = getRegionalDb(region);
+    }
+
+    const studentRef = doc(targetDb, this.STUDENT_COLLECTION, studentId);
+    
+    await runTransaction(targetDb, async (transaction) => {
       const snapshot = await transaction.get(studentRef);
       if (!snapshot.exists()) throw new Error("Student not found");
       

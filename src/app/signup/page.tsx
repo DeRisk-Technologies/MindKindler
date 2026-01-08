@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -21,11 +22,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Logo } from "@/components/logo";
-import { auth, db, getRegionalDb } from "@/lib/firebase"; // Import Regional DB Loader
+import { auth, db, getRegionalDb } from "@/lib/firebase"; 
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Briefcase } from "lucide-react";
 
 export const dynamic = 'force-dynamic';
 
@@ -56,17 +57,12 @@ export default function SignupPage() {
   const { toast } = useToast();
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("");
-  const [regNumber, setRegNumber] = useState("");
-
-  // Helper to determine label for registration number
-  const getRegLabel = () => {
-      const r = selectedRole.toLowerCase();
-      if (r.includes("psychologist")) return "HCPC / License Number";
-      if (r.includes("school")) return "URN / School ID";
-      return "Registration / Employee ID";
-  };
   
-  const showRegField = ["educationalpsychologist", "clinicalpsychologist", "schooladministrator", "localeducationauthority"].includes(selectedRole.toLowerCase());
+  // Independent Practice Logic
+  const [isIndependent, setIsIndependent] = useState(false);
+  const [practiceName, setPracticeName] = useState("");
+
+  const isClinician = selectedRole.toLowerCase().includes("psychologist");
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,66 +73,85 @@ export default function SignupPage() {
     const lastName = formData.get("lastName") as string;
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
+    const hcpc = formData.get("hcpc") as string; // Capture Registration Number
     
-    // Validate Selects
-    if (!selectedRole) {
-       toast({ title: "Role required", description: "Please select a role.", variant: "destructive" });
+    if (!selectedRole || !selectedRegion) {
+       toast({ title: "Incomplete Form", description: "Role and Region are required.", variant: "destructive" });
        setIsLoading(false);
        return;
     }
-    if (!selectedRegion) {
-        toast({ title: "Region required", description: "Please select your data residency region.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-    }
 
     try {
-      // 1. Create Auth User (Global Identity)
+      // 1. Create Auth User
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      await updateProfile(user, {
-        displayName: `${firstName} ${lastName}`,
-      });
+      await updateProfile(user, { displayName: `${firstName} ${lastName}` });
 
-      // 2. Strict Data Sovereignty Logic
-      // Step A: Write NON-PII Routing Info to Global DB
-      // This allows the login process to find "Where is this user's data?"
+      // 2. Determine Tenant Context
+      let tenantId = "pending";
+      let tenantName = "Pending Assignment";
+
+      // Logic: If Independent Practitioner, create a "Practice Tenant" immediately
+      if (isClinician && isIndependent && practiceName) {
+          // Generate a clean tenant slug
+          const slug = practiceName.toLowerCase().replace(/[^a-z0-9]/g, '-') + `-${selectedRegion}`;
+          tenantId = slug;
+          tenantName = practiceName;
+
+          // Create Organization in Global DB (Control Plane)
+          await setDoc(doc(db, "organizations", tenantId), {
+              id: tenantId,
+              name: practiceName,
+              type: "PrivatePractice",
+              region: selectedRegion,
+              ownerId: user.uid,
+              createdAt: serverTimestamp(),
+              subscription: { status: 'trial', plan: 'pro_monthly' }
+          });
+      }
+
+      // 3. Global Routing (Default DB)
       await setDoc(doc(db, "user_routing", user.uid), {
           uid: user.uid,
           region: selectedRegion,
-          shardId: `mindkindler-${selectedRegion}`, // Convention
-          email: user.email, // Needed for routing/recovery, generally acceptable
-          role: selectedRole, // Useful for global routing checks without touching PII
+          shardId: `mindkindler-${selectedRegion}`,
+          email: user.email,
+          role: selectedRole, // Cache role for fast routing
           createdAt: serverTimestamp()
       });
 
-      // Step B: Write FULL PII Profile to Regional Shard
-      // This ensures names/roles/verification never live in the wrong jurisdiction.
+      // 4. Regional Profile (Shard)
       const regionalDb = getRegionalDb(selectedRegion);
       
       await setDoc(doc(regionalDb, "users", user.uid), {
         uid: user.uid,
         email: user.email,
-        firstName: firstName, 
-        lastName: lastName,
+        firstName, 
+        lastName,
         displayName: `${firstName} ${lastName}`,
         role: selectedRole,
         region: selectedRegion, 
-        tenantId: "pending", // Independent tenants start as their own pending tenant
+        tenantId: tenantId, // Assigned immediately if Independent
+        isPracticeOwner: isIndependent, // Flag for UI logic
+        
+        // Trust Engine: Capture registration number immediately
+        extensions: {
+            registration_number: hcpc,
+            practice_name: practiceName
+        },
         verification: { 
             status: 'pending',
-            hcpcNumber: regNumber || null // Store the captured ID
+            hcpcNumber: hcpc // Store in canonical verification field too
         }, 
-        extensions: {
-            registration_number: regNumber || null
-        },
         createdAt: serverTimestamp(),
       });
 
       toast({
         title: "Account created",
-        description: "Welcome to MindKindler! Your account is pending verification.",
+        description: isIndependent 
+            ? `Welcome! Your practice "${practiceName}" is ready.` 
+            : "Welcome! Please wait for Admin approval.",
       });
 
       router.push("/dashboard");
@@ -180,13 +195,7 @@ export default function SignupPage() {
 
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="m@example.com"
-                required
-              />
+              <Input id="email" name="email" type="email" placeholder="m@example.com" required />
             </div>
             
             <div className="grid gap-2">
@@ -194,49 +203,69 @@ export default function SignupPage() {
               <Input id="password" name="password" type="password" required />
             </div>
 
-            <div className="grid gap-2">
-                <Label htmlFor="region">Data Residency Region</Label>
-                <Select onValueChange={setSelectedRegion} required>
-                    <SelectTrigger id="region">
-                        <SelectValue placeholder="Select Region (GDPR Compliance)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {regions.map((r) => (
-                            <SelectItem key={r.code} value={r.code}>{r.label}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-                <p className="text-[10px] text-muted-foreground">Your data will be stored physically in this jurisdiction.</p>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="region">Region</Label>
+                    <Select onValueChange={setSelectedRegion} required>
+                        <SelectTrigger id="region">
+                            <SelectValue placeholder="Select..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {regions.map((r) => <SelectItem key={r.code} value={r.code}>{r.label}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="role">Role</Label>
+                    <Select onValueChange={setSelectedRole} required>
+                        <SelectTrigger id="role">
+                            <SelectValue placeholder="Select..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {roles.map((role) => (
+                                <SelectItem key={role} value={role.toLowerCase()}>
+                                    {role.replace(/([A-Z])/g, " $1").trim()}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="role">Your Role</Label>
-              <Select onValueChange={setSelectedRole} required>
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="Select your role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role} value={role.toLowerCase()}>
-                      {role.replace(/([A-Z])/g, " $1").trim()}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Independent Practice Logic */}
+            {isClinician && (
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                    <div className="flex items-center space-x-2">
+                        <Checkbox 
+                            id="independent" 
+                            checked={isIndependent} 
+                            onCheckedChange={(checked) => setIsIndependent(checked as boolean)}
+                        />
+                        <Label htmlFor="independent" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                            I am an Independent Practitioner
+                        </Label>
+                    </div>
 
-            {/* Dynamic Registration Number Field */}
-            {showRegField && (
-                <div className="grid gap-2 animate-in fade-in slide-in-from-top-2">
-                    <Label htmlFor="regNumber" className="text-primary font-semibold">{getRegLabel()}</Label>
-                    <Input 
-                        id="regNumber" 
-                        value={regNumber} 
-                        onChange={(e) => setRegNumber(e.target.value)} 
-                        placeholder="Required for verification"
-                        required 
-                    />
-                    <p className="text-[10px] text-muted-foreground">This will be verified against the official register.</p>
+                    {isIndependent && (
+                        <div className="space-y-2">
+                            <Label htmlFor="practiceName" className="flex items-center gap-2">
+                                <Briefcase className="h-3 w-3" /> Practice Name
+                            </Label>
+                            <Input 
+                                id="practiceName" 
+                                value={practiceName}
+                                onChange={(e) => setPracticeName(e.target.value)}
+                                placeholder="e.g. Martha Springfield Psychology" 
+                                required 
+                            />
+                            <p className="text-[10px] text-muted-foreground">This will be your dedicated workspace.</p>
+                        </div>
+                    )}
+
+                    <div className="space-y-2">
+                        <Label htmlFor="hcpc">Registration Number (e.g. HCPC)</Label>
+                        <Input id="hcpc" name="hcpc" placeholder="Reg Number" />
+                    </div>
                 </div>
             )}
 

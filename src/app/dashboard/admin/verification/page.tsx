@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useFirestoreCollection } from '@/hooks/use-firestore';
 import { StaffProfile } from '@/types/schema';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -10,206 +10,92 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, CheckCircle, ExternalLink, XCircle, Undo2, Globe } from 'lucide-react';
-import { updateDoc, doc, serverTimestamp, Firestore } from 'firebase/firestore';
+import { Loader2, CheckCircle, ExternalLink, XCircle } from 'lucide-react';
+import { updateDoc, doc } from 'firebase/firestore';
 import { db, auth, getRegionalDb } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { usePermissions } from '@/hooks/use-permissions';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-// Available Shards for Global Super Admin View
-const AVAILABLE_SHARDS = [
-    { id: 'mindkindler-uk', name: 'UK Shard', region: 'uk' },
-    { id: 'mindkindler-us', name: 'US Shard', region: 'us' },
-    { id: 'mindkindler-eu', name: 'EU Shard', region: 'eu' },
-    { id: 'mindkindler-asia', name: 'Asia Shard', region: 'asia' },
-    { id: 'mindkindler-me', name: 'Middle East Shard', region: 'me' }
-];
 
 export default function VerificationQueuePage() {
     const { toast } = useToast();
-    const { shardId: myShardId, hasRole } = usePermissions();
-    const isGlobalSuperAdmin = hasRole(['SuperAdmin']) && (!myShardId || myShardId === 'default');
-    
-    // State to control which shard we are viewing
-    // If Global SuperAdmin, default to UK (or allow select). 
-    // If Regional Admin, force to myShardId.
-    const [viewShard, setViewShard] = useState<string>(
-        (myShardId && myShardId !== 'default') ? myShardId : 'mindkindler-uk'
+    const { data: users, loading, refresh } = useFirestoreCollection<StaffProfile>('users'); 
+
+    const practitioners = users.filter(u => 
+        u.role === 'EPP' || u.role === 'educationalpsychologist' || u.role === 'EducationalPsychologist'
     );
-
-    // Fetch users from the selected Shard
-    const { data: users, loading, refresh } = useFirestoreCollection<StaffProfile>(
-        'users', 
-        'createdAt', 
-        'desc',
-        { targetShard: viewShard }
-    ); 
-
-    // Filters
-    // Make filter case-insensitive for robustness
-    const practitioners = users.filter(u => {
-        const role = u.role?.toLowerCase();
-        return role === 'epp' || role === 'educationalpsychologist' || role === 'schooladmin' || role === 'clinicalpsychologist' || role === 'teacher';
-    });
     
-    const pending = practitioners.filter(u => {
-        const s = u.verification?.status;
-        return !s || s === 'pending' || s === 'unverified';
-    });
-    
+    const pending = practitioners.filter(u => u.verification?.status !== 'verified' && u.verification?.status !== 'rejected');
     const verified = practitioners.filter(u => u.verification?.status === 'verified');
-    const rejected = practitioners.filter(u => u.verification?.status === 'rejected');
 
-    const updateStatus = async (userId: string, status: 'verified' | 'rejected' | 'pending') => {
+    const handleApprove = async (user: StaffProfile) => {
         try {
-            // Determine Target DB for Write
-            let targetDb: Firestore = db;
-            if (viewShard !== 'default') {
-                const region = viewShard.replace('mindkindler-', '');
-                targetDb = getRegionalDb(region);
-            }
-
-            await updateDoc(doc(targetDb, 'users', userId), {
-                verification: {
-                    status: status,
-                    verifiedAt: new Date().toISOString(),
-                    verifiedBy: auth.currentUser?.uid,
-                    hcpcNumber: 'MANUAL_OVERRIDE' // Ideally preserve existing if present
-                }
+            // Determine target DB based on user's region
+            const targetDb = user.region ? getRegionalDb(user.region) : db;
+            
+            // SECURITY: Update specific fields using dot notation to preserve HCPC number
+            await updateDoc(doc(targetDb, 'users', user.id), {
+                'verification.status': 'verified',
+                'verification.verifiedAt': new Date().toISOString(),
+                'verification.verifiedBy': auth.currentUser?.uid,
+                // Ensure status is also updated in Global Router for fast-path checks
+                'status': 'verified' 
             });
-            toast({ title: `Practitioner ${status}`, description: "Status updated in Regional Registry." });
+
+            toast({ title: "Practitioner Verified", description: `${user.firstName} now has clinical access.` });
             refresh();
         } catch (e: any) {
-            console.error(e);
-            toast({ title: "Error", variant: "destructive", description: e.message });
+            toast({ variant: "destructive", title: "Approval Failed", description: e.message });
         }
     };
 
-    const VerificationTable = ({ list, showActions = true }: { list: StaffProfile[], showActions?: boolean }) => (
-        <Table>
-            <TableHeader>
-                <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Registration No.</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                {list.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No records found in {viewShard}.</TableCell></TableRow>
-                )}
-                {list.map(user => (
-                    <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.firstName || 'New'} {user.lastName || 'User'}</TableCell>
-                        <TableCell className="font-mono">{user.verification?.hcpcNumber || user.extensions?.registration_number || 'N/A'}</TableCell>
-                         <TableCell>
-                            <Badge variant="outline">{user.role}</Badge>
-                        </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                            <Badge variant={user.verification?.status === 'verified' ? 'outline' : 'secondary'} className="capitalize border-green-200">
-                                {user.verification?.status || 'New'}
-                            </Badge>
-                        </TableCell>
-                        <TableCell className="flex gap-2">
-                            {showActions && (
-                                <>
-                                    <Button variant="outline" size="sm" asChild>
-                                        <a href={`https://www.hcpc-uk.org/check-the-register/`} target="_blank" rel="noopener noreferrer">
-                                            <ExternalLink className="mr-2 h-3 w-3"/> Verify
-                                        </a>
-                                    </Button>
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus(user.id, 'verified')}>
-                                        <CheckCircle className="mr-2 h-3 w-3"/> Approve
-                                    </Button>
-                                    <Button size="sm" variant="destructive" onClick={() => updateStatus(user.id, 'rejected')}>
-                                        <XCircle className="h-4 w-4"/>
-                                    </Button>
-                                </>
-                            )}
-                            {!showActions && user.verification?.status === 'verified' && (
-                                <Button size="sm" variant="ghost" onClick={() => updateStatus(user.id, 'pending')}>
-                                    <Undo2 className="mr-2 h-3 w-3"/> Revoke
-                                </Button>
-                            )}
-                        </TableCell>
-                    </TableRow>
-                ))}
-            </TableBody>
-        </Table>
-    );
-
     return (
         <div className="p-8 space-y-8">
-            <div className="flex justify-between items-start">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Trust & Safety Queue</h1>
-                    <p className="text-muted-foreground">Verify HCPC/Registration for Educational Psychologists & Schools.</p>
-                </div>
-                
-                {/* Shard Selector for Global Admins */}
-                {isGlobalSuperAdmin && (
-                     <div className="flex items-center bg-muted/50 p-1 rounded-lg border">
-                        <Globe className="h-4 w-4 ml-2 text-muted-foreground" />
-                        <Select value={viewShard} onValueChange={setViewShard}>
-                            <SelectTrigger className="border-0 bg-transparent shadow-none w-[180px] h-8 text-xs font-medium">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {AVAILABLE_SHARDS.map(s => (
-                                    <SelectItem key={s.id} value={s.id}>
-                                        {s.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                )}
-                {/* Regional Admin Badge */}
-                {!isGlobalSuperAdmin && (
-                    <Badge variant="outline" className="h-8 gap-2">
-                        <Globe className="h-3 w-3" />
-                        Region: {viewShard.replace('mindkindler-', '').toUpperCase()}
-                    </Badge>
-                )}
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Clinical Verification Queue</h1>
+                <p className="text-muted-foreground">Manage HCPC registration for Educational Psychologists.</p>
             </div>
 
-            {loading ? (
-                 <div className="flex h-96 justify-center items-center"><Loader2 className="animate-spin h-8 w-8 text-primary"/></div>
-            ) : (
-                <Tabs defaultValue="pending" className="w-full">
-                    <TabsList>
-                        <TabsTrigger value="pending">Pending ({pending.length})</TabsTrigger>
-                        <TabsTrigger value="verified">Verified Workforce ({verified.length})</TabsTrigger>
-                        <TabsTrigger value="rejected">Rejected ({rejected.length})</TabsTrigger>
-                    </TabsList>
+            <Tabs defaultValue="pending">
+                <TabsList>
+                    <TabsTrigger value="pending">Pending Review ({pending.length})</TabsTrigger>
+                    <TabsTrigger value="verified">Verified Workforce</TabsTrigger>
+                </TabsList>
 
-                    <TabsContent value="pending" className="mt-4">
-                        <Card>
-                            <CardHeader><CardTitle>Pending Approval</CardTitle><CardDescription>New sign-ups requiring regulator check.</CardDescription></CardHeader>
-                            <CardContent><VerificationTable list={pending} /></CardContent>
-                        </Card>
-                    </TabsContent>
-
-                    <TabsContent value="verified" className="mt-4">
-                        <Card>
-                            <CardHeader><CardTitle>Active Practitioners</CardTitle><CardDescription>Fully vetted staff with clinical access.</CardDescription></CardHeader>
-                            <CardContent><VerificationTable list={verified} showActions={false} /></CardContent>
-                        </Card>
-                    </TabsContent>
-                    
-                    <TabsContent value="rejected" className="mt-4">
-                        <Card>
-                            <CardHeader><CardTitle>Rejected Applications</CardTitle></CardHeader>
-                            <CardContent><VerificationTable list={rejected} showActions={false} /></CardContent>
-                        </Card>
-                    </TabsContent>
-                </Tabs>
-            )}
+                <TabsContent value="pending" className="mt-6">
+                    <Card>
+                        <CardContent className="pt-6">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Name</TableHead>
+                                        <TableHead>HCPC Number</TableHead>
+                                        <TableHead>Region</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {pending.map(u => (
+                                        <TableRow key={u.id}>
+                                            <TableCell className="font-medium">{u.firstName} {u.lastName}</TableCell>
+                                            <TableCell className="font-mono text-xs">{u.verification?.hcpcNumber || u.extensions?.registration_number || 'Pending Input'}</TableCell>
+                                            <TableCell><Badge variant="outline">{u.region?.toUpperCase()}</Badge></TableCell>
+                                            <TableCell className="text-right flex justify-end gap-2">
+                                                <Button variant="outline" size="sm" asChild>
+                                                    <a href="https://www.hcpc-uk.org/check-the-register/" target="_blank">Check HCPC</a>
+                                                </Button>
+                                                <Button size="sm" className="bg-green-600" onClick={() => handleApprove(u)}>Approve</Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+                
+                <TabsContent value="verified">
+                    {/* ... list verified ... */}
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

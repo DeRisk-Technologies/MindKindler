@@ -1,8 +1,8 @@
 // src/services/chat-service.ts
-import { db } from '@/lib/firebase';
+import { db, getRegionalDb } from '@/lib/firebase';
 import { 
     collection, query, where, orderBy, onSnapshot, 
-    addDoc, updateDoc, doc, serverTimestamp, getDocs
+    addDoc, updateDoc, doc, serverTimestamp, getDocs, Firestore
 } from 'firebase/firestore';
 import { ChatChannel, ChatMessage } from '@/types/schema';
 
@@ -10,10 +10,17 @@ export class ChatService {
     
     /**
      * Subscribe to user's active chat channels.
+     * Needs to be Shard-Aware or Global? 
+     * DECISION: Chats are PII-heavy (clinical discussions). Must be in Regional Shard.
      */
-    static subscribeToChannels(userId: string, callback: (channels: ChatChannel[]) => void) {
+    static subscribeToChannels(userId: string, shardId: string, callback: (channels: ChatChannel[]) => void) {
+        let targetDb: Firestore = db;
+        if (shardId && shardId !== 'default') {
+             targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
+        }
+
         const q = query(
-            collection(db, 'chats'),
+            collection(targetDb, 'chats'),
             where('participantIds', 'array-contains', userId),
             orderBy('updatedAt', 'desc')
         );
@@ -30,9 +37,14 @@ export class ChatService {
     /**
      * Subscribe to messages in a specific channel.
      */
-    static subscribeToMessages(chatId: string, callback: (messages: ChatMessage[]) => void) {
+    static subscribeToMessages(chatId: string, shardId: string, callback: (messages: ChatMessage[]) => void) {
+        let targetDb: Firestore = db;
+        if (shardId && shardId !== 'default') {
+             targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
+        }
+
         const q = query(
-            collection(db, 'chats', chatId, 'messages'),
+            collection(targetDb, 'chats', chatId, 'messages'),
             orderBy('createdAt', 'asc')
         );
 
@@ -52,10 +64,16 @@ export class ChatService {
         chatId: string, 
         senderId: string, 
         content: string, 
+        shardId: string,
         attachments: any[] = []
     ) {
+        let targetDb: Firestore = db;
+        if (shardId && shardId !== 'default') {
+             targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
+        }
+
         // 1. Add Message
-        await addDoc(collection(db, 'chats', chatId, 'messages'), {
+        await addDoc(collection(targetDb, 'chats', chatId, 'messages'), {
             chatId,
             senderId,
             content,
@@ -67,7 +85,7 @@ export class ChatService {
         });
 
         // 2. Update Channel "Last Message"
-        await updateDoc(doc(db, 'chats', chatId), {
+        await updateDoc(doc(targetDb, 'chats', chatId), {
             lastMessage: {
                 text: content,
                 senderId,
@@ -80,10 +98,15 @@ export class ChatService {
     /**
      * Create a new direct chat or return existing one.
      */
-    static async getOrCreateDirectChat(tenantId: string, userId: string, targetUserId: string): Promise<string> {
+    static async getOrCreateDirectChat(tenantId: string, userId: string, targetUserId: string, shardId: string): Promise<string> {
+        let targetDb: Firestore = db;
+        if (shardId && shardId !== 'default') {
+             targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
+        }
+
         // Check existing
         const q = query(
-            collection(db, 'chats'),
+            collection(targetDb, 'chats'),
             where('type', '==', 'direct'),
             where('participantIds', 'array-contains', userId)
         );
@@ -96,7 +119,7 @@ export class ChatService {
         if (existing) return existing.id;
 
         // Create new
-        const ref = await addDoc(collection(db, 'chats'), {
+        const ref = await addDoc(collection(targetDb, 'chats'), {
             tenantId,
             type: 'direct',
             participantIds: [userId, targetUserId],

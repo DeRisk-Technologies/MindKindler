@@ -12,15 +12,11 @@ export type PermissionAction =
     | 'view_sensitive_notes'
     | 'view_student_pii'
     | 'manage_users'
-    | 'manage_data_ingestion' // NEW
-    | 'access_community'      // NEW
-    | 'access_marketplace'    // NEW
-    | 'access_training'       // NEW
-    | 'manage_practice'       // NEW (Manage own schools/partners)
-    | 'assign_tasks'          // NEW (Delegate to assistants)
-    | 'view_team_tasks'       // NEW (Monitor assistants)
-    | 'access_consultations'  // NEW (Live transcription, AI suggestions)
-    | 'create_assessments';   // NEW (AI Assessment Creator)
+    | 'manage_practice_tenants'
+    | 'manage_client_schools'
+    | 'access_marketplace'
+    | 'access_community'
+    | 'manage_data_ingestion'; // New for Data Ops
 
 type RolePermissions = Record<Role, PermissionAction[]>;
 
@@ -35,17 +31,13 @@ export const RBAC_MATRIX: RolePermissions = {
         'view_sensitive_notes', 
         'view_student_pii',
         'manage_users',
-        'manage_data_ingestion',
-        'access_community',
+        'manage_practice_tenants',
+        'manage_client_schools',
         'access_marketplace',
-        'access_training',
-        'manage_practice',
-        'assign_tasks',
-        'view_team_tasks',
-        'access_consultations',
-        'create_assessments'
+        'access_community',
+        'manage_data_ingestion'
     ],
-    TenantAdmin: [ // e.g. LEA / District Admin OR Independent EPP Practice Lead
+    TenantAdmin: [ // e.g. LEA or EPP Practice Owner
         'manage_compliance_packs', 
         'view_staff_scr', 
         'edit_staff_scr',
@@ -53,73 +45,41 @@ export const RBAC_MATRIX: RolePermissions = {
         'view_sensitive_notes', 
         'view_student_pii',
         'manage_users',
-        'manage_data_ingestion',
-        'access_community',
+        'manage_client_schools',
         'access_marketplace',
-        'access_training',
-        'manage_practice',
-        'assign_tasks',
-        'view_team_tasks',
-        'access_consultations',
-        'create_assessments'
+        'access_community',
+        'manage_data_ingestion'
     ],
     SchoolAdmin: [ // Headteacher / DSL
         'view_staff_scr', 
         'view_psychometrics', 
         'view_sensitive_notes', 
         'view_student_pii',
-        'access_training',
         'access_community'
     ],
-    EPP: [ // Educational Psychologist (Employee or Independent)
+    EPP: [ // Educational Psychologist
         'view_psychometrics', 
         'write_psychometrics', 
         'view_sensitive_notes', 
         'view_student_pii',
-        'view_gov_intel',          
-        'manage_data_ingestion',   
-        'access_community',        
-        'access_marketplace',      
-        'access_training',         
-        'assign_tasks',            
-        'view_team_tasks',
-        'access_consultations', // ADDED: Core feature
-        'create_assessments'    // ADDED: AI Creator
-    ],
-    EducationalPsychologist: [ // ALIAS for EPP
-        'view_psychometrics', 
-        'write_psychometrics', 
-        'view_sensitive_notes', 
-        'view_student_pii',
-        'view_gov_intel',
-        'manage_data_ingestion',
-        'access_community',
+        'manage_client_schools', 
         'access_marketplace',
-        'access_training',
-        'assign_tasks',
-        'view_team_tasks',
-        'access_consultations', // ADDED
-        'create_assessments'    // ADDED
+        'access_community',
+        'view_gov_intel', // Intelligence access
+        'manage_data_ingestion' // Ability to import student lists
     ],
-    Assistant: [ // EPP Assistant / Trainee
+    Assistant: [ 
         'view_psychometrics', 
         'write_psychometrics',
-        'access_training',
-        'manage_data_ingestion', 
-        'access_community',
-        'access_consultations' // Assistants often scribe/record
+        'manage_data_ingestion'
     ],
-    TrustedAssistant: [ // Verified Assistant
+    TrustedAssistant: [ 
         'view_psychometrics', 
         'write_psychometrics',
         'view_sensitive_notes',
-        'access_training',
-        'manage_data_ingestion',
-        'access_community',
-        'access_consultations'
+        'manage_data_ingestion'
     ],
     ParentUser: [
-        // Strictly limited scope
         'access_community'
     ],
     GovAnalyst: [
