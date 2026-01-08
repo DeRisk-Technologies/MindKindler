@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Causing Recursion Error
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/hooks/use-auth';
@@ -16,7 +16,7 @@ import { useFirestoreCollection } from '@/hooks/use-firestore';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { getRegionalDb, db } from '@/lib/firebase';
 import { usePermissions } from '@/hooks/use-permissions';
-import { Loader2, Calendar, User, FileText } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 export default function NewConsultationPage() {
     const router = useRouter();
@@ -72,6 +72,8 @@ export default function NewConsultationPage() {
         }
     };
 
+    const selectClass = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+
     return (
         <div className="max-w-3xl mx-auto py-8 space-y-6">
             <div>
@@ -90,32 +92,27 @@ export default function NewConsultationPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label>Participant (Student)</Label>
-                                <Select name="studentId" required>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder={loadingStudents ? "Loading..." : "Select Student"} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {students.map((s: any) => (
-                                            <SelectItem key={s.id} value={s.id}>
-                                                {s.firstName} {s.lastName}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <select name="studentId" required className={selectClass}>
+                                    <option value="" disabled selected>
+                                        {loadingStudents ? "Loading..." : "Select Student"}
+                                    </option>
+                                    {students.map((s: any) => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.firstName} {s.lastName}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className="space-y-2">
                                 <Label>Consultation Type</Label>
-                                <Select name="type" defaultValue="assessment">
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="assessment">Initial Assessment</SelectItem>
-                                        <SelectItem value="review">Progress Review</SelectItem>
-                                        <SelectItem value="observation">Classroom Observation</SelectItem>
-                                        <SelectItem value="parent_meeting">Parent Meeting</SelectItem>
-                                        <SelectItem value="staff_consultation">Staff Consultation</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <select name="type" defaultValue="assessment" className={selectClass}>
+                                    <option value="assessment">Initial Assessment</option>
+                                    <option value="review">Progress Review</option>
+                                    <option value="observation">Classroom Observation</option>
+                                    <option value="parent_meeting">Parent Meeting</option>
+                                    <option value="staff_consultation">Staff Consultation</option>
+                                </select>
                             </div>
                         </div>
 
@@ -126,16 +123,13 @@ export default function NewConsultationPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label>Duration (Minutes)</Label>
-                                <Select name="duration" defaultValue="60">
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="30">30 Mins</SelectItem>
-                                        <SelectItem value="45">45 Mins</SelectItem>
-                                        <SelectItem value="60">1 Hour</SelectItem>
-                                        <SelectItem value="90">1.5 Hours</SelectItem>
-                                        <SelectItem value="120">2 Hours</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <select name="duration" defaultValue="60" className={selectClass}>
+                                    <option value="30">30 Mins</option>
+                                    <option value="45">45 Mins</option>
+                                    <option value="60">1 Hour</option>
+                                    <option value="90">1.5 Hours</option>
+                                    <option value="120">2 Hours</option>
+                                </select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Location</Label>

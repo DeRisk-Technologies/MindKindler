@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Fixed: Using standard Select wrapper
 import { useAuth } from '@/hooks/use-auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, functions } from '@/lib/firebase';
@@ -14,6 +14,30 @@ import { Loader2, FileText, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestoreCollection } from '@/hooks/use-firestore';
+
+// FALLBACK UK TEMPLATES (If Pack Installer not run)
+const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
+    {
+        id: "ehcp_needs_assessment",
+        name: "EHCP Needs Assessment (Section F)",
+        sections: [
+          { id: "section_a", title: "Section A: Views of Child", promptId: "ehcp_sec_a" },
+          { id: "section_b", title: "Section B: Special Educational Needs", promptId: "ehcp_sec_b" },
+          { id: "section_f", title: "Section F: Provision", promptId: "ehcp_sec_f" }
+        ],
+        constraints: ["no_medical_diagnosis", "use_tentative_language"]
+    },
+    {
+        id: "early_years_inclusion",
+        name: "Early Years Inclusion Fund (EYIF)",
+        sections: [
+            { id: "strengths", title: "Strengths & Interests", promptId: "eyif_strengths" },
+            { id: "impact", title: "Impact on Development", promptId: "eyif_impact" }
+        ],
+        constraints: ["eyfs_framework_alignment"]
+    }
+];
 
 export default function ReportBuilderPage() {
     const { user } = useAuth();
@@ -24,31 +48,52 @@ export default function ReportBuilderPage() {
     // Config
     const [templates, setTemplates] = useState<StatutoryReportTemplate[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-    const [selectedStudentId, setSelectedStudentId] = useState<string>('student-123'); // Mock selection
+    const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+
+    // Fetch Students for Dropdown
+    const { data: students, loading: loadingStudents } = useFirestoreCollection('students', 'lastName', 'asc');
 
     const activeTemplate = templates.find(t => t.id === selectedTemplateId);
 
     // Fetch Installed Templates (e.g. UK EHCP)
     useEffect(() => {
-        if (!user?.tenantId) return;
+        if (!user) return;
+        
         async function fetchTemplates() {
+            let loadedTemplates: StatutoryReportTemplate[] = [];
+            const tenantId = (user as any).tenantId || 'default';
+
             try {
-                const ref = doc(db, `tenants/${user?.tenantId}/settings/reporting`);
+                // 1. Try fetching installed pack from tenant settings
+                const ref = doc(db, `tenants/${tenantId}/settings/reporting`);
                 const snap = await getDoc(ref);
-                if (snap.exists()) {
-                    setTemplates(snap.data().templates || []);
+                
+                if (snap.exists() && snap.data().templates) {
+                    loadedTemplates = snap.data().templates;
+                } else {
+                    // 2. FALLBACK: Use hardcoded UK Templates for Pilot if UK user
+                    if ((user as any)?.region === 'uk' || user.email?.includes('uk') || user.email?.includes('mindsuk')) {
+                        console.log("Using Fallback UK Templates for Pilot");
+                        loadedTemplates = FALLBACK_UK_TEMPLATES;
+                    }
                 }
+                setTemplates(loadedTemplates);
             } catch (e) {
                 console.error("Failed to load templates", e);
+                // Last resort fallback
+                setTemplates(FALLBACK_UK_TEMPLATES);
             } finally {
                 setLoading(false);
             }
         }
         fetchTemplates();
-    }, [user?.tenantId]);
+    }, [user]);
 
     const handleGenerate = async () => {
-        if (!selectedTemplateId || !activeTemplate) return;
+        if (!selectedTemplateId || !selectedStudentId || !activeTemplate) {
+            toast({ title: "Validation", description: "Please select both a student and a template.", variant: "destructive" });
+            return;
+        }
         setGenerating(true);
 
         try {
@@ -60,21 +105,19 @@ export default function ReportBuilderPage() {
                 studentId: selectedStudentId,
                 templateId: selectedTemplateId,
                 // Pass the context pack ID to trigger RAG constraints
-                // In a real app, we'd look this up from installed_packs, 
-                // but for MVP we infer it or pass it explicitly if known.
                 contextPackId: 'uk_la_pack' 
             });
 
             toast({
                 title: "Draft Generated",
-                description: "The AI has drafted the report adhering to statutory constraints.",
+                description: "The AI has drafted the report adhering to statutory constraints. Check your 'Reports' archive.",
             });
 
         } catch (error: any) {
             console.error(error);
             toast({
                 title: "Generation Failed",
-                description: error.message,
+                description: "Cloud Function Error (Pilot Mode): " + error.message,
                 variant: "destructive"
             });
         } finally {
@@ -101,21 +144,38 @@ export default function ReportBuilderPage() {
                         <CardTitle className="text-lg">Configuration</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
+                        
+                        {/* Student Selector */}
+                        <div className="grid gap-2">
+                            <label className="text-sm font-medium">Select Student</label>
+                            {/* Standard Select to avoid recursion errors */}
+                            <select 
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                value={selectedStudentId}
+                                onChange={(e) => setSelectedStudentId(e.target.value)}
+                            >
+                                <option value="" disabled selected>Select Student...</option>
+                                {students.map(s => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.firstName} {s.lastName}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Template Selector */}
                         <div className="grid gap-2">
                             <label className="text-sm font-medium">Select Template</label>
-                            <Select onValueChange={setSelectedTemplateId} value={selectedTemplateId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Choose a statutory framework..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {templates.length === 0 && (
-                                        <SelectItem value="none" disabled>No templates installed (Run Installer)</SelectItem>
-                                    )}
-                                    {templates.map(t => (
-                                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <select 
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                value={selectedTemplateId}
+                                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                            >
+                                <option value="" disabled selected>Choose a statutory framework...</option>
+                                {templates.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                            </select>
                         </div>
 
                         {/* RAG Constraints Visualization (Research Section 4.2.2) */}
@@ -134,9 +194,6 @@ export default function ReportBuilderPage() {
                                             {c.replace(/_/g, ' ')}
                                         </Badge>
                                     ))}
-                                    {(!activeTemplate.constraints || activeTemplate.constraints.length === 0) && (
-                                        <span className="text-xs text-muted-foreground">No specific constraints defined.</span>
-                                    )}
                                 </div>
                             </div>
                         )}
@@ -158,7 +215,7 @@ export default function ReportBuilderPage() {
                     <CardFooter className="flex justify-end border-t bg-slate-50 p-4">
                         <Button 
                             onClick={handleGenerate} 
-                            disabled={!selectedTemplateId || generating} 
+                            disabled={!selectedTemplateId || !selectedStudentId || generating} 
                             className="w-[200px]"
                         >
                             {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

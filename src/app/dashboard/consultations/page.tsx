@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,25 +21,51 @@ import { useFirestoreCollection } from '@/hooks/use-firestore';
 import { useAuth } from '@/hooks/use-auth';
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-// FIXED: Removed Radix Select from client page causing hydration loop or conflicts if not used carefully
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from 'next/link';
 
 export default function ConsultationsPage() {
     const { user } = useAuth();
+    const [mounted, setMounted] = useState(false);
     
+    // PROBLEM: useFirestoreCollection has a dependency on `user` (or permissions) internally.
+    // If the hook causes a state update that triggers a re-render, and that re-render
+    // causes the hook to re-run with a new object reference (e.g., `filter` object literal), 
+    // it creates an infinite loop.
+    
+    // FIX 1: Memoize the filter object
+    const filterOptions = React.useMemo(() => ({
+        field: 'practitionerId', 
+        operator: '==', 
+        value: user?.uid 
+    }), [user?.uid]);
+
+    // Only run query if user is defined to avoid thrashing
     const { data: consultations, loading } = useFirestoreCollection(
         'consultation_sessions', 
         'scheduledAt', 
         'desc',
-        { filter: { field: 'practitionerId', operator: '==', value: user?.uid } }
+        user?.uid ? { filter: filterOptions } : undefined
     );
 
     const [filterStatus, setFilterStatus] = useState('all');
 
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     const filteredConsultations = consultations.filter(c => 
         filterStatus === 'all' || c.status === filterStatus
     );
+
+    const formatDate = (dateString: string) => {
+        if (!mounted) return "";
+        return new Date(dateString).toLocaleDateString();
+    };
+
+    const formatTime = (dateString: string) => {
+        if (!mounted) return "";
+        return new Date(dateString).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    };
 
     return (
         <div className="space-y-6 p-8">
@@ -70,19 +96,17 @@ export default function ConsultationsPage() {
                     <Filter className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 </div>
                 
-                {/* Simplified Select Usage to avoid loop risk */}
                 <div className="w-[180px]">
-                    <Select value={filterStatus} onValueChange={setFilterStatus}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Statuses</SelectItem>
-                            <SelectItem value="scheduled">Scheduled</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                            <SelectItem value="cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <select 
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                    >
+                        <option value="all">All Statuses</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
                 </div>
             </div>
 
@@ -113,11 +137,11 @@ export default function ConsultationsPage() {
                                         <div className="flex flex-col">
                                             <span className="font-medium flex items-center gap-2">
                                                 <Calendar className="h-3 w-3 text-slate-500"/> 
-                                                {new Date(session.scheduledAt).toLocaleDateString()}
+                                                {formatDate(session.scheduledAt)}
                                             </span>
                                             <span className="text-xs text-muted-foreground flex items-center gap-2 ml-5">
                                                 <Clock className="h-3 w-3"/>
-                                                {new Date(session.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                {formatTime(session.scheduledAt)}
                                             </span>
                                         </div>
                                     </TableCell>
