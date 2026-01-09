@@ -27,7 +27,8 @@ export const handler = async (request: CallableRequest<any>) => {
         studentId, 
         templateId, 
         contextPackId,
-        studentContext // NEW: Client-provided context
+        studentContext, // Client-provided Student Profile
+        sessionContext  // Client-provided Session Evidence
     } = request.data;
     
     const userId = request.auth.uid;
@@ -36,26 +37,16 @@ export const handler = async (request: CallableRequest<any>) => {
     const region = request.auth.token.region || 'uk';
 
     // --- 1. DATA RESOLUTION ---
-    let studentData: any = studentContext; // Prioritize client data
+    let studentData: any = studentContext; 
 
     if (!studentData) {
-        console.log(`Searching for student ${studentId} in Default DB...`);
+        // Fallback (Legacy)
         try {
             const docSnap = await admin.firestore().collection('students').doc(studentId).get();
-            if (docSnap.exists) {
-                studentData = docSnap.data();
-            } else {
-                console.warn(`Student ${studentId} not found. Using fallback mock.`);
-                studentData = { 
-                    identity: { firstName: { value: "Student" }, lastName: { value: "Unknown" } },
-                    dateOfBirth: "2015-01-01" 
-                };
-            }
+            studentData = docSnap.exists ? docSnap.data() : { identity: { firstName: { value: "Student" } } };
         } catch (e) {
-            console.error("DB Read Error", e);
+            studentData = { identity: { firstName: { value: "Student" } } };
         }
-    } else {
-        console.log(`Using client-provided context for student ${studentId}`);
     }
 
     // --- 2. AI CONFIGURATION ---
@@ -67,7 +58,27 @@ export const handler = async (request: CallableRequest<any>) => {
         : [];
 
     const firstName = studentData.identity?.firstName?.value || "Student";
-    const lastName = studentData.identity?.lastName?.value || "Unknown";
+    const lastName = studentData.identity?.lastName?.value || "";
+
+    // Build Evidence Block from Session Data
+    let evidenceBlock = "";
+    if (sessionContext) {
+        const outcome = sessionContext.outcome || {};
+        const transcript = outcome.finalTranscript || sessionContext.transcript || "No transcript available.";
+        const opinions = outcome.clinicalOpinions ? JSON.stringify(outcome.clinicalOpinions) : "None";
+        const plan = outcome.interventionPlan ? JSON.stringify(outcome.interventionPlan) : "None";
+
+        evidenceBlock = `
+        ### CONSULTATION EVIDENCE
+        TRANSCRIPT SUMMARY: "${transcript.slice(0, 5000)}..."
+        
+        CLINICAL OPINIONS (Confirmed):
+        ${opinions}
+
+        RECOMMENDED INTERVENTIONS:
+        ${plan}
+        `;
+    }
 
     const baseInstruction = `You are an expert Educational Psychologist acting as a ${userRole} in ${region.toUpperCase()}.
     Task: Draft a formal Statutory Report (${templateId}) for student "${firstName} ${lastName}".
@@ -82,22 +93,43 @@ export const handler = async (request: CallableRequest<any>) => {
 
     // Evidence
     const dataBlock = `
-    ### Student Profile
+    ### STUDENT PROFILE
     Name: ${firstName} ${lastName}
-    Context: ${JSON.stringify(studentData).slice(0, 2000)}
+    Context: ${JSON.stringify(studentData).slice(0, 1500)}
+
+    ${evidenceBlock}
     `;
 
-    const fullPrompt = `${systemPrompt}\n\n${dataBlock}\n\nGenerate the JSON report structure now.`;
+    const fullPrompt = `${systemPrompt}\n\n${dataBlock}\n\nGenerate the JSON report structure now based on the provided EVIDENCE.`;
 
     // --- 4. GENERATION ---
     let result;
     try {
-        // PROD AI CALL Logic (Simplified for Pilot Mock)
+        // PROD AI CALL Logic (Simplified for Pilot Mock to avoid billing without deploying)
+        // In real deployment, replace with: const llmResponse = await ai.generate(...)
+        
+        // Mocking a "Smart" response that reflects the input
         const mockResponse = JSON.stringify({
             sections: [
-                { id: "section_a", title: "Section A: Views of Child", content: "The child expressed that they enjoy creative activities but struggle with sustained attention in noisy environments." },
-                { id: "section_b", title: "Section B: Special Educational Needs", content: "Evidence suggests significant challenges with auditory processing and working memory, which impact classroom participation." },
-                { id: "section_f", title: "Section F: Provision", content: "Provision should include visual timetables, simplified verbal instructions, and 15 minutes of sensory integration daily." }
+                { 
+                    id: "section_a", 
+                    title: "Section A: Views of Child", 
+                    content: sessionContext 
+                        ? `During the consultation, ${firstName} shared their perspective. Key themes included: ${evidenceBlock.includes('transcript') ? "discussions recorded in transcript" : "perspectives noted"}.`
+                        : "The child's views were gathered through standard assessment."
+                },
+                { 
+                    id: "section_b", 
+                    title: "Section B: Special Educational Needs", 
+                    content: `Based on the assessment, ${firstName} presents needs in the following areas. Clinical opinions noted: ${sessionContext?.outcome?.clinicalOpinions?.length || 0} specific observations were confirmed.` 
+                },
+                { 
+                    id: "section_f", 
+                    title: "Section F: Provision", 
+                    content: sessionContext?.outcome?.interventionPlan 
+                        ? "Specific interventions recommended: " + sessionContext.outcome.interventionPlan.map((p: any) => p.programName).join(", ") + "."
+                        : "Standard provision is recommended."
+                }
             ]
         });
         

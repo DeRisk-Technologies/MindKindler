@@ -31,11 +31,15 @@ export default function ReportsDirectoryPage() {
         async function initRealtime() {
             try {
                 // 1. Resolve Region
-                let region = user.region;
+                let region = user?.region; // Safe Access
                 if (!region || region === 'default') {
-                    const routingRef = doc(globalDb, 'user_routing', user.uid);
-                    const routingSnap = await getDoc(routingRef);
-                    region = routingSnap.exists() ? routingSnap.data().region : 'uk';
+                    if (user?.uid) {
+                        const routingRef = doc(globalDb, 'user_routing', user.uid);
+                        const routingSnap = await getDoc(routingRef);
+                        region = routingSnap.exists() ? routingSnap.data().region : 'uk';
+                    } else {
+                        region = 'uk';
+                    }
                 }
 
                 const targetDb = getRegionalDb(region);

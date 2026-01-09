@@ -45,7 +45,8 @@ import {
   Search,
   Building,
   Plug,
-  UserCircle
+  UserCircle,
+  Palette // Added Icon
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -167,7 +168,6 @@ export function DashboardSidebar() {
                         </SidebarMenuSubItem>
                         <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/reports")}>
-                            {/* CHANGED: Name from Archive to Report Directory */}
                             <Link href="/dashboard/reports"><span>Reports Directory</span></Link>
                         </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
@@ -377,6 +377,11 @@ export function DashboardSidebar() {
                          </CollapsibleTrigger>
                          <CollapsibleContent>
                              <SidebarMenuSub>
+                                 <SidebarMenuSubItem>
+                                     <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/branding")}>
+                                         <Link href="/dashboard/settings/branding"><Palette className="h-4 w-4 mr-2"/><span>Branding</span></Link>
+                                     </SidebarMenuSubButton>
+                                 </SidebarMenuSubItem>
                                  <SidebarMenuSubItem>
                                      <SidebarMenuSubButton asChild isActive={isActive("/dashboard/settings/compliance")}>
                                          <Link href="/dashboard/settings/compliance"><FileCheck className="h-4 w-4 mr-2"/><span>My Compliance</span></Link>

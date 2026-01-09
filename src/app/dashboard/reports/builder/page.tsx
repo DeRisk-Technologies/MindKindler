@@ -14,9 +14,9 @@ import { Badge } from '@/components/ui/badge';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestoreCollection } from '@/hooks/use-firestore';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation'; 
 
-// FALLBACK UK TEMPLATES (If Pack Installer not run)
+// FALLBACK UK TEMPLATES
 const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
     {
         id: "ehcp_needs_assessment",
@@ -43,39 +43,73 @@ export default function ReportBuilderPage() {
     const { user } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
+    const searchParams = useSearchParams(); 
+    
+    const sourceSessionId = searchParams.get('sourceSessionId');
+    const paramTemplateId = searchParams.get('templateId');
+
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
-    const [justFinished, setJustFinished] = useState(false); // Success state
+    const [justFinished, setJustFinished] = useState(false);
     
     const [templates, setTemplates] = useState<StatutoryReportTemplate[]>([]);
-    const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string>(paramTemplateId || '');
     const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
     const { data: students } = useFirestoreCollection('students', 'lastName', 'asc');
     const activeTemplate = templates.find(t => t.id === selectedTemplateId);
 
+    // --- 1. Fetch Templates & Pre-fill ---
     useEffect(() => {
         if (!user) return;
         
-        async function fetchTemplates() {
+        async function init() {
+            // A. Resolve Region
+            let region = user?.region;
+            if (!region || region === 'default') {
+                if (user?.uid) {
+                    const routingRef = doc(globalDb, 'user_routing', user.uid);
+                    const routingSnap = await getDoc(routingRef);
+                    region = routingSnap.exists() ? routingSnap.data().region : 'uk';
+                } else {
+                    region = 'uk';
+                }
+            }
+            const targetDb = getRegionalDb(region);
+
+            // B. Load Templates
             const tenantId = user?.tenantId || 'default';
             try {
                 const ref = doc(db, `tenants/${tenantId}/settings/reporting`);
                 const snap = await getDoc(ref);
                 if (snap.exists() && snap.data().templates) {
                     setTemplates(snap.data().templates);
-                } else if (user?.region === 'uk' || user?.email?.includes('uk')) {
+                } else if (region === 'uk' || user?.email?.includes('uk')) {
                     setTemplates(FALLBACK_UK_TEMPLATES);
                 }
             } catch (e) {
-                console.error(e);
                 setTemplates(FALLBACK_UK_TEMPLATES);
-            } finally {
-                setLoading(false);
             }
+
+            // C. If sourceSessionId, load Session
+            if (sourceSessionId) {
+                try {
+                    const sessionSnap = await getDoc(doc(targetDb, 'consultation_sessions', sourceSessionId));
+                    if (sessionSnap.exists()) {
+                        const sData = sessionSnap.data();
+                        if (sData.studentId) {
+                            setSelectedStudentId(sData.studentId);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load session linkage", e);
+                }
+            }
+            
+            setLoading(false);
         }
-        fetchTemplates();
-    }, [user]);
+        init();
+    }, [user, sourceSessionId]);
 
     const handleGenerate = async () => {
         if (!selectedTemplateId || !selectedStudentId || !activeTemplate || !user) return;
@@ -83,41 +117,66 @@ export default function ReportBuilderPage() {
 
         try {
             // 1. Resolve Region
-            let region = user.region;
+            let region = user?.region; 
             if (!region || region === 'default') {
-                const routingRef = doc(globalDb, 'user_routing', user.uid);
-                const routingSnap = await getDoc(routingRef);
-                region = routingSnap.exists() ? routingSnap.data().region : 'uk';
+                if (user?.uid) {
+                    const routingRef = doc(globalDb, 'user_routing', user.uid);
+                    const routingSnap = await getDoc(routingRef);
+                    region = routingSnap.exists() ? routingSnap.data().region : 'uk';
+                } else {
+                    region = 'uk';
+                }
             }
             const targetDb = getRegionalDb(region);
 
-            // 2. Context Fetch
+            // 2. Fetch Full Student Data
+            console.log(`[Builder] Fetching Student ${selectedStudentId} from ${region}`);
             const studentRef = doc(targetDb, 'students', selectedStudentId);
             const studentSnap = await getDoc(studentRef);
-            const plainStudentContext = JSON.parse(JSON.stringify(studentSnap.exists() ? studentSnap.data() : {}));
+            
+            if (!studentSnap.exists()) {
+                throw new Error("Student record not found in regional database.");
+            }
+            
+            // Sanitize
+            const plainStudentContext = JSON.parse(JSON.stringify(studentSnap.data()));
 
-            // 3. AI Generation
+            // 3. Fetch Session Data (if applicable)
+            let sessionContext = {};
+            if (sourceSessionId) {
+                console.log(`[Builder] Fetching Session ${sourceSessionId}`);
+                const sessionSnap = await getDoc(doc(targetDb, 'consultation_sessions', sourceSessionId));
+                if (sessionSnap.exists()) {
+                    sessionContext = JSON.parse(JSON.stringify(sessionSnap.data()));
+                }
+            }
+
+            console.log("[Builder] Sending Context to AI:", { student: plainStudentContext, session: sessionContext });
+
+            // 4. AI Generation
             const generateFn = httpsCallable(functions, 'generateClinicalReport');
             const result = await generateFn({
                 tenantId: user?.tenantId,
                 studentId: selectedStudentId,
                 templateId: selectedTemplateId,
                 contextPackId: 'uk_la_pack',
-                studentContext: plainStudentContext 
+                studentContext: plainStudentContext,
+                sessionContext: sessionContext       
             });
 
             const responseData = result.data as any;
             
-            // 4. Persistence
+            // 5. Persistence
             const newReport = {
                 title: activeTemplate.name + ' - Draft',
                 templateId: selectedTemplateId,
                 studentId: selectedStudentId,
+                sessionId: sourceSessionId || null, 
                 studentName: plainStudentContext.identity?.firstName?.value + ' ' + plainStudentContext.identity?.lastName?.value || 'Unknown Student',
                 status: 'draft',
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
-                createdBy: user.uid,
+                createdBy: user?.uid, 
                 content: responseData.sections || responseData.content || [], 
                 summary: responseData.summary || "",
                 type: 'statutory'
@@ -125,10 +184,9 @@ export default function ReportBuilderPage() {
 
             const reportRef = await addDoc(collection(targetDb, 'reports'), newReport);
 
-            setJustFinished(true); // Show success UI briefly
-            toast({ title: "Draft Created", description: "Report successfully saved to regional shard." });
+            setJustFinished(true);
+            toast({ title: "Draft Created", description: "Report generated from session evidence." });
 
-            // 5. Hard Redirect with small delay
             setTimeout(() => {
                 router.push(`/dashboard/reports/editor/${reportRef.id}`);
             }, 800);
@@ -172,12 +230,14 @@ export default function ReportBuilderPage() {
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
                                 value={selectedStudentId}
                                 onChange={(e) => setSelectedStudentId(e.target.value)}
+                                disabled={!!sourceSessionId} 
                             >
                                 <option value="" disabled>Select Student...</option>
                                 {students.map(s => (
                                     <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>
                                 ))}
                             </select>
+                            {sourceSessionId && <p className="text-xs text-muted-foreground">Locked to current session context.</p>}
                         </div>
 
                         <div className="grid gap-2">
