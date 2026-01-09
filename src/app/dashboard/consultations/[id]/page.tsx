@@ -20,11 +20,14 @@ import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognitio
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReactMarkdown from 'react-markdown';
 import Link from "next/link";
+import { usePermissions } from "@/hooks/use-permissions";
+import { getRegionalDb } from "@/lib/firebase";
 
 export default function LiveConsultationPage() {
   const { id } = useParams();
   const router = useRouter();
   const { toast } = useToast();
+  const { shardId } = usePermissions(); // Shard Awareness
   
   const [session, setSession] = useState<ConsultationSession | null>(null);
   const [student, setStudent] = useState<Student | null>(null);
@@ -37,15 +40,13 @@ export default function LiveConsultationPage() {
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]); 
   const [aiLoading, setAiLoading] = useState(false);
   
-  // Chunking Strategy: Send FULL transcript periodically instead of small chunks
-  // This allows the server to handle intelligent chunking/overlap/deduplication.
+  // Chunking Strategy
   const [lastAnalyzedLength, setLastAnalyzedLength] = useState(0);
   
   // Treatment Plans
   const [treatmentPlans, setTreatmentPlans] = useState<string[]>([]);
   const [treatmentLoading, setTreatmentLoading] = useState(false);
 
-  // New Case created ID
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
 
   // Voice Recognition
@@ -61,14 +62,16 @@ export default function LiveConsultationPage() {
     const fetchData = async () => {
         if (!id) return;
         try {
-            const sessionSnap = await getDoc(doc(db, "consultation_sessions", id as string));
+            // SHARD-AWARE FETCHING
+            const targetDb = shardId ? getRegionalDb(shardId.replace('mindkindler-', '')) : db;
+            
+            const sessionSnap = await getDoc(doc(targetDb, "consultation_sessions", id as string));
             if (sessionSnap.exists()) {
                 const sData = { id: sessionSnap.id, ...sessionSnap.data() } as ConsultationSession;
                 setSession(sData);
-                // Simple parsing for prototype if existing notes are single block
                 setObservationNotes(sData.notes || "");
                 
-                const studentSnap = await getDoc(doc(db, "students", sData.studentId));
+                const studentSnap = await getDoc(doc(targetDb, "students", sData.studentId));
                 if (studentSnap.exists()) {
                     setStudent({ id: studentSnap.id, ...studentSnap.data() } as Student);
                 }
@@ -80,9 +83,9 @@ export default function LiveConsultationPage() {
         }
     };
     fetchData();
-  }, [id]);
+  }, [id, shardId]); // Depend on shardId
 
-  // Real-time AI Analysis: Trigger every ~300 chars or pause
+  // Real-time AI Analysis
   useEffect(() => {
       if (listening && transcript.length - lastAnalyzedLength > 300) {
           triggerAiAnalysis();
@@ -94,7 +97,6 @@ export default function LiveConsultationPage() {
       if (listening) {
           SpeechRecognition.stopListening();
           toast({ title: "Paused", description: "Recording stopped." });
-          // Final analysis on stop if there's new content
           if (transcript.length > lastAnalyzedLength) {
               triggerAiAnalysis();
               setLastAnalyzedLength(transcript.length);
@@ -109,20 +111,16 @@ export default function LiveConsultationPage() {
       if(!student) return;
       setAiLoading(true);
       try {
-          // Send FULL transcript to server. Server handles chunking & deduplication.
+          // AI ACTION CALL
           const result = await generateConsultationInsights({
               fullTranscript: transcript,
               currentNotes: observationNotes + "\n" + diagnosisNotes,
               studentAge: new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear(),
-              locale: "",
-              languageLabel: ""
+              locale: "en-GB",
+              languageLabel: "English (UK)"
           });
           
           if(result && result.insights) {
-              // Replace entire list or merge? Server returns aggregated unique list.
-              // For a "streaming" feel, merging is okay, but full replace is cleaner if server manages state.
-              // Here we'll just prepend new unique ones or replace if we trust server full context.
-              // Let's replace to respect server's aggregation logic.
               setAiSuggestions(result.insights);
           }
       } catch (e) {
@@ -133,11 +131,11 @@ export default function LiveConsultationPage() {
   };
 
   const handleSaveNotes = async () => {
-      if (!session) return;
-      // Concatenate for backward compatibility or store as object
+      if (!session || !shardId) return;
+      const targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
       const fullNotes = `OBSERVATIONS:\n${observationNotes}\n\nDIAGNOSIS:\n${diagnosisNotes}`;
       
-      await updateDoc(doc(db, "consultation_sessions", session.id), {
+      await updateDoc(doc(targetDb, "consultation_sessions", session.id), {
           notes: fullNotes,
           transcript: transcript 
       });
@@ -161,9 +159,10 @@ export default function LiveConsultationPage() {
   };
 
   const createCase = async () => {
-      if (!student) return;
+      if (!student || !shardId) return;
       try {
-          const newCaseRef = await addDoc(collection(db, "cases"), {
+          const targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
+          const newCaseRef = await addDoc(collection(targetDb, "cases"), {
               title: `Case for ${student.firstName} ${student.lastName}`,
               type: 'student',
               studentId: student.id,
@@ -190,7 +189,6 @@ export default function LiveConsultationPage() {
   };
 
   const initiateAssessment = async () => {
-      // Mock logic to create draft assessment
       toast({ title: "Assessment Initiated", description: "Draft assessment created. AI will include results." });
   };
 
@@ -204,10 +202,11 @@ export default function LiveConsultationPage() {
   };
 
   const handleGenerateReport = async () => {
-      if (!session || !student) return;
+      if (!session || !student || !shardId) return;
       toast({ title: "Generating Report", description: "AI is drafting the consultation summary..." });
       
       try {
+          // AI ACTION CALL
           const reportData = await generateConsultationReport({
               studentName: `${student.firstName} ${student.lastName}`,
               age: new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear(),
@@ -215,12 +214,13 @@ export default function LiveConsultationPage() {
               notes: `OBSERVATIONS: ${observationNotes} \n DIAGNOSIS: ${diagnosisNotes}`,
               historySummary: "See student history.",
               templateType: 'SOAP',
-              locale: "",
-              languageLabel: ""
+              locale: "en-GB",
+              languageLabel: "English (UK)"
           });
 
-          const reportDoc = await addDoc(collection(db, "reports"), {
-              caseId: session.caseId, // This field exists in DB but not strictly typed in session schema here yet
+          const targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
+          const reportDoc = await addDoc(collection(targetDb, "reports"), {
+              caseId: session.caseId || null,
               sessionId: session.id,
               studentId: student.id,
               title: reportData.title,
@@ -232,7 +232,7 @@ export default function LiveConsultationPage() {
               version: 1
           });
           
-          await updateDoc(doc(db, "consultation_sessions", session.id), {
+          await updateDoc(doc(targetDb, "consultation_sessions", session.id), {
               reportId: reportDoc.id,
               status: 'completed'
           });

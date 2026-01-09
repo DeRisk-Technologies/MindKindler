@@ -92,8 +92,8 @@ export default function NewConsultationPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label>Participant (Student)</Label>
-                                <select name="studentId" required className={selectClass}>
-                                    <option value="" disabled selected>
+                                <select name="studentId" required className={selectClass} defaultValue="">
+                                    <option value="" disabled>
                                         {loadingStudents ? "Loading..." : "Select Student"}
                                     </option>
                                     {students.map((s: any) => (

@@ -15,7 +15,8 @@ import {
     FileText, 
     Plus, 
     Loader2,
-    Filter
+    Filter,
+    Video
 } from 'lucide-react';
 import { useFirestoreCollection } from '@/hooks/use-firestore';
 import { useAuth } from '@/hooks/use-auth';
@@ -27,19 +28,13 @@ export default function ConsultationsPage() {
     const { user } = useAuth();
     const [mounted, setMounted] = useState(false);
     
-    // PROBLEM: useFirestoreCollection has a dependency on `user` (or permissions) internally.
-    // If the hook causes a state update that triggers a re-render, and that re-render
-    // causes the hook to re-run with a new object reference (e.g., `filter` object literal), 
-    // it creates an infinite loop.
-    
-    // FIX 1: Memoize the filter object
+    // Fix: Memoize filter to prevent loop
     const filterOptions = React.useMemo(() => ({
         field: 'practitionerId', 
         operator: '==', 
         value: user?.uid 
     }), [user?.uid]);
 
-    // Only run query if user is defined to avoid thrashing
     const { data: consultations, loading } = useFirestoreCollection(
         'consultation_sessions', 
         'scheduledAt', 
@@ -57,6 +52,7 @@ export default function ConsultationsPage() {
         filterStatus === 'all' || c.status === filterStatus
     );
 
+    // Hydration guard for date rendering
     const formatDate = (dateString: string) => {
         if (!mounted) return "";
         return new Date(dateString).toLocaleDateString();
@@ -168,9 +164,19 @@ export default function ConsultationsPage() {
                                         </span>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Link href={`/dashboard/consultations/${session.id}`}>
-                                            <Button variant="ghost" size="sm">View Notes</Button>
-                                        </Link>
+                                        <div className="flex justify-end gap-2">
+                                            {/* START LIVE SESSION BUTTON */}
+                                            {session.status === 'scheduled' && (
+                                                <Link href={`/dashboard/consultations/${session.id}`}>
+                                                    <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                                                        <Video className="mr-2 h-3 w-3" /> Start
+                                                    </Button>
+                                                </Link>
+                                            )}
+                                            <Link href={`/dashboard/consultations/${session.id}`}>
+                                                <Button variant="ghost" size="sm">View Notes</Button>
+                                            </Link>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ))}
