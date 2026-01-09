@@ -24,6 +24,7 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
         transcript: string;
         insights: any[];
         student: any;
+        savedOutcome?: any; // To hold previously saved synthesis state
     } | null>(null);
 
     useEffect(() => {
@@ -79,8 +80,9 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
 
                 setSessionData({
                     transcript: transcriptText,
-                    insights: sData.outcome?.clinicalOpinions || sData.insights || [], // Use previously saved opinions if available
-                    student: studentData
+                    insights: sData.outcome?.clinicalOpinions || sData.insights || [],
+                    student: studentData,
+                    savedOutcome: sData.outcome // Pass saved state
                 });
 
             } catch (error) {
@@ -107,6 +109,7 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
                 synthesizedAt: new Date().toISOString(),
                 outcome: {
                     clinicalOpinions: synthesizedData.confirmedOpinions,
+                    manualClinicalNotes: synthesizedData.manualClinicalNotes, // Save manual notes
                     interventionPlan: synthesizedData.plannedInterventions,
                     referrals: synthesizedData.referrals,
                     finalTranscript: synthesizedData.editedTranscript
@@ -139,10 +142,13 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
 
     if (!sessionData) return <div>Data unavailable</div>;
 
+    // TODO: Ideally, pass savedOutcome to PostSessionSynthesis to pre-fill form
+    // For now, insights are already using savedOutcome.clinicalOpinions if available (line 89)
+
     return (
         <PostSessionSynthesis 
             sessionId={id}
-            transcript={sessionData.transcript}
+            transcript={sessionData.savedOutcome?.finalTranscript || sessionData.transcript} // Prefer edited transcript
             initialInsights={sessionData.insights}
             student={sessionData.student}
             onComplete={handleComplete}

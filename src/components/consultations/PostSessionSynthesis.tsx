@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { 
     CheckCircle, AlertTriangle, FileText, ArrowRight, 
     Sparkles, Edit3, MessageSquare, Plus, Trash2,
-    Clock, Activity, BrainCircuit 
+    Clock, Activity, BrainCircuit, Save, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { StudentRecord, AssessmentResult } from '@/types/schema';
 import { InterventionLogic } from '@/marketplace/types';
+import { Input } from '@/components/ui/input'; // Added Input
 
 import { askSessionQuestionAction, AiInsight } from '@/app/actions/consultation';
 import { generateInterventionPlanAction, PlannedIntervention } from '@/app/actions/intervention';
@@ -34,6 +35,7 @@ export interface SynthesisResult {
     referrals: string[];
     editedTranscript: string;
     reportType: 'statutory' | 'custom';
+    manualClinicalNotes?: string[]; // Added manual notes
 }
 
 interface PostSessionSynthesisProps {
@@ -59,6 +61,9 @@ export function PostSessionSynthesis({
     // State
     const [activeTab, setActiveTab] = useState('review');
     const [clinicalOpinions, setClinicalOpinions] = useState<AiInsight[]>(initialInsights);
+    const [manualOpinions, setManualOpinions] = useState<string[]>([]); // New state for manual opinions
+    const [newManualOpinion, setNewManualOpinion] = useState(""); // Input for new manual opinion
+    
     const [plannedInterventions, setPlannedInterventions] = useState<PlannedIntervention[]>([]);
     const [referrals, setReferrals] = useState<string[]>([]);
     const [editedTranscript, setEditedTranscript] = useState(transcript); 
@@ -83,6 +88,16 @@ export function PostSessionSynthesis({
         ));
     };
 
+    const addManualOpinion = () => {
+        if (!newManualOpinion.trim()) return;
+        setManualOpinions([...manualOpinions, newManualOpinion]);
+        setNewManualOpinion("");
+    };
+
+    const removeManualOpinion = (idx: number) => {
+        setManualOpinions(prev => prev.filter((_, i) => i !== idx));
+    };
+
     const generateTreatmentPlan = async () => {
         setIsGeneratingPlan(true);
         try {
@@ -96,8 +111,10 @@ export function PostSessionSynthesis({
                 transcript: editedTranscript, 
                 student: cleanStudent,
                 assessments: cleanAssessments,
-                clinicalOpinions: confirmedOpinions, // Added: Pass confirmed opinions
-                availableInterventions: MOCK_UK_LIBRARY 
+                clinicalOpinions: confirmedOpinions, 
+                manualEntries: manualOpinions, // Pass manual notes
+                availableInterventions: MOCK_UK_LIBRARY,
+                region: 'UK' // Hardcoded for now, ideally passed via props
             };
             
             const plans = await generateInterventionPlanAction(context);
@@ -105,7 +122,7 @@ export function PostSessionSynthesis({
             
             toast({
                 title: "Plan Generated",
-                description: `Created ${plans.length} targeted interventions based on confirmed opinions.`,
+                description: `Created ${plans.length} targeted interventions based on confirmed & manual opinions.`,
             });
         } catch (e) {
             console.error(e);
@@ -113,6 +130,20 @@ export function PostSessionSynthesis({
         } finally {
             setIsGeneratingPlan(false);
         }
+    };
+
+    const updateInterventionStep = (planId: string, stepIdx: number, val: string) => {
+        setPlannedInterventions(prev => prev.map(p => 
+             p.id === planId 
+             ? { ...p, steps: p.steps.map((s, i) => i === stepIdx ? val : s) } 
+             : p
+        ));
+    };
+
+    const addInterventionStep = (planId: string) => {
+        setPlannedInterventions(prev => prev.map(p => 
+            p.id === planId ? { ...p, steps: [...p.steps, "New step..."] } : p
+        ));
     };
 
     const handleReferralAdd = (val: string) => {
@@ -134,7 +165,8 @@ export function PostSessionSynthesis({
             plannedInterventions,
             referrals,
             editedTranscript,
-            reportType: type
+            reportType: type,
+            manualClinicalNotes: manualOpinions
         };
         onComplete(synthesisResult);
     };
@@ -191,38 +223,64 @@ export function PostSessionSynthesis({
                                 <Sparkles className="w-4 h-4 mr-2 text-indigo-500" />
                                 AI Hypotheses &gt; Clinical Opinions
                             </CardTitle>
-                            <CardDescription>Confirm observations to include them in the report.</CardDescription>
+                            <CardDescription>Confirm AI suggestions OR add your own manual observations.</CardDescription>
                         </CardHeader>
                         <ScrollArea className="flex-grow px-6 pb-6">
-                            <div className="space-y-3">
-                                {clinicalOpinions.map((insight) => (
-                                    <div 
-                                        key={insight.id} 
-                                        className={`p-4 rounded-lg border transition-all cursor-pointer group ${
-                                            (insight as any).confirmed 
-                                                ? 'bg-emerald-50 border-emerald-200 shadow-sm' 
-                                                : 'bg-white border-slate-200 hover:border-indigo-300'
-                                        }`}
-                                        onClick={() => toggleConfirmation(insight.id)}
-                                    >
-                                        <div className="flex justify-between items-start mb-2">
-                                            <Badge variant="outline" className={`uppercase text-[10px] ${
-                                                insight.type === 'risk' ? 'text-red-600 bg-red-50' : 
-                                                insight.type === 'strength' ? 'text-green-600 bg-green-50' : 'text-slate-600'
-                                            }`}>
-                                                {insight.type}
-                                            </Badge>
-                                            {(insight as any).confirmed ? (
-                                                <CheckCircle className="w-4 h-4 text-emerald-500" />
-                                            ) : (
-                                                <div className="w-4 h-4 rounded-full border-2 border-slate-300 group-hover:border-indigo-400" />
-                                            )}
+                            <div className="space-y-6">
+                                {/* AI Section */}
+                                <div className="space-y-3">
+                                    <h3 className="text-xs font-semibold text-slate-500 uppercase">AI Suggestions</h3>
+                                    {clinicalOpinions.map((insight) => (
+                                        <div 
+                                            key={insight.id} 
+                                            className={`p-4 rounded-lg border transition-all cursor-pointer group ${
+                                                (insight as any).confirmed 
+                                                    ? 'bg-emerald-50 border-emerald-200 shadow-sm' 
+                                                    : 'bg-white border-slate-200 hover:border-indigo-300'
+                                            }`}
+                                            onClick={() => toggleConfirmation(insight.id)}
+                                        >
+                                            <div className="flex justify-between items-start mb-2">
+                                                <Badge variant="outline" className={`uppercase text-[10px] ${
+                                                    insight.type === 'risk' ? 'text-red-600 bg-red-50' : 
+                                                    insight.type === 'strength' ? 'text-green-600 bg-green-50' : 'text-slate-600'
+                                                }`}>
+                                                    {insight.type}
+                                                </Badge>
+                                                {(insight as any).confirmed ? (
+                                                    <CheckCircle className="w-4 h-4 text-emerald-500" />
+                                                ) : (
+                                                    <div className="w-4 h-4 rounded-full border-2 border-slate-300 group-hover:border-indigo-400" />
+                                                )}
+                                            </div>
+                                            <p className={`text-sm ${(insight as any).confirmed ? 'text-emerald-900 font-medium' : 'text-slate-600'}`}>
+                                                {insight.text}
+                                            </p>
                                         </div>
-                                        <p className={`text-sm ${(insight as any).confirmed ? 'text-emerald-900 font-medium' : 'text-slate-600'}`}>
-                                            {insight.text}
-                                        </p>
+                                    ))}
+                                </div>
+
+                                {/* Manual Section */}
+                                <div className="space-y-3">
+                                    <h3 className="text-xs font-semibold text-slate-500 uppercase">Manual Notes</h3>
+                                    {manualOpinions.map((note, i) => (
+                                        <div key={i} className="p-3 bg-white border border-slate-200 rounded flex justify-between items-start">
+                                            <p className="text-sm text-slate-800">{note}</p>
+                                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-slate-400 hover:text-red-500" onClick={() => removeManualOpinion(i)}>
+                                                <X className="w-3 h-3" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    <div className="flex gap-2">
+                                        <Input 
+                                            placeholder="Add a manual observation..." 
+                                            value={newManualOpinion}
+                                            onChange={(e) => setNewManualOpinion(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && addManualOpinion()}
+                                        />
+                                        <Button onClick={addManualOpinion} size="sm" variant="secondary"><Plus className="w-4 h-4" /></Button>
                                     </div>
-                                ))}
+                                </div>
                             </div>
                         </ScrollArea>
                     </Card>
@@ -234,7 +292,7 @@ export function PostSessionSynthesis({
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle>Intervention Plan</CardTitle>
-                                <CardDescription>Smart-mapped from WISC-V Scores & Session Evidence.</CardDescription>
+                                <CardDescription>Smart-mapped from WISC-V Scores, Session Evidence & Your Notes.</CardDescription>
                             </div>
                             <Button onClick={generateTreatmentPlan} disabled={isGeneratingPlan} size="sm" variant="secondary">
                                 {isGeneratingPlan ? <Sparkles className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
@@ -250,7 +308,7 @@ export function PostSessionSynthesis({
                                 ) : (
                                     <div className="space-y-4">
                                         {plannedInterventions.map((plan) => (
-                                            <div key={plan.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm relative">
+                                            <div key={plan.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm relative group">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div>
                                                         <h3 className="font-bold text-slate-800">{plan.programName}</h3>
@@ -270,11 +328,22 @@ export function PostSessionSynthesis({
                                                 </div>
 
                                                 <div className="bg-slate-50 p-3 rounded text-sm text-slate-700">
-                                                    <div className="font-semibold text-xs text-slate-400 uppercase mb-1">Recommended Steps</div>
+                                                    <div className="font-semibold text-xs text-slate-400 uppercase mb-1">Recommended Steps (Editable)</div>
                                                     <ul className="list-disc pl-4 space-y-1">
                                                         {plan.steps.map((step, i) => (
-                                                            <li key={i}>{step}</li>
+                                                            <li key={i} className="flex gap-2 items-start">
+                                                                <input 
+                                                                    className="bg-transparent border-none w-full focus:outline-none focus:bg-white rounded px-1"
+                                                                    value={step}
+                                                                    onChange={(e) => updateInterventionStep(plan.id, i, e.target.value)}
+                                                                />
+                                                            </li>
                                                         ))}
+                                                        <li className="list-none pt-1">
+                                                            <button onClick={() => addInterventionStep(plan.id)} className="text-xs text-indigo-500 hover:underline flex items-center">
+                                                                <Plus className="w-3 h-3 mr-1" /> Add Step
+                                                            </button>
+                                                        </li>
                                                     </ul>
                                                 </div>
                                             </div>
@@ -300,6 +369,7 @@ export function PostSessionSynthesis({
                                     <SelectItem value="CAMHS (Mental Health)">CAMHS (Mental Health)</SelectItem>
                                     <SelectItem value="Pediatrician">Pediatrician</SelectItem>
                                     <SelectItem value="Social Care (MASH)">Social Care (MASH)</SelectItem>
+                                    <SelectItem value="SENCO (School Counselor)">SENCO (School Counselor)</SelectItem> {/* Added SENCO */}
                                 </SelectContent>
                             </Select>
 
