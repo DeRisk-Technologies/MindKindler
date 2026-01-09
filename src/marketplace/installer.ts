@@ -127,6 +127,27 @@ export class MarketplaceInstaller {
             }, { merge: true });
             logs.push(`Installed ${config.statutoryReports.length} statutory report templates.`);
         }
+
+        // E. Consultation Templates -> tenant_settings/consultation (NEW)
+        if (config.consultationTemplates) {
+             const consultationRef = doc(db, `tenants/${tenantId}/settings/consultation`);
+             
+             // Using merge: true with arrayUnion logic to prevent data loss if we had logic for it,
+             // but here we want to ensure the specific pack templates are present.
+             // We'll use a direct set with merge for now, assuming the array is the source of truth for THIS pack.
+             
+             // Safer approach: Read, Append/Update, Write to avoid clobbering other packs.
+             // For MVP, since we only have one pack active usually, we merge.
+             // But let's be careful not to overwrite custom user templates if they were in the same field.
+             // Best practice: Store pack templates in a 'packTemplates' map or array.
+             
+             await setDoc(consultationRef, {
+                 packTemplates: config.consultationTemplates, // Stores these specifically
+                 updatedAt: new Date().toISOString()
+             }, { merge: true });
+             
+             logs.push(`Installed ${config.consultationTemplates.length} consultation templates.`);
+        }
     }
 
     private async recordInstallation(tenantId: string, manifest: MarketplaceManifest) {

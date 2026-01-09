@@ -5,16 +5,16 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Fixed: Using standard Select wrapper
 import { useAuth } from '@/hooks/use-auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { db, functions } from '@/lib/firebase';
+import { doc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore'; 
+import { db, functions, getRegionalDb } from '@/lib/firebase';
 import { StatutoryReportTemplate } from '@/marketplace/types';
 import { Loader2, FileText, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestoreCollection } from '@/hooks/use-firestore';
+import { useRouter } from 'next/navigation';
 
 // FALLBACK UK TEMPLATES (If Pack Installer not run)
 const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
@@ -41,6 +41,7 @@ const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
 
 export default function ReportBuilderPage() {
     const { user } = useAuth();
+    const router = useRouter();
     const { toast } = useToast();
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
@@ -51,7 +52,7 @@ export default function ReportBuilderPage() {
     const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
     // Fetch Students for Dropdown
-    const { data: students, loading: loadingStudents } = useFirestoreCollection('students', 'lastName', 'asc');
+    const { data: students } = useFirestoreCollection('students', 'lastName', 'asc');
 
     const activeTemplate = templates.find(t => t.id === selectedTemplateId);
 
@@ -61,7 +62,7 @@ export default function ReportBuilderPage() {
         
         async function fetchTemplates() {
             let loadedTemplates: StatutoryReportTemplate[] = [];
-            const tenantId = (user as any).tenantId || 'default';
+            const tenantId = user?.tenantId || 'default';
 
             try {
                 // 1. Try fetching installed pack from tenant settings
@@ -72,15 +73,16 @@ export default function ReportBuilderPage() {
                     loadedTemplates = snap.data().templates;
                 } else {
                     // 2. FALLBACK: Use hardcoded UK Templates for Pilot if UK user
-                    if ((user as any)?.region === 'uk' || user.email?.includes('uk') || user.email?.includes('mindsuk')) {
-                        console.log("Using Fallback UK Templates for Pilot");
+                    // FIX: Safe null check for user
+                    const isUK = user?.region === 'uk' || user?.email?.includes('uk');
+                    
+                    if (isUK) {
                         loadedTemplates = FALLBACK_UK_TEMPLATES;
                     }
                 }
                 setTemplates(loadedTemplates);
             } catch (e) {
                 console.error("Failed to load templates", e);
-                // Last resort fallback
                 setTemplates(FALLBACK_UK_TEMPLATES);
             } finally {
                 setLoading(false);
@@ -90,17 +92,17 @@ export default function ReportBuilderPage() {
     }, [user]);
 
     const handleGenerate = async () => {
-        if (!selectedTemplateId || !selectedStudentId || !activeTemplate) {
+        if (!selectedTemplateId || !selectedStudentId || !activeTemplate || !user) {
             toast({ title: "Validation", description: "Please select both a student and a template.", variant: "destructive" });
             return;
         }
         setGenerating(true);
 
         try {
-            // Call the Cloud Function we hooked up in Phase 4
+            // 1. Call Cloud Function to Generate Content
             const generateFn = httpsCallable(functions, 'generateClinicalReport');
             
-            await generateFn({
+            const result = await generateFn({
                 tenantId: user?.tenantId,
                 studentId: selectedStudentId,
                 templateId: selectedTemplateId,
@@ -108,16 +110,47 @@ export default function ReportBuilderPage() {
                 contextPackId: 'uk_la_pack' 
             });
 
+            const responseData = result.data as any;
+            
+            // 2. Resolve Regional DB
+            // Pilot fallback: infer region if missing
+            // FIX: Added optional chaining to user access
+            const region = user?.region || (user?.email?.includes('uk') ? 'uk' : 'default');
+            const targetDb = getRegionalDb(region);
+
+            // 3. Get Student Name for Metadata
+            const studentName = students.find(s => s.id === selectedStudentId)?.firstName + ' ' + students.find(s => s.id === selectedStudentId)?.lastName;
+
+            // 4. Save to Firestore (Regional 'reports' collection)
+            const newReport = {
+                title: activeTemplate.name + ' - Draft',
+                templateId: selectedTemplateId,
+                studentId: selectedStudentId,
+                studentName: studentName || 'Unknown Student',
+                status: 'draft',
+                createdAt: new Date().toISOString(), // Use ISO string for client compat
+                updatedAt: new Date().toISOString(),
+                createdBy: user.uid,
+                content: responseData.content || {}, // The AI generated sections
+                summary: responseData.summary || "",
+                type: 'statutory'
+            };
+
+            const reportRef = await addDoc(collection(targetDb, 'reports'), newReport);
+
             toast({
-                title: "Draft Generated",
-                description: "The AI has drafted the report adhering to statutory constraints. Check your 'Reports' archive.",
+                title: "Draft Saved",
+                description: "Report generated and saved to regional database.",
             });
+
+            // 5. Redirect to Editor
+            router.push(`/dashboard/reports/editor/${reportRef.id}`);
 
         } catch (error: any) {
             console.error(error);
             toast({
                 title: "Generation Failed",
-                description: "Cloud Function Error (Pilot Mode): " + error.message,
+                description: "Error: " + error.message,
                 variant: "destructive"
             });
         } finally {
@@ -154,7 +187,7 @@ export default function ReportBuilderPage() {
                                 value={selectedStudentId}
                                 onChange={(e) => setSelectedStudentId(e.target.value)}
                             >
-                                <option value="" disabled selected>Select Student...</option>
+                                <option value="" disabled>Select Student...</option>
                                 {students.map(s => (
                                     <option key={s.id} value={s.id}>
                                         {s.firstName} {s.lastName}
@@ -171,14 +204,14 @@ export default function ReportBuilderPage() {
                                 value={selectedTemplateId}
                                 onChange={(e) => setSelectedTemplateId(e.target.value)}
                             >
-                                <option value="" disabled selected>Choose a statutory framework...</option>
+                                <option value="" disabled>Choose a statutory framework...</option>
                                 {templates.map(t => (
                                     <option key={t.id} value={t.id}>{t.name}</option>
                                 ))}
                             </select>
                         </div>
 
-                        {/* RAG Constraints Visualization (Research Section 4.2.2) */}
+                        {/* RAG Constraints Visualization */}
                         {activeTemplate && (
                             <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
                                 <div className="flex items-center gap-2 mb-2">

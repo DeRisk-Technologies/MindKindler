@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { addDoc, collection, serverTimestamp, deleteDoc, doc, updateDoc, Firestore } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp, deleteDoc, doc, updateDoc, Firestore, getDoc } from "firebase/firestore"; // Added getDoc
 import { db, auth, getRegionalDb } from "@/lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,7 +36,7 @@ interface UserData {
   phone?: string;
   address?: string;
   createdAt: string;
-  tenantId?: string; // To distinguish Internal vs External
+  tenantId?: string; 
 }
 
 // Internal Staff Roles
@@ -81,9 +81,7 @@ export default function AdminUsersPage() {
       if (myShardId && !isSuperAdmin) {
           setViewShard(myShardId);
       } else if (myShardId && isSuperAdmin && viewShard === 'default') {
-          // SuperAdmins start at default but can switch. 
-          // If myShardId is region specific, they might want to see that first?
-          // Let's keep default for SuperAdmin.
+          // Keep default for SuperAdmin
       }
   }, [myShardId, isSuperAdmin]);
 
@@ -104,6 +102,9 @@ export default function AdminUsersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUserForPassword, setSelectedUserForPassword] = useState<UserData | null>(null);
   const [activeTab, setActiveTab] = useState("customers");
+
+  // New State for dynamic Tenant Logic
+  const [selectedRole, setSelectedRole] = useState<string>("Teacher");
 
   const { toast } = useToast();
   
@@ -135,9 +136,20 @@ export default function AdminUsersPage() {
     const formData = new FormData(e.currentTarget);
     
     const role = formData.get("role") as string;
-    // Auto-assign tenantId based on role, fallback to form value
-    const formTenantId = formData.get("tenantId") as string;
-    const tenantId = STAFF_ROLES.includes(role) ? "mindkindler-hq" : (formTenantId || "default");
+    let tenantId = formData.get("tenantId") as string;
+
+    // --- ROBUST AUTO-PROVISIONING LOGIC ---
+    if (STAFF_ROLES.includes(role)) {
+        tenantId = "mindkindler-hq";
+    } else if ((role === 'EducationalPsychologist' || role === 'EPP' || role === 'ClinicalPsychologist') && (tenantId === 'default' || !tenantId)) {
+        // If promoting to Independent EPP and no Org selected, create Practice Tenant
+        // We need the UID. If editing, we have it. If creating, we generate it.
+        const uid = editingId ? users.find(u => u.id === editingId)?.uid : "generated_" + Math.random().toString(36).substring(7);
+        if (uid) {
+            tenantId = `practice_${uid}`;
+            console.log(`[Admin] Auto-provisioning Independent Tenant: ${tenantId}`);
+        }
+    }
 
     const data = {
         displayName: formData.get("name"),
@@ -154,13 +166,28 @@ export default function AdminUsersPage() {
       const targetDb = getTargetDb();
 
       if (editingId) {
+         // Update existing user
          await updateDoc(doc(targetDb, "users", editingId), data);
-         toast({ title: "User Updated", description: "Profile details saved." });
+         
+         // If we auto-provisioned a practice tenant, we should ensure the GLOBAL User Routing knows about it too
+         // (Only if running as SuperAdmin in Default view)
+         if (viewShard === 'default' && users.find(u => u.id === editingId)?.uid) {
+             const uid = users.find(u => u.id === editingId)!.uid;
+             if (uid) {
+                 await updateDoc(doc(db, "user_routing", uid), {
+                     role: role,
+                     shardId: `mindkindler-${formData.get("region") || 'uk'}`, // Infer or default
+                     updatedAt: new Date().toISOString()
+                 }).catch(e => console.warn("Routing update skipped (might not exist)", e));
+             }
+         }
+
+         toast({ title: "User Updated", description: `Role: ${role}. Tenant: ${tenantId}` });
       } else {
-         // Create dummy placeholder for now
+         // Create new user record
          await addDoc(collection(targetDb, "users"), {
             ...data,
-            uid: "generated_" + Math.random().toString(36),
+            uid: "generated_" + Math.random().toString(36), // Placeholder UID
             createdAt: new Date().toISOString(), 
          });
          toast({ title: "User Added", description: "User record created." });
@@ -198,8 +225,6 @@ export default function AdminUsersPage() {
       toast({ title: "Error", variant: "destructive", description: e.message });
     }
   };
-
-  const getDeptName = (id?: string) => departments.find(d => d.id === id)?.name || "-";
 
   return (
     <div className="space-y-8">
@@ -259,7 +284,11 @@ export default function AdminUsersPage() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Role Category</Label>
-                                    <Select name="role" defaultValue={editingId ? users.find(u => u.id === editingId)?.role : "Teacher"}>
+                                    <Select 
+                                        name="role" 
+                                        defaultValue={editingId ? users.find(u => u.id === editingId)?.role : "Teacher"}
+                                        onValueChange={setSelectedRole}
+                                    >
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             <div className="px-2 py-1 text-xs font-bold text-muted-foreground">Internal Staff</div>
@@ -281,7 +310,7 @@ export default function AdminUsersPage() {
                                 </div>
                             </div>
 
-                            {/* NEW: Tenant Selector (Replacing Input) */}
+                            {/* Tenant Selector */}
                             <div className="space-y-2">
                                 <Label htmlFor="tenantId" className="flex items-center gap-2">
                                     <Building className="h-4 w-4 text-slate-500" />
@@ -292,14 +321,22 @@ export default function AdminUsersPage() {
                                         <SelectValue placeholder="Select Organization" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="default">System Default (Dev)</SelectItem>
+                                        <SelectItem value="default">
+                                            {(selectedRole === 'EPP' || selectedRole === 'EducationalPsychologist') 
+                                                ? "Auto-Provision Practice (Independent)" 
+                                                : "System Default (Dev)"
+                                            }
+                                        </SelectItem>
                                         {tenants.map(t => (
                                             <SelectItem key={t.id} value={t.id}>{t.name} ({t.region})</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    Assign this user to an organization workspace.
+                                    {(selectedRole === 'EPP' || selectedRole === 'EducationalPsychologist')
+                                        ? "Leaving this as default will auto-generate a 'practice_{uid}' tenant for this independent practitioner."
+                                        : "Assign this user to an organization workspace."
+                                    }
                                 </p>
                             </div>
                         </TabsContent>
@@ -325,7 +362,7 @@ export default function AdminUsersPage() {
                     <DialogFooter>
                         <Button type="submit" disabled={isSubmitting}>
                         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Save
+                        Save Changes
                         </Button>
                     </DialogFooter>
                     </form>
@@ -335,6 +372,7 @@ export default function AdminUsersPage() {
       </div>
 
       <Tabs defaultValue="customers" value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {/* ... (Rest of the Tabs UI same as before) ... */}
         <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent">
             <TabsTrigger 
                 value="customers" 

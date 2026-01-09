@@ -53,6 +53,15 @@ export interface StatutoryReportTemplate {
     constraints?: string[];
 }
 
+export interface ConsultationTemplate {
+    id: string;
+    title: string;
+    description: string;
+    system_prompt: string;
+    required_sections: string[];
+    tags: string[];
+}
+
 // Phase 10: Intervention Logic Type
 export interface InterventionLogic {
     id: string;
@@ -74,6 +83,7 @@ export interface CountryPackConfig {
     psychometricConfig: PsychometricConfig;
     statutoryReports: StatutoryReportTemplate[];
     interventionLogic?: InterventionLogic[]; // New capability
+    consultationTemplates?: ConsultationTemplate[];
 }
 
 export interface MarketplaceManifest {

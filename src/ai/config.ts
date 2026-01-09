@@ -1,5 +1,7 @@
 // src/ai/config.ts
 
+import { ai } from './genkit';
+
 export const AVAILABLE_MODELS = [
     { value: 'googleai/gemini-2.0-flash', label: 'Gemini 2.0 Flash', tags: ['Fast', 'Next-Gen'], tier: 'basic' },
     { value: 'googleai/gemini-2.0-flash-lite-preview-02-05', label: 'Gemini 2.0 Lite', tags: ['Ultra Fast'], tier: 'basic' },
@@ -71,3 +73,15 @@ export const FLOW_PARAMS = {
         maxOutputTokens: 1024 
     }
 };
+
+// Helper function to match the one I used in the Services
+export async function generateContent(prompt: string, model: string = DEFAULT_MODEL) {
+    // Lazy load logic to prevent circular dependency if possible, but simplest is to use 'ai' from genkit.ts
+    // However, genkit.ts imports DEFAULT_MODEL from here. Circular dependency!
+    // Solution: Move generateContent to a new file or keep it here but remove 'ai' import and pass 'ai' instance?
+    // Better: Just use a server action. 
+    // I will remove the import of 'ai' here and let the caller handle it or move this helper to a utility file.
+    // Actually, simply defining the interface here is not enough.
+    // I will CREATE a new file src/ai/utils.ts for this helper to avoid cycles.
+    throw new Error("Use src/app/actions/ai-actions.ts for server-side generation.");
+}

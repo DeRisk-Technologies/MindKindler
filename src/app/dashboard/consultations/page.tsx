@@ -16,7 +16,8 @@ import {
     Plus, 
     Loader2,
     Filter,
-    Video
+    Video,
+    Sparkles
 } from 'lucide-react';
 import { useFirestoreCollection } from '@/hooks/use-firestore';
 import { useAuth } from '@/hooks/use-auth';
@@ -78,7 +79,7 @@ export default function ConsultationsPage() {
                     </Link>
                     
                     <Link href="/dashboard/consultations/new">
-                        <Button>
+                        <Button className="bg-indigo-600 hover:bg-indigo-700">
                             <Plus className="mr-2 h-4 w-4"/> New Session
                         </Button>
                     </Link>
@@ -109,6 +110,7 @@ export default function ConsultationsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>Session Log</CardTitle>
+                    <CardDescription>Launch the Live AI Cockpit for active sessions.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -116,16 +118,15 @@ export default function ConsultationsPage() {
                             <TableRow>
                                 <TableHead>Date & Time</TableHead>
                                 <TableHead>Participant</TableHead>
-                                <TableHead>Type</TableHead>
+                                <TableHead>Clinical Mode</TableHead>
                                 <TableHead>Status</TableHead>
-                                <TableHead>Outcome</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {loading && <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="animate-spin inline"/></TableCell></TableRow>}
+                            {loading && <TableRow><TableCell colSpan={5} className="text-center py-8"><Loader2 className="animate-spin inline"/></TableCell></TableRow>}
                             {!loading && filteredConsultations.length === 0 && (
-                                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No consultations found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No consultations found.</TableCell></TableRow>
                             )}
                             {filteredConsultations.map((session: any) => (
                                 <TableRow key={session.id}>
@@ -151,30 +152,37 @@ export default function ConsultationsPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="outline" className="capitalize">{session.type || "General"}</Badge>
+                                        <Badge variant="outline" className="capitalize bg-slate-50">
+                                            {session.mode ? session.mode.replace('_', ' ') : "Standard"}
+                                        </Badge>
                                     </TableCell>
                                     <TableCell>
                                         {session.status === 'completed' && <Badge variant="default" className="bg-green-600">Completed</Badge>}
                                         {session.status === 'scheduled' && <Badge variant="secondary" className="bg-blue-100 text-blue-800">Scheduled</Badge>}
                                         {session.status === 'cancelled' && <Badge variant="destructive" className="bg-red-100 text-red-800">Cancelled</Badge>}
                                     </TableCell>
-                                    <TableCell>
-                                        <span className="text-sm truncate max-w-[200px] block">
-                                            {session.outcomeSummary || "-"}
-                                        </span>
-                                    </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">
-                                            {/* START LIVE SESSION BUTTON */}
+                                            {/* UPDATED: Link to the new LIVE Cockpit */}
                                             {session.status === 'scheduled' && (
-                                                <Link href={`/dashboard/consultations/${session.id}`}>
-                                                    <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                                                        <Video className="mr-2 h-3 w-3" /> Start
+                                                <Link href={`/dashboard/consultations/live/${session.id}`}>
+                                                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 shadow-md">
+                                                        <Video className="mr-2 h-3 w-3" /> Live Cockpit
                                                     </Button>
                                                 </Link>
                                             )}
+                                            
+                                            {/* UPDATED: Link to the new POST-SESSION Synthesis for completed ones */}
+                                            {session.status === 'completed' && (
+                                                <Link href={`/dashboard/consultations/synthesis/${session.id}`}>
+                                                    <Button variant="outline" size="sm" className="text-indigo-600 border-indigo-200">
+                                                        <Sparkles className="mr-2 h-3 w-3" /> Synthesis
+                                                    </Button>
+                                                </Link>
+                                            )}
+
                                             <Link href={`/dashboard/consultations/${session.id}`}>
-                                                <Button variant="ghost" size="sm">View Notes</Button>
+                                                <Button variant="ghost" size="sm">Details</Button>
                                             </Link>
                                         </div>
                                     </TableCell>

@@ -1,207 +1,112 @@
+// src/app/dashboard/reports/templates/page.tsx
+
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash, GripVertical, Save, ArrowLeft, Bot } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import React, { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/hooks/use-auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { StatutoryReportTemplate } from '@/marketplace/types';
+import { FileText, ArrowRight, Loader2 } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
 
-// Basic Drag-and-Drop feel (simplified for speed without dnd-kit yet)
-// Users can add sections to a report template
+export default function ReportTemplatesPage() {
+    const { user } = useAuth();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const sourceSessionId = searchParams.get('sourceSessionId');
+    const { toast } = useToast();
 
-interface TemplateSection {
-    id: string;
-    title: string;
-    prompt: string; // Instructions for AI
-    type: 'text' | 'list' | 'table';
-    required: boolean;
-}
+    const [templates, setTemplates] = useState<StatutoryReportTemplate[]>([]);
+    const [loading, setLoading] = useState(true);
 
-export default function TemplateDesignerPage() {
-  const router = useRouter();
-  const { toast } = useToast();
-  
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("general");
-  const [sections, setSections] = useState<TemplateSection[]>([
-      { id: '1', title: 'Introduction', prompt: 'Summarize the reason for referral and background.', type: 'text', required: true }
-  ]);
+    useEffect(() => {
+        if (!user) return;
+        
+        async function fetchTemplates() {
+            const tenantId = (user as any).tenantId || 'default';
+            try {
+                const ref = doc(db, `tenants/${tenantId}/settings/reporting`);
+                const snap = await getDoc(ref);
+                if (snap.exists() && snap.data().templates) {
+                    setTemplates(snap.data().templates);
+                } else {
+                    // Mock for Pilot
+                    setTemplates([
+                        { 
+                            id: "custom_letter", 
+                            name: "Professional Letter", 
+                            sections: [{ id: "body", title: "Content", promptId: "letter_body" }],
+                            constraints: []
+                        },
+                        {
+                            id: "meeting_minutes",
+                            name: "Meeting Minutes",
+                            sections: [{ id: "notes", title: "Notes", promptId: "minutes" }],
+                            constraints: []
+                        }
+                    ]);
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchTemplates();
+    }, [user]);
 
-  const addSection = () => {
-      setSections([...sections, {
-          id: Date.now().toString(),
-          title: "New Section",
-          prompt: "",
-          type: "text",
-          required: true
-      }]);
-  };
+    const handleSelect = (templateId: string) => {
+        // Redirect to Builder with template pre-selected
+        // If sourceSessionId exists, pass it along
+        const url = `/dashboard/reports/builder?templateId=${templateId}${sourceSessionId ? `&sourceSessionId=${sourceSessionId}` : ''}`;
+        router.push(url);
+    };
 
-  const updateSection = (id: string, field: keyof TemplateSection, value: any) => {
-      setSections(sections.map(s => s.id === id ? { ...s, [field]: value } : s));
-  };
-
-  const removeSection = (id: string) => {
-      setSections(sections.filter(s => s.id !== id));
-  };
-
-  const handleSave = async () => {
-      if (!title) {
-          toast({ title: "Error", description: "Template title is required.", variant: "destructive" });
-          return;
-      }
-
-      try {
-          await addDoc(collection(db, "report_templates"), {
-              title,
-              description,
-              category,
-              sections,
-              createdBy: "user", // In real app, auth.currentUser.uid
-              createdAt: serverTimestamp(),
-              status: 'active'
-          });
-          
-          toast({ title: "Template Saved", description: "Your custom report template is ready." });
-          router.push('/dashboard/reports');
-      } catch (e) {
-          console.error(e);
-          toast({ title: "Error", description: "Failed to save template.", variant: "destructive" });
-      }
-  };
-
-  return (
-    <div className="space-y-6 p-8 pt-6 max-w-5xl mx-auto">
-        <div className="flex items-center gap-4 mb-6">
-            <Button variant="ghost" size="icon" onClick={() => router.back()}>
-                <ArrowLeft className="h-4 w-4" />
-            </Button>
+    return (
+        <div className="p-8 max-w-5xl mx-auto space-y-8">
             <div>
-                <h1 className="text-2xl font-bold tracking-tight">Template Designer</h1>
-                <p className="text-muted-foreground">Create custom structures for AI-generated reports.</p>
+                <h1 className="text-3xl font-bold">Report Templates</h1>
+                <p className="text-muted-foreground">Select a template to begin drafting.</p>
             </div>
-            <Button onClick={handleSave} className="ml-auto">
-                <Save className="mr-2 h-4 w-4" /> Save Template
-            </Button>
-        </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
-            {/* Metadata Sidebar */}
-            <Card className="md:col-span-1 h-fit">
-                <CardHeader>
-                    <CardTitle>Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>Template Name</Label>
-                        <Input placeholder="e.g. Monthly Behavioral Report" value={title} onChange={e => setTitle(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Category</Label>
-                        <Select value={category} onValueChange={setCategory}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="general">General</SelectItem>
-                                <SelectItem value="clinical">Clinical</SelectItem>
-                                <SelectItem value="educational">Educational</SelectItem>
-                                <SelectItem value="administrative">Administrative</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Description</Label>
-                        <Textarea placeholder="What is this report for?" value={description} onChange={e => setDescription(e.target.value)} />
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Editor Area */}
-            <Card className="md:col-span-2">
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Sections Structure</CardTitle>
-                    <Button variant="outline" size="sm" onClick={addSection}>
-                        <Plus className="mr-2 h-4 w-4" /> Add Section
-                    </Button>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {sections.length === 0 && (
-                        <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                            No sections yet. Add one to start.
-                        </div>
-                    )}
-                    
-                    {sections.map((section, index) => (
-                        <div key={section.id} className="border rounded-lg p-4 bg-muted/20 relative group transition-all hover:bg-muted/40">
-                            <div className="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab text-muted-foreground opacity-50 hover:opacity-100">
-                                <GripVertical className="h-5 w-5" />
-                            </div>
-                            
-                            <div className="pl-8 space-y-4">
-                                <div className="flex gap-4">
-                                    <div className="flex-1 space-y-2">
-                                        <Label className="text-xs font-semibold uppercase text-muted-foreground">Section Title</Label>
-                                        <Input 
-                                            value={section.title} 
-                                            onChange={(e) => updateSection(section.id, 'title', e.target.value)} 
-                                            className="font-semibold"
-                                        />
-                                    </div>
-                                    <div className="w-32 space-y-2">
-                                        <Label className="text-xs font-semibold uppercase text-muted-foreground">Format</Label>
-                                        <Select 
-                                            value={section.type} 
-                                            onValueChange={(val) => updateSection(section.id, 'type', val)}
-                                        >
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="text">Paragraph</SelectItem>
-                                                <SelectItem value="list">Bullet List</SelectItem>
-                                                <SelectItem value="table">Table</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                
+            {loading ? (
+                <div className="flex justify-center py-12"><Loader2 className="animate-spin h-8 w-8" /></div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {templates.map(t => (
+                        <Card key={t.id} className="hover:shadow-lg transition-all cursor-pointer" onClick={() => handleSelect(t.id)}>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <FileText className="h-5 w-5 text-indigo-500" />
+                                    {t.name}
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
                                 <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Bot className="h-3 w-3 text-primary" />
-                                        <Label className="text-xs font-semibold uppercase text-muted-foreground">AI Instructions</Label>
+                                    <p className="text-sm text-muted-foreground">{t.sections.length} Sections</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {t.constraints?.map(c => (
+                                            <Badge key={c} variant="secondary" className="text-[10px] uppercase">
+                                                {c.replace(/_/g, ' ')}
+                                            </Badge>
+                                        ))}
                                     </div>
-                                    <Textarea 
-                                        value={section.prompt} 
-                                        onChange={(e) => updateSection(section.id, 'prompt', e.target.value)}
-                                        placeholder="Tell the AI what to include in this section..."
-                                        className="h-20 text-sm"
-                                    />
                                 </div>
-
-                                <div className="flex items-center justify-between pt-2">
-                                    <div className="flex items-center gap-2">
-                                        <Switch 
-                                            checked={section.required} 
-                                            onCheckedChange={(checked) => updateSection(section.id, 'required', checked)} 
-                                        />
-                                        <Label className="text-sm text-muted-foreground">Required Section</Label>
-                                    </div>
-                                    <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => removeSection(section.id)}>
-                                        <Trash className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
+                            </CardContent>
+                            <CardFooter className="border-t bg-slate-50 pt-4">
+                                <Button variant="ghost" className="w-full justify-between">
+                                    Use Template <ArrowRight className="h-4 w-4" />
+                                </Button>
+                            </CardFooter>
+                        </Card>
                     ))}
-                </CardContent>
-            </Card>
+                </div>
+            )}
         </div>
-    </div>
-  );
+    );
 }

@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useState, use } from "react"; 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, getRegionalDb } from "@/lib/firebase";
 import { ConsultationSession, Student } from "@/types/schema";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Mic, MicOff, Save, FileText, BrainCircuit, CheckCircle2, XCircle, Sparkles, FolderPlus, ClipboardList, Stethoscope, History, ExternalLink, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Mic, MicOff, Save, FileText, BrainCircuit, Sparkles, FolderPlus, ClipboardList, AlertTriangle, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { generateConsultationReport } from "@/ai/flows/generate-consultation-report";
@@ -18,13 +18,9 @@ import { generateConsultationInsights } from "@/ai/flows/generate-consultation-i
 import 'regenerator-runtime/runtime';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import ReactMarkdown from 'react-markdown';
-import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
-import { getRegionalDb } from "@/lib/firebase";
 
 export default function LiveConsultationPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
-  // Unwrapping params for Next.js 15
   const params = use(paramsPromise);
   const id = params.id;
   
@@ -42,19 +38,14 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]); 
   const [aiLoading, setAiLoading] = useState(false);
   const [lastAnalyzedLength, setLastAnalyzedLength] = useState(0);
-  const [treatmentPlans, setTreatmentPlans] = useState<string[]>([]);
-  const [treatmentLoading, setTreatmentLoading] = useState(false);
-  const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
 
   const {
     transcript,
     listening,
-    resetTranscript,
     browserSupportsSpeechRecognition
   } = useSpeechRecognition();
 
   useEffect(() => {
-    // Wait for params AND permissions (shard context)
     if (!id || permissionsLoading) return;
 
     const fetchData = async () => {
@@ -63,7 +54,6 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
         try {
             console.log(`[LiveConsultation] Fetching session ${id} from shard: ${shardId}`);
             
-            // Resolve Target DB based on Shard
             const targetDb = (shardId && shardId !== 'default') 
                 ? getRegionalDb(shardId.replace('mindkindler-', '')) 
                 : db;
@@ -73,6 +63,14 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
             
             if (sessionSnap.exists()) {
                 const sData = { id: sessionSnap.id, ...sessionSnap.data() } as ConsultationSession;
+                
+                // REDIRECT LOGIC: If session is already completed/synthesized, go to Synthesis View
+                if (sData.status === 'completed' || sData.status === 'synthesized') {
+                    console.log("Session completed, redirecting to synthesis...");
+                    router.replace(`/dashboard/consultations/synthesis/${id}`);
+                    return;
+                }
+
                 setSession(sData);
                 setObservationNotes(sData.notes || "");
                 
@@ -81,27 +79,25 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
                     if (studentSnap.exists()) {
                         setStudent({ id: studentSnap.id, ...studentSnap.data() } as Student);
                     } else {
-                        console.warn("Student record not found in shard:", sData.studentId);
-                        setError("Student record linked to this session was not found in the regional database.");
+                        setError("Student record linked to this session was not found.");
                     }
                 } else {
                     setError("This consultation session is not linked to a student record.");
                 }
             } else {
-                console.warn("Session not found in DB:", id);
-                setError("Consultation session not found. It might be in a different region or deleted.");
+                setError("Consultation session not found.");
             }
         } catch (e: any) {
             console.error("Error fetching consultation data:", e);
-            setError(e.message || "An unexpected error occurred while loading the session.");
+            setError(e.message);
         } finally {
             setLoading(false);
         }
     };
     fetchData();
-  }, [id, shardId, permissionsLoading]);
+  }, [id, shardId, permissionsLoading, router]);
 
-  // Real-time AI Analysis: Trigger every ~300 chars or pause
+  // Real-time AI Analysis
   useEffect(() => {
       if (listening && transcript.length - lastAnalyzedLength > 300) {
           triggerAiAnalysis();
@@ -163,47 +159,8 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
   };
 
   const handleGenerateReport = async () => {
-      if (!session || !student || !shardId) return;
-      toast({ title: "Generating Report", description: "AI is drafting the consultation summary..." });
-      
-      try {
-          const reportData = await generateConsultationReport({
-              studentName: `${student.firstName} ${student.lastName}`,
-              age: student.dateOfBirth ? new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear() : 10,
-              transcript: transcript,
-              notes: `OBSERVATIONS: ${observationNotes} \n DIAGNOSIS: ${diagnosisNotes}`,
-              historySummary: "See student history.",
-              templateType: 'SOAP',
-              locale: "en-GB",
-              languageLabel: "English (UK)"
-          });
-
-          const targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
-          const reportDoc = await addDoc(collection(targetDb, "reports"), {
-              caseId: session.caseId || null,
-              sessionId: session.id,
-              studentId: student.id,
-              title: reportData.title,
-              sections: reportData.sections,
-              generatedContent: reportData.summary,
-              language: 'en',
-              createdAt: new Date().toISOString(),
-              status: 'draft',
-              version: 1
-          });
-          
-          await updateDoc(doc(targetDb, "consultation_sessions", session.id), {
-              reportId: reportDoc.id,
-              status: 'completed'
-          });
-
-          toast({ title: "Report Ready", description: "Draft created successfully." });
-          router.push(`/dashboard/reports/editor/${reportDoc.id}`);
-          
-      } catch (e) {
-          console.error(e);
-          toast({ title: "Error", description: "Failed to generate report.", variant: "destructive" });
-      }
+      // Legacy Handler - Redirect to Synthesis
+      router.push(`/dashboard/consultations/synthesis/${id}`);
   };
 
   const acceptInsight = (text: string, type: string) => {
@@ -219,7 +176,6 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
       return <div className="p-8 text-center">Browser does not support speech recognition. Please use Chrome.</div>;
   }
 
-  // Error State Rendering
   if (error) {
       return (
           <div className="h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6">
@@ -228,12 +184,9 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
                   <h2 className="text-2xl font-bold text-slate-900">Consultation Unavailable</h2>
                   <p className="text-slate-600 max-w-md">{error}</p>
               </div>
-              <div className="flex gap-3 mt-4">
-                  <Button variant="outline" onClick={() => router.push('/dashboard/consultations')}>
-                      <ArrowLeft className="mr-2 h-4 w-4" /> Back to List
-                  </Button>
-                  <Button onClick={() => window.location.reload()}>Retry</Button>
-              </div>
+              <Button variant="outline" onClick={() => router.push('/dashboard/consultations')}>
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back to List
+              </Button>
           </div>
       );
   }
@@ -242,12 +195,11 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
       return (
         <div className="h-screen flex flex-col items-center justify-center gap-4">
             <Loader2 className="animate-spin text-primary w-12 h-12" />
-            <p className="text-muted-foreground animate-pulse font-medium">Initializing Live Consultation...</p>
+            <p className="text-muted-foreground animate-pulse font-medium">Loading Session...</p>
         </div>
       );
   }
 
-  // If loading finished but session/student missing (and error not set for some reason)
   if (!session || !student) {
       return <div className="h-screen flex items-center justify-center">Missing session context.</div>;
   }
@@ -256,7 +208,7 @@ export default function LiveConsultationPage({ params: paramsPromise }: { params
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col md:flex-row overflow-hidden bg-background">
-       {/* Main Consultation Area */}
+       {/* Main Consultation Area - LEGACY VIEW (Only seen if status is scheduled/in_progress) */}
        <div className="flex-1 flex flex-col p-6 gap-4 overflow-y-auto">
            {/* Header */}
            <div className="flex justify-between items-start">
