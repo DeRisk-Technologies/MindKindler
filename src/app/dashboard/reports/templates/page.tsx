@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +14,7 @@ import { FileText, ArrowRight, Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 
-export default function ReportTemplatesPage() {
+function ReportTemplatesContent() {
     const { user } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -28,7 +28,7 @@ export default function ReportTemplatesPage() {
         if (!user) return;
         
         async function fetchTemplates() {
-            const tenantId = (user as any).tenantId || 'default';
+            const tenantId = user?.tenantId || 'default';
             try {
                 const ref = doc(db, `tenants/${tenantId}/settings/reporting`);
                 const snap = await getDoc(ref);
@@ -108,5 +108,13 @@ export default function ReportTemplatesPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+export default function ReportTemplatesPage() {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-indigo-600"/></div>}>
+            <ReportTemplatesContent />
+        </Suspense>
     );
 }
