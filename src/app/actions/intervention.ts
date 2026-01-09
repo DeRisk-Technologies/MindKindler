@@ -22,6 +22,7 @@ export interface PlanningContext {
     transcript: string;
     student: Partial<StudentRecord>;
     assessments: AssessmentResult[];
+    clinicalOpinions?: any[]; // Added clinicalOpinions
     availableInterventions: InterventionLogic[]; // From Marketplace Pack
 }
 
@@ -37,10 +38,13 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
     // 2. Construct Prompt
     const prompt = `
     You are a Clinical Intervention Specialist. 
-    Create a 3-point Intervention Plan for a student based on their assessment profile and consultation needs.
+    Create a 3-point Intervention Plan for a student based on their assessment profile, CONFIRMED clinical opinions, and consultation evidence.
 
     STUDENT PROFILE:
     ${needsSummary}
+
+    CONFIRMED CLINICAL OPINIONS (Use these to drive recommendations):
+    ${context.clinicalOpinions ? JSON.stringify(context.clinicalOpinions, null, 2) : "None provided."}
 
     TRANSCRIPT EXCERPTS (Clinical Evidence):
     "${context.transcript.slice(0, 3000)}..."
@@ -49,9 +53,11 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
     ${libraryContext}
 
     INSTRUCTIONS:
-    1. Select the best matching interventions from the Library. If none match perfectly, suggest a standard clinical strategy but mark evidence as 'bronze'.
-    2. For each intervention, write a clear Rationale linking it to the student's specific deficit (e.g. "Low VCI score of 75").
-    3. Define practical steps for a teacher.
+    1. Select the best matching interventions from the Library based on the CONFIRMED OPINIONS and Assessment Scores. 
+       - If a confirmed opinion identifies a "Language" deficit, prioritize "Language" interventions.
+    2. If no library item matches perfectly, suggest a standard clinical strategy but mark evidence as 'bronze'.
+    3. For each intervention, write a clear Rationale linking it to the specific clinical opinion or score (e.g. "Due to confirmed Low VCI...").
+    4. Define practical steps for a teacher.
 
     OUTPUT FORMAT:
     JSON Array of objects:

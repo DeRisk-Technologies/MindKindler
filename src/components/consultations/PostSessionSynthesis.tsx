@@ -21,7 +21,7 @@ import { InterventionLogic } from '@/marketplace/types';
 
 import { askSessionQuestionAction, AiInsight } from '@/app/actions/consultation';
 import { generateInterventionPlanAction, PlannedIntervention } from '@/app/actions/intervention';
-import { useRouter } from 'next/navigation'; // Added for custom flow
+import { useRouter } from 'next/navigation';
 
 const MOCK_UK_LIBRARY: InterventionLogic[] = [
     { id: "uk_elklan_vci", domain: "VCI", threshold: 85, programName: "ELKLAN Language Builders", description: "Structured oral language support.", evidenceLevel: "gold" },
@@ -33,7 +33,7 @@ export interface SynthesisResult {
     plannedInterventions: PlannedIntervention[];
     referrals: string[];
     editedTranscript: string;
-    reportType: 'statutory' | 'custom'; // Added type
+    reportType: 'statutory' | 'custom';
 }
 
 interface PostSessionSynthesisProps {
@@ -54,7 +54,7 @@ export function PostSessionSynthesis({
     onComplete 
 }: PostSessionSynthesisProps) {
     const { toast } = useToast();
-    const router = useRouter(); // For custom report nav
+    const router = useRouter(); 
     
     // State
     const [activeTab, setActiveTab] = useState('review');
@@ -86,14 +86,17 @@ export function PostSessionSynthesis({
     const generateTreatmentPlan = async () => {
         setIsGeneratingPlan(true);
         try {
-            // FIX: Sanitize context to remove non-plain objects (Timestamps)
             const cleanStudent = sanitizeForServer(student);
             const cleanAssessments = sanitizeForServer(assessments);
+            
+            // Get only confirmed opinions to influence the plan
+            const confirmedOpinions = clinicalOpinions.filter(op => (op as any).confirmed);
 
             const context = {
                 transcript: editedTranscript, 
                 student: cleanStudent,
                 assessments: cleanAssessments,
+                clinicalOpinions: confirmedOpinions, // Added: Pass confirmed opinions
                 availableInterventions: MOCK_UK_LIBRARY 
             };
             
@@ -102,7 +105,7 @@ export function PostSessionSynthesis({
             
             toast({
                 title: "Plan Generated",
-                description: `Created ${plans.length} targeted interventions.`,
+                description: `Created ${plans.length} targeted interventions based on confirmed opinions.`,
             });
         } catch (e) {
             console.error(e);
@@ -119,7 +122,6 @@ export function PostSessionSynthesis({
     const askFollowUp = async () => {
         if (!question.trim()) return;
         setIsAsking(true);
-        // FIX: Also sanitize for Q&A action
         const cleanStudent = sanitizeForServer(student);
         const response = await askSessionQuestionAction(question, editedTranscript, cleanStudent);
         setAnswer(response);
@@ -146,7 +148,7 @@ export function PostSessionSynthesis({
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => handleDraftReport('custom')}>
-                        <Plus className="mr-2 h-4 w-4" /> Custom Report
+                        <Plus className="mr-2 h-4 w-4" /> Custom Report / Referral
                     </Button>
                     <Button onClick={() => handleDraftReport('statutory')} className="bg-indigo-600 hover:bg-indigo-700">
                         <FileText className="mr-2 h-4 w-4" /> Draft Statutory Report

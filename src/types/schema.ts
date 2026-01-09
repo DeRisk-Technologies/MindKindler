@@ -125,6 +125,7 @@ export interface ConsentRecord {
 export interface StudentRecord {
     id: string;
     tenantId: string;
+    schoolId?: string; // Links student to a School Organization
     
     identity: {
         firstName: ProvenanceField<string>;

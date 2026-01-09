@@ -49,7 +49,6 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
                 const sessionSnap = await getDoc(sessionRef);
                 
                 if (!sessionSnap.exists()) {
-                    // Fallback to default check (omitted for brevity, handled by LivePage fix usually)
                     console.error(`Session ${id} not found in ${region}`);
                     toast({ variant: "destructive", title: "Session not found", description: `Checked shard: ${region}` });
                     setLoading(false);
@@ -80,7 +79,7 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
 
                 setSessionData({
                     transcript: transcriptText,
-                    insights: sData.insights || [],
+                    insights: sData.outcome?.clinicalOpinions || sData.insights || [], // Use previously saved opinions if available
                     student: studentData
                 });
 
@@ -119,8 +118,8 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
                 toast({ title: "Drafting Statutory Report", description: "Redirecting to standard builder..." });
                 router.push(`/dashboard/reports/builder?sourceSessionId=${id}&type=statutory`);
             } else {
-                toast({ title: "Custom Report", description: "Select a template..." });
-                router.push(`/dashboard/reports/templates?sourceSessionId=${id}`); // New Route for Templates
+                toast({ title: "Custom Report / Referral", description: "Select a template..." });
+                router.push(`/dashboard/reports/templates?sourceSessionId=${id}`); 
             }
 
         } catch (error) {
