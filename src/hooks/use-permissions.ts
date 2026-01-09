@@ -4,62 +4,100 @@ import { useAuth } from "@/hooks/use-auth";
 import { RBAC_MATRIX, PermissionAction } from "@/config/permissions";
 import { Role, StaffProfile } from "@/types/schema";
 import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { doc, getDoc, Firestore } from "firebase/firestore";
+import { db, getRegionalDb } from "@/lib/firebase";
+
+// Normalizes various naming conventions to the central RBAC Role type
+const normalizeRole = (role: string | undefined): Role | null => {
+    if (!role) return null;
+    const r = role.toLowerCase().replace(/\s/g, '');
+    if (r === 'epp' || r === 'educationalpsychologist' || r === 'clinicalpsychologist') return 'EPP';
+    if (r === 'superadmin' || r === 'admin') return 'SuperAdmin';
+    if (r === 'tenantadmin') return 'TenantAdmin';
+    if (r === 'schooladmin' || r === 'schooladministrator') return 'SchoolAdmin';
+    if (r === 'teacher') return 'Teacher';
+    if (r === 'parent' || r === 'parentuser') return 'ParentUser';
+    if (r === 'assistant') return 'Assistant';
+    if (r === 'trustedassistant') return 'TrustedAssistant';
+    if (r === 'govanalyst') return 'GovAnalyst';
+    return role as Role;
+};
 
 export function usePermissions() {
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'unverified' | 'rejected'>('unverified');
+    const [userRole, setUserRole] = useState<Role | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [shardId, setShardId] = useState<string | null>(null);
 
-    // Fetch extra user details (verification) if not in auth object
     useEffect(() => {
-        if (!user) return;
-        async function checkVerification() {
-            // In a real app, this should be a custom claim in the token for speed
-            // For MVP, we fetch the doc
+        if (authLoading) return;
+        if (!user) { 
+            setLoading(false); 
+            setUserRole(null);
+            return; 
+        }
+
+        async function fetchPermissions() {
             try {
-                const snap = await getDoc(doc(db, 'users', user.uid));
-                if (snap.exists()) {
-                    const data = snap.data() as StaffProfile;
+                // 1. Check Routing
+                const routingSnap = await getDoc(doc(db, 'user_routing', user!.uid));
+                const region = routingSnap.exists() ? routingSnap.data().region : 'default';
+                const targetDb = getRegionalDb(region);
+                
+                if (routingSnap.exists() && routingSnap.data().shardId) {
+                    setShardId(routingSnap.data().shardId);
+                }
+
+                // 2. Load Profile from Shard
+                const profileSnap = await getDoc(doc(targetDb, 'users', user!.uid));
+                if (profileSnap.exists()) {
+                    const data = profileSnap.data() as StaffProfile;
                     setVerificationStatus(data.verification?.status || 'unverified');
+                    setUserRole(normalizeRole(data.role));
                 }
             } catch (e) {
-                console.error(e);
+                console.error("RBAC Failure", e);
+            } finally {
+                setLoading(false);
             }
         }
-        checkVerification();
-    }, [user]);
+        fetchPermissions();
+    }, [user, authLoading]);
 
-    /**
-     * Checks if the current user has the specified permission.
-     * Includes TRUST ENGINE check for sensitive actions.
-     */
     const can = (action: PermissionAction): boolean => {
-        if (!user || !user.role) return false;
+        if (loading || !userRole) return false;
 
-        const userRole = user.role as Role;
         const allowedActions = RBAC_MATRIX[userRole];
-        
         if (!allowedActions || !allowedActions.includes(action)) return false;
 
-        // TRUST ENGINE GATEKEEPER
-        // If action is sensitive (clinical notes or psychometrics), require HCPC Verification
+        // Trust Engine Gatekeeper
         const sensitiveActions: PermissionAction[] = ['view_sensitive_notes', 'write_psychometrics', 'view_student_pii'];
-        
         if (sensitiveActions.includes(action)) {
-            // If role is EPP, they MUST be verified
-            if (userRole === 'EPP' || userRole === 'EducationalPsychologist') {
+            if (userRole === 'EPP') {
                 if (verificationStatus !== 'verified') return false;
             }
         }
-
         return true;
     };
 
-    const hasRole = (roles: Role[]): boolean => {
-        if (!user || !user.role) return false;
-        return roles.includes(user.role as Role);
-    }
+    /**
+     * Checks if the user has any of the specified roles.
+     * Use this for broad UI layout logic.
+     */
+    const hasRole = (roles: (Role | string)[]): boolean => {
+        if (loading || !userRole) return false;
+        // Check normalized role against allowed list
+        return roles.includes(userRole);
+    };
 
-    return { can, hasRole, user, verificationStatus };
+    return { 
+        can, 
+        hasRole, // Restored
+        user, 
+        role: userRole, 
+        verificationStatus, 
+        loading,
+        shardId 
+    };
 }

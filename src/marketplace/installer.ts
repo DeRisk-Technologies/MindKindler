@@ -143,20 +143,9 @@ export class MarketplaceInstaller {
 
 // --- Standalone Exports for Client Components ---
 
-import { auth } from "@/lib/firebase";
-
-export async function installPack(manifest: MarketplaceManifest) {
-    const user = auth.currentUser;
-    if (!user || !user.tenantId) throw new Error("Authentication required");
-    
-    // In a real app, tenantId is on the custom claim or user profile
-    // For this client-side mock, we assume user.uid is the tenantId or we fetch it
-    // NOTE: In Phase 9 we built a Server Action 'installMarketplacePack'. 
-    // These exports are mainly to satisfy legacy page imports.
-    
-    // We'll map to the tenantId stored in the user object if available, or fallback
-    const tenantId = "default"; // Simplified for client-side call
-    
+export async function installPack(manifest: MarketplaceManifest, tenantId: string = "default") {
+    // In a real app, strict auth checks happen here or in the caller.
+    // For this helper, we simply forward the request to the class logic.
     const installer = new MarketplaceInstaller();
     return await installer.installPack(tenantId, manifest);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, use } from "react"; 
 import { useParams, useRouter } from "next/navigation";
 import { doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Mic, MicOff, Save, FileText, BrainCircuit, CheckCircle2, XCircle, Sparkles, FolderPlus, ClipboardList, Stethoscope, History, ExternalLink } from "lucide-react";
+import { Mic, MicOff, Save, FileText, BrainCircuit, CheckCircle2, XCircle, Sparkles, FolderPlus, ClipboardList, Stethoscope, History, ExternalLink, AlertTriangle, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { generateConsultationReport } from "@/ai/flows/generate-consultation-report";
@@ -20,67 +20,86 @@ import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognitio
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReactMarkdown from 'react-markdown';
 import Link from "next/link";
+import { usePermissions } from "@/hooks/use-permissions";
+import { getRegionalDb } from "@/lib/firebase";
 
-export default function LiveConsultationPage() {
-  const { id } = useParams();
+export default function LiveConsultationPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  // Unwrapping params for Next.js 15
+  const params = use(paramsPromise);
+  const id = params.id;
+  
   const router = useRouter();
   const { toast } = useToast();
+  const { shardId, loading: permissionsLoading } = usePermissions(); 
   
   const [session, setSession] = useState<ConsultationSession | null>(null);
   const [student, setStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
-  // Note Splitting
   const [observationNotes, setObservationNotes] = useState("");
   const [diagnosisNotes, setDiagnosisNotes] = useState("");
-  
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]); 
   const [aiLoading, setAiLoading] = useState(false);
-  
-  // Chunking Strategy: Send FULL transcript periodically instead of small chunks
-  // This allows the server to handle intelligent chunking/overlap/deduplication.
   const [lastAnalyzedLength, setLastAnalyzedLength] = useState(0);
-  
-  // Treatment Plans
   const [treatmentPlans, setTreatmentPlans] = useState<string[]>([]);
   const [treatmentLoading, setTreatmentLoading] = useState(false);
-
-  // New Case created ID
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
 
-  // Voice Recognition
   const {
     transcript,
     listening,
     resetTranscript,
-    browserSupportsSpeechRecognition,
-    isMicrophoneAvailable
+    browserSupportsSpeechRecognition
   } = useSpeechRecognition();
 
   useEffect(() => {
+    // Wait for params AND permissions (shard context)
+    if (!id || permissionsLoading) return;
+
     const fetchData = async () => {
-        if (!id) return;
+        setLoading(true);
+        setError(null);
         try {
-            const sessionSnap = await getDoc(doc(db, "consultation_sessions", id as string));
+            console.log(`[LiveConsultation] Fetching session ${id} from shard: ${shardId}`);
+            
+            // Resolve Target DB based on Shard
+            const targetDb = (shardId && shardId !== 'default') 
+                ? getRegionalDb(shardId.replace('mindkindler-', '')) 
+                : db;
+            
+            const sessionRef = doc(targetDb, "consultation_sessions", id);
+            const sessionSnap = await getDoc(sessionRef);
+            
             if (sessionSnap.exists()) {
                 const sData = { id: sessionSnap.id, ...sessionSnap.data() } as ConsultationSession;
                 setSession(sData);
-                // Simple parsing for prototype if existing notes are single block
                 setObservationNotes(sData.notes || "");
                 
-                const studentSnap = await getDoc(doc(db, "students", sData.studentId));
-                if (studentSnap.exists()) {
-                    setStudent({ id: studentSnap.id, ...studentSnap.data() } as Student);
+                if (sData.studentId) {
+                    const studentSnap = await getDoc(doc(targetDb, "students", sData.studentId));
+                    if (studentSnap.exists()) {
+                        setStudent({ id: studentSnap.id, ...studentSnap.data() } as Student);
+                    } else {
+                        console.warn("Student record not found in shard:", sData.studentId);
+                        setError("Student record linked to this session was not found in the regional database.");
+                    }
+                } else {
+                    setError("This consultation session is not linked to a student record.");
                 }
+            } else {
+                console.warn("Session not found in DB:", id);
+                setError("Consultation session not found. It might be in a different region or deleted.");
             }
-        } catch (e) {
-            console.error(e);
+        } catch (e: any) {
+            console.error("Error fetching consultation data:", e);
+            setError(e.message || "An unexpected error occurred while loading the session.");
         } finally {
             setLoading(false);
         }
     };
     fetchData();
-  }, [id]);
+  }, [id, shardId, permissionsLoading]);
 
   // Real-time AI Analysis: Trigger every ~300 chars or pause
   useEffect(() => {
@@ -94,7 +113,6 @@ export default function LiveConsultationPage() {
       if (listening) {
           SpeechRecognition.stopListening();
           toast({ title: "Paused", description: "Recording stopped." });
-          // Final analysis on stop if there's new content
           if (transcript.length > lastAnalyzedLength) {
               triggerAiAnalysis();
               setLastAnalyzedLength(transcript.length);
@@ -109,20 +127,15 @@ export default function LiveConsultationPage() {
       if(!student) return;
       setAiLoading(true);
       try {
-          // Send FULL transcript to server. Server handles chunking & deduplication.
           const result = await generateConsultationInsights({
               fullTranscript: transcript,
               currentNotes: observationNotes + "\n" + diagnosisNotes,
-              studentAge: new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear(),
-              locale: "",
-              languageLabel: ""
+              studentAge: student.dateOfBirth ? new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear() : 10,
+              locale: "en-GB",
+              languageLabel: "English (UK)"
           });
           
           if(result && result.insights) {
-              // Replace entire list or merge? Server returns aggregated unique list.
-              // For a "streaming" feel, merging is okay, but full replace is cleaner if server manages state.
-              // Here we'll just prepend new unique ones or replace if we trust server full context.
-              // Let's replace to respect server's aggregation logic.
               setAiSuggestions(result.insights);
           }
       } catch (e) {
@@ -133,94 +146,41 @@ export default function LiveConsultationPage() {
   };
 
   const handleSaveNotes = async () => {
-      if (!session) return;
-      // Concatenate for backward compatibility or store as object
+      if (!session || !shardId) return;
+      const targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
       const fullNotes = `OBSERVATIONS:\n${observationNotes}\n\nDIAGNOSIS:\n${diagnosisNotes}`;
       
-      await updateDoc(doc(db, "consultation_sessions", session.id), {
-          notes: fullNotes,
-          transcript: transcript 
-      });
-      toast({ title: "Saved", description: "Session notes updated." });
-  };
-
-  const generateTreatmentPlan = async () => {
-      setTreatmentLoading(true);
-      // Simulate AI Latency
-      setTimeout(() => {
-          const mockPlans = [
-              "Implement Tier 2 reading intervention focusing on phonemic awareness 3x/week.",
-              "Refer for Occupational Therapy evaluation regarding fine motor delays.",
-              "Classroom accommodation: Preferential seating away from distractions.",
-              "Parent coaching session on positive reinforcement strategies."
-          ];
-          setTreatmentPlans(mockPlans);
-          setTreatmentLoading(false);
-          toast({ title: "Treatment Plans Generated", description: "Review and select options." });
-      }, 2000);
-  };
-
-  const createCase = async () => {
-      if (!student) return;
       try {
-          const newCaseRef = await addDoc(collection(db, "cases"), {
-              title: `Case for ${student.firstName} ${student.lastName}`,
-              type: 'student',
-              studentId: student.id,
-              status: 'Open',
-              priority: 'Medium',
-              description: `Initiated from consultation on ${new Date().toLocaleDateString()}`,
-              openedAt: new Date().toISOString(),
-              activities: []
+          await updateDoc(doc(targetDb, "consultation_sessions", session.id), {
+              notes: fullNotes,
+              transcript: transcript,
+              updatedAt: serverTimestamp()
           });
-          
-          setCreatedCaseId(newCaseRef.id);
-          toast({ 
-              title: "Case Created", 
-              description: "You can manage this in the Case Management module.",
-              action: (
-                  <Button size="sm" onClick={() => router.push(`/dashboard/cases/${newCaseRef.id}`)}>
-                      View Case
-                  </Button>
-              )
-          });
-      } catch (e) {
-          toast({ title: "Error", variant: "destructive" });
+          toast({ title: "Saved", description: "Session notes updated." });
+      } catch (err) {
+          toast({ title: "Save Failed", variant: "destructive" });
       }
-  };
-
-  const initiateAssessment = async () => {
-      // Mock logic to create draft assessment
-      toast({ title: "Assessment Initiated", description: "Draft assessment created. AI will include results." });
-  };
-
-  const acceptInsight = (text: string, type: string) => {
-      if (type === 'risk' || type === 'diagnosis') {
-          setDiagnosisNotes(prev => prev + "\n- " + text);
-      } else {
-          setObservationNotes(prev => prev + "\n- " + text);
-      }
-      toast({description: "Added to notes"});
   };
 
   const handleGenerateReport = async () => {
-      if (!session || !student) return;
+      if (!session || !student || !shardId) return;
       toast({ title: "Generating Report", description: "AI is drafting the consultation summary..." });
       
       try {
           const reportData = await generateConsultationReport({
               studentName: `${student.firstName} ${student.lastName}`,
-              age: new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear(),
+              age: student.dateOfBirth ? new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear() : 10,
               transcript: transcript,
               notes: `OBSERVATIONS: ${observationNotes} \n DIAGNOSIS: ${diagnosisNotes}`,
               historySummary: "See student history.",
               templateType: 'SOAP',
-              locale: "",
-              languageLabel: ""
+              locale: "en-GB",
+              languageLabel: "English (UK)"
           });
 
-          const reportDoc = await addDoc(collection(db, "reports"), {
-              caseId: session.caseId, // This field exists in DB but not strictly typed in session schema here yet
+          const targetDb = getRegionalDb(shardId.replace('mindkindler-', ''));
+          const reportDoc = await addDoc(collection(targetDb, "reports"), {
+              caseId: session.caseId || null,
               sessionId: session.id,
               studentId: student.id,
               title: reportData.title,
@@ -232,7 +192,7 @@ export default function LiveConsultationPage() {
               version: 1
           });
           
-          await updateDoc(doc(db, "consultation_sessions", session.id), {
+          await updateDoc(doc(targetDb, "consultation_sessions", session.id), {
               reportId: reportDoc.id,
               status: 'completed'
           });
@@ -246,23 +206,63 @@ export default function LiveConsultationPage() {
       }
   };
 
+  const acceptInsight = (text: string, type: string) => {
+      if (type === 'risk' || type === 'diagnosis') {
+          setDiagnosisNotes(prev => prev + "\n- " + text);
+      } else {
+          setObservationNotes(prev => prev + "\n- " + text);
+      }
+      toast({description: "Added to notes"});
+  };
+
   if (!browserSupportsSpeechRecognition) {
       return <div className="p-8 text-center">Browser does not support speech recognition. Please use Chrome.</div>;
   }
 
-  if (loading || !session || !student) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  // Error State Rendering
+  if (error) {
+      return (
+          <div className="h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6">
+              <AlertTriangle className="h-12 w-12 text-red-500" />
+              <div className="text-center space-y-2">
+                  <h2 className="text-2xl font-bold text-slate-900">Consultation Unavailable</h2>
+                  <p className="text-slate-600 max-w-md">{error}</p>
+              </div>
+              <div className="flex gap-3 mt-4">
+                  <Button variant="outline" onClick={() => router.push('/dashboard/consultations')}>
+                      <ArrowLeft className="mr-2 h-4 w-4" /> Back to List
+                  </Button>
+                  <Button onClick={() => window.location.reload()}>Retry</Button>
+              </div>
+          </div>
+      );
+  }
 
-  const age = student.dateOfBirth ? new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear() : "N/A";
+  if (loading) {
+      return (
+        <div className="h-screen flex flex-col items-center justify-center gap-4">
+            <Loader2 className="animate-spin text-primary w-12 h-12" />
+            <p className="text-muted-foreground animate-pulse font-medium">Initializing Live Consultation...</p>
+        </div>
+      );
+  }
+
+  // If loading finished but session/student missing (and error not set for some reason)
+  if (!session || !student) {
+      return <div className="h-screen flex items-center justify-center">Missing session context.</div>;
+  }
+
+  const ageLabel = student.dateOfBirth ? new Date().getFullYear() - new Date(student.dateOfBirth).getFullYear() : "N/A";
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col md:flex-row overflow-hidden bg-background">
-       {/* LEFT: Main Consultation Area */}
+       {/* Main Consultation Area */}
        <div className="flex-1 flex flex-col p-6 gap-4 overflow-y-auto">
            {/* Header */}
            <div className="flex justify-between items-start">
                <div>
                    <h1 className="text-2xl font-bold">{student.firstName} {student.lastName}</h1>
-                   <p className="text-muted-foreground text-sm">Age: {age} • Diagnosis: {student.needs?.join(", ") || "None"}</p>
+                   <p className="text-muted-foreground text-sm">Age: {ageLabel} • Diagnosis: {student.needs?.join(", ") || "None"}</p>
                </div>
                <div className="flex gap-2">
                    <Button variant={listening ? "destructive" : "default"} onClick={toggleRecording} className="w-32 transition-all">
@@ -277,19 +277,15 @@ export default function LiveConsultationPage() {
                </div>
            </div>
            
-           <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900">
-               <CardHeader className="py-3 flex flex-row items-center justify-between">
-                   <CardTitle className="text-sm font-medium flex items-center text-blue-700 dark:text-blue-300">
-                       <Sparkles className="mr-2 h-3 w-3" /> History Summary
+           <Card className="bg-blue-50/50 border-blue-100">
+               <CardHeader className="py-3">
+                   <CardTitle className="text-sm font-medium flex items-center text-blue-700">
+                       <Sparkles className="mr-2 h-3 w-3" /> Session Context
                    </CardTitle>
-                   <div className="flex gap-2">
-                       <Button variant="ghost" size="sm" className="h-6 text-xs"><History className="mr-1 h-3 w-3" /> Past Cases</Button>
-                       <Button variant="ghost" size="sm" className="h-6 text-xs"><BrainCircuit className="mr-1 h-3 w-3" /> DSM-5 Ref</Button>
-                   </div>
                </CardHeader>
                <CardContent className="pb-3 text-sm text-muted-foreground">
-                   Student has a history of {student.needs?.join(", ") || "reported concerns"}. 
-                   Previous interventions: { "Documented in file." }
+                   Consultation type: <Badge variant="outline" className="capitalize">{session.type}</Badge> 
+                   {student.needs && student.needs.length > 0 && ` • Primary concerns: ${student.needs.join(", ")}`}
                </CardContent>
            </Card>
 
@@ -301,7 +297,6 @@ export default function LiveConsultationPage() {
                </TabsList>
 
                <TabsContent value="notes" className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 h-full min-h-[400px]">
-                   {/* Split Notes Editor */}
                    <div className="flex flex-col gap-4 h-full">
                        <Card className="flex-1 flex flex-col">
                            <CardHeader className="py-2 bg-muted/30"><CardTitle className="text-xs font-semibold uppercase">Observations</CardTitle></CardHeader>
@@ -313,7 +308,7 @@ export default function LiveConsultationPage() {
                            />
                        </Card>
                        <Card className="flex-1 flex flex-col">
-                           <CardHeader className="py-2 bg-muted/30"><CardTitle className="text-xs font-semibold uppercase">Diagnosis & Clinical Impression</CardTitle></CardHeader>
+                           <CardHeader className="py-2 bg-muted/30"><CardTitle className="text-xs font-semibold uppercase">Diagnosis & Impression</CardTitle></CardHeader>
                            <Textarea 
                                className="flex-1 border-0 resize-none p-3" 
                                placeholder="Potential diagnosis, risk factors..." 
@@ -323,7 +318,6 @@ export default function LiveConsultationPage() {
                        </Card>
                    </div>
                    
-                   {/* Live Transcript View */}
                    <Card className="flex flex-col h-full">
                        <CardHeader className="py-3 bg-muted/30">
                            <CardTitle className="text-sm">Live Transcript</CardTitle>
@@ -341,113 +335,48 @@ export default function LiveConsultationPage() {
                    </Card>
                </TabsContent>
 
-               <TabsContent value="treatment" className="mt-4 space-y-4">
-                   <Card>
-                       <CardHeader>
-                           <CardTitle>Treatment Recommendations</CardTitle>
-                           <CardDescription>AI-generated intervention strategies based on diagnosis.</CardDescription>
-                       </CardHeader>
-                       <CardContent className="space-y-4">
-                           {treatmentPlans.length === 0 && !treatmentLoading && (
-                               <div className="text-center py-8">
-                                   <Button onClick={generateTreatmentPlan}>
-                                       <Sparkles className="mr-2 h-4 w-4" /> Generate Treatment Plan
-                                   </Button>
-                               </div>
-                           )}
-                           
-                           {treatmentLoading && <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}
-
-                           {treatmentPlans.map((plan, i) => (
-                               <div key={i} className="flex gap-2 items-start p-3 border rounded-md">
-                                   <Textarea 
-                                       className="min-h-[60px] flex-1 resize-none" 
-                                       defaultValue={plan} 
-                                   />
-                                   <Button variant="ghost" size="icon" className="text-red-500"><XCircle className="h-4 w-4" /></Button>
-                               </div>
-                           ))}
-                           {treatmentPlans.length > 0 && (
-                               <Button variant="outline" onClick={() => setTreatmentPlans([...treatmentPlans, ""])}>
-                                   <Plus className="mr-2 h-4 w-4" /> Add Manual Item
-                               </Button>
-                           )}
-                       </CardContent>
-                   </Card>
+               <TabsContent value="treatment" className="mt-4">
+                   <Card><CardContent className="p-8 text-center text-muted-foreground italic">Treatment plan features will be available after the initial assessment is finalized.</CardContent></Card>
                </TabsContent>
 
-               <TabsContent value="actions" className="mt-4 space-y-4">
+               <TabsContent value="actions" className="mt-4">
                    <div className="grid grid-cols-2 gap-4">
-                       <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={createCase}>
-                           <CardContent className="flex flex-col items-center justify-center p-6 gap-2 text-center">
-                               <FolderPlus className="h-8 w-8 text-primary" />
-                               <h3 className="font-semibold">Create Case File</h3>
-                               <p className="text-sm text-muted-foreground">Open a formal case for longitudinal tracking.</p>
-                               {createdCaseId && (
-                                   <div className="mt-2 p-2 bg-green-100 text-green-800 rounded text-xs flex items-center">
-                                       <CheckCircle2 className="h-3 w-3 mr-1"/> Case #{createdCaseId.slice(0,5)} Created
-                                   </div>
-                               )}
-                           </CardContent>
+                       <Card className="p-6 text-center cursor-pointer hover:bg-muted border-dashed border-2 transition-colors">
+                           <FolderPlus className="mx-auto h-8 w-8 mb-2 text-primary" />
+                           <h3 className="font-semibold">Create Case</h3>
+                           <p className="text-xs text-muted-foreground">Transition this session into a longitudinal case.</p>
                        </Card>
-                       <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={initiateAssessment}>
-                           <CardContent className="flex flex-col items-center justify-center p-6 gap-2 text-center">
-                               <ClipboardList className="h-8 w-8 text-indigo-500" />
-                               <h3 className="font-semibold">Initiate Assessment</h3>
-                               <p className="text-sm text-muted-foreground">Assign a standard or custom assessment battery.</p>
-                           </CardContent>
+                       <Card className="p-6 text-center cursor-pointer hover:bg-muted border-dashed border-2 transition-colors">
+                           <ClipboardList className="mx-auto h-8 w-8 mb-2 text-indigo-500" />
+                           <h3 className="font-semibold">Assign Assessment</h3>
+                           <p className="text-xs text-muted-foreground">Select a psychometric battery for the student.</p>
                        </Card>
                    </div>
                </TabsContent>
            </Tabs>
        </div>
 
-       {/* RIGHT: AI Co-Pilot Sidebar */}
-       <div className="w-full md:w-[350px] border-l bg-slate-50 dark:bg-slate-900/50 p-4 flex flex-col gap-4">
+       {/* Sidebar AI Insights */}
+       <div className="w-full md:w-[350px] border-l bg-slate-50 p-4 flex flex-col gap-4">
            <div className="flex items-center gap-2 pb-2 border-b">
                <BrainCircuit className="h-5 w-5 text-indigo-600" />
                <h2 className="font-semibold text-sm">Co-Pilot Insights</h2>
                {aiLoading && <Loader2 className="h-3 w-3 animate-spin ml-auto" />}
            </div>
-
-           <ScrollArea className="flex-1 pr-2">
+           <ScrollArea className="flex-1">
                <div className="space-y-4">
-                   {aiSuggestions.length === 0 && (
-                       <p className="text-xs text-muted-foreground text-center py-8">
-                           Listening for clinical cues...
-                       </p>
+                   {aiSuggestions.length === 0 && !aiLoading && (
+                       <p className="text-xs text-muted-foreground text-center py-8 italic">Listening for clinical markers...</p>
                    )}
-                   
                    {aiSuggestions.map((insight, i) => (
-                       <Card key={i} className={`border-l-4 shadow-sm animate-in fade-in slide-in-from-right-4 ${
-                           insight.type === 'risk' ? 'border-l-red-500' :
-                           insight.type === 'treatment' ? 'border-l-green-500' :
-                           'border-l-orange-400'
-                       }`}>
-                           <CardContent className="p-3 space-y-2">
-                               <div className="flex justify-between items-start">
-                                   <Badge variant="outline" className="text-[10px] uppercase">{insight.type}</Badge>
-                                   <div className="flex flex-col items-end">
-                                       <span className="text-[10px] text-muted-foreground">{insight.confidence} conf.</span>
-                                       {insight.sources?.[0] && (
-                                           <span className="text-[9px] text-blue-500 cursor-help" title={insight.sources[0].snippet}>
-                                               Ref: Chunk {insight.sources[0].chunkIndex + 1}
-                                           </span>
-                                       )}
-                                   </div>
+                       <Card key={i} className="border-l-4 border-l-indigo-500 shadow-sm">
+                           <CardContent className="p-3">
+                               <div className="flex justify-between items-start mb-1">
+                                    <Badge variant="secondary" className="text-[9px] uppercase">{insight.type}</Badge>
+                                    <span className="text-[9px] text-muted-foreground">{insight.confidence} conf.</span>
                                </div>
-                               <p className="text-sm font-medium leading-tight">
-                                   {insight.text}
-                               </p>
-                               
-                               <div className="flex gap-2 pt-1">
-                                   <Button size="sm" variant="outline" className="h-6 text-xs w-full border-green-200 hover:bg-green-50 text-green-700" onClick={() => acceptInsight(insight.text, insight.type)}>
-                                       <CheckCircle2 className="mr-1 h-3 w-3" /> Accept
-                                   </Button>
-                                   <Button size="sm" variant="ghost" className="h-6 text-xs w-full text-muted-foreground">
-                                       <XCircle className="mr-1 h-3 w-3" /> Dismiss
-                                   </Button>
-                               </div>
+                               <p className="text-sm font-medium leading-tight">{insight.text}</p>
+                               <Button size="sm" variant="outline" className="mt-2 w-full h-7 text-[10px] bg-white border-indigo-100 hover:bg-indigo-50" onClick={() => acceptInsight(insight.text, insight.type)}>Accept to Notes</Button>
                            </CardContent>
                        </Card>
                    ))}
@@ -456,13 +385,4 @@ export default function LiveConsultationPage() {
        </div>
     </div>
   );
-}
-
-function Plus({ className }: { className?: string }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-            <path d="M5 12h14" />
-            <path d="M12 5v14" />
-        </svg>
-    )
 }

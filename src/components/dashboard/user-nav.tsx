@@ -27,8 +27,17 @@ export function UserNav() {
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       setUser(u);
       if (u) {
-         const snap = await getDoc(doc(db, "users", u.uid));
-         if (snap.exists()) setUserData(snap.data());
+         try {
+             // Try to fetch from user_routing first to find shard, but for nav display global is usually fine
+             // If we want shard-specific role display, we need usePermissions logic here too.
+             // For simple display, let's assume global doc or fallback.
+             const snap = await getDoc(doc(db, "users", u.uid));
+             if (snap.exists()) {
+                 setUserData(snap.data());
+             }
+         } catch (e) {
+             console.error("Nav Load Error", e);
+         }
       }
     });
     return () => unsubscribe();
@@ -40,16 +49,25 @@ export function UserNav() {
   };
 
   const initials = userData?.displayName
-    ? userData.displayName.split(" ").map((n: string) => n[0]).join("")
+    ? userData.displayName.split(" ").map((n: string) => n[0]).join("").substring(0,2).toUpperCase()
     : user?.email?.substring(0, 2).toUpperCase() || "U";
+
+  // Pretty Role Formatter
+  const formatRole = (role: string) => {
+      if (!role) return "User";
+      if (role.toLowerCase() === 'epp' || role.toLowerCase() === 'educationalpsychologist') return 'Ed. Psychologist';
+      if (role.toLowerCase() === 'clinicalpsychologist') return 'Clinical Psych.';
+      // Split PascalCase
+      return role.replace(/([A-Z])/g, " $1").trim();
+  };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-          <Avatar className="h-8 w-8">
+          <Avatar className="h-8 w-8 border border-slate-200">
             <AvatarImage src="/avatars/01.png" alt="@user" />
-            <AvatarFallback>{initials}</AvatarFallback>
+            <AvatarFallback className="bg-indigo-50 text-indigo-700 font-bold">{initials}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
@@ -60,20 +78,25 @@ export function UserNav() {
             <p className="text-xs leading-none text-muted-foreground">
               {user?.email}
             </p>
-             <p className="text-xs font-semibold text-primary capitalize mt-1">
-              {userData?.role?.replace(/([A-Z])/g, " $1")}
-            </p>
+             <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-bold text-white bg-indigo-600 px-2 py-0.5 rounded-full capitalize">
+                    {formatRole(userData?.role)}
+                </span>
+                {userData?.region && <span className="text-[10px] text-slate-400 uppercase">{userData.region}</span>}
+             </div>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
-            Settings
-            <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
+          <DropdownMenuItem onClick={() => router.push("/dashboard/settings/profile")}>
+            My Profile
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push("/dashboard/settings/compliance")}>
+            Compliance
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout}>
+        <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
           Log out
           <DropdownMenuShortcut>⇧Q</DropdownMenuShortcut>
         </DropdownMenuItem>

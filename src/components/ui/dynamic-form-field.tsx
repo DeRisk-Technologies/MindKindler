@@ -23,99 +23,135 @@ export function DynamicFormField({ field, control, baseName = "extensions" }: Pr
     const name = `${baseName}.${field.fieldName}`;
     const [revealed, setRevealed] = useState(false);
 
+    // Build Rules Object for React Hook Form
+    const rules: any = {};
+    
+    if (field.required) {
+        rules.required = `${field.label} is required`;
+    }
+    
+    if (field.validationRegex) {
+        rules.pattern = {
+            value: new RegExp(field.validationRegex),
+            message: `Invalid format. Expected: ${field.description || 'Valid Pattern'}`
+        };
+    }
+
+    const renderInput = (formField: any) => {
+        // 1. String Input (Text)
+        if (field.type === 'string') {
+            return (
+                <div className="relative">
+                    <Input 
+                        {...formField} 
+                        value={formField.value ?? ''}
+                        type={field.encrypt && !revealed ? "password" : "text"} 
+                        placeholder={field.description} 
+                    />
+                    {field.encrypt && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                            onClick={() => setRevealed(!revealed)}
+                        >
+                            {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                    )}
+                </div>
+            );
+        }
+
+        // 2. Number Input
+        if (field.type === 'number') {
+            return (
+                <Input 
+                    {...formField} 
+                    value={formField.value ?? ''}
+                    type="number" 
+                    onChange={e => formField.onChange(Number(e.target.value))} 
+                />
+            );
+        }
+
+        // 3. Boolean (Checkbox)
+        if (field.type === 'boolean') {
+            return (
+                <div className="flex items-center space-x-2 pt-2">
+                    <Checkbox 
+                        checked={!!formField.value} 
+                        onCheckedChange={formField.onChange} 
+                    />
+                    <span className="text-sm text-muted-foreground">{field.description || "Yes / No"}</span>
+                </div>
+            );
+        }
+
+        // 4. Enum (Select)
+        if (field.type === 'enum') {
+            return (
+                <Select onValueChange={formField.onChange} defaultValue={formField.value}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {field.options?.map(opt => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            );
+        }
+
+        // 5. Date Picker
+        if (field.type === 'date') {
+            return (
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant={"outline"}
+                            className={cn(
+                                "w-full pl-3 text-left font-normal",
+                                !formField.value && "text-muted-foreground"
+                            )}
+                        >
+                            {formField.value ? (
+                                format(new Date(formField.value), "PPP")
+                            ) : (
+                                <span>Pick a date</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                            mode="single"
+                            selected={formField.value ? new Date(formField.value) : undefined}
+                            onSelect={(date) => formField.onChange(date?.toISOString())}
+                            disabled={(date) =>
+                                date > new Date() || date < new Date("1900-01-01")
+                            }
+                            initialFocus
+                        />
+                    </PopoverContent>
+                </Popover>
+            );
+        }
+
+        return <Input {...formField} value={formField.value ?? ''} />; // Fallback
+    };
+
     return (
         <FormField
             control={control}
             name={name}
+            rules={rules} // Pass regex rules here
             render={({ field: formField }) => (
                 <FormItem className="flex flex-col">
                     <FormLabel>{field.label} {field.required && <span className="text-red-500">*</span>}</FormLabel>
-                    
                     <FormControl>
-                        {/* 1. String Input (Text) */}
-                        {field.type === 'string' && (
-                            <div className="relative">
-                                <Input 
-                                    {...formField} 
-                                    type={field.encrypt && !revealed ? "password" : "text"} 
-                                    placeholder={field.description} 
-                                />
-                                {field.encrypt && (
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                        onClick={() => setRevealed(!revealed)}
-                                    >
-                                        {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                    </Button>
-                                )}
-                            </div>
-                        )}
-
-                        {/* 2. Number Input */}
-                        {field.type === 'number' && (
-                            <Input {...formField} type="number" onChange={e => formField.onChange(Number(e.target.value))} />
-                        )}
-
-                        {/* 3. Boolean (Checkbox) */}
-                        {field.type === 'boolean' && (
-                            <div className="flex items-center space-x-2 pt-2">
-                                <Checkbox 
-                                    checked={formField.value} 
-                                    onCheckedChange={formField.onChange} 
-                                />
-                                <span className="text-sm text-muted-foreground">{field.description || "Yes / No"}</span>
-                            </div>
-                        )}
-
-                        {/* 4. Enum (Select) */}
-                        {field.type === 'enum' && (
-                            <Select onValueChange={formField.onChange} defaultValue={formField.value}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {field.options?.map(opt => (
-                                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-
-                        {/* 5. Date Picker */}
-                        {field.type === 'date' && (
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant={"outline"}
-                                        className={cn(
-                                            "w-full pl-3 text-left font-normal",
-                                            !formField.value && "text-muted-foreground"
-                                        )}
-                                    >
-                                        {formField.value ? (
-                                            format(new Date(formField.value), "PPP")
-                                        ) : (
-                                            <span>Pick a date</span>
-                                        )}
-                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="start">
-                                    <Calendar
-                                        mode="single"
-                                        selected={formField.value ? new Date(formField.value) : undefined}
-                                        onSelect={formField.onChange}
-                                        disabled={(date) =>
-                                            date > new Date() || date < new Date("1900-01-01")
-                                        }
-                                        initialFocus
-                                    />
-                                </PopoverContent>
-                            </Popover>
-                        )}
+                        {renderInput(formField)}
                     </FormControl>
                     <FormMessage />
                 </FormItem>

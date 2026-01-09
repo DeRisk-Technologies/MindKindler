@@ -1,156 +1,187 @@
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import { genkit } from "genkit";
-import { googleAI } from "@genkit-ai/google-genai";
+import { getFirestore } from "firebase-admin/firestore";
 import { faker } from '@faker-js/faker';
 
-// Lazy init for AI to prevent cold-start crashes if env vars missing
-let ai: any = null;
+if (admin.apps.length === 0) {
+    admin.initializeApp();
+}
 
-const getAi = () => {
-    if (!ai) {
-        try {
-            // Check for API Key presence explicitly
-            if (!process.env.GOOGLE_GENAI_API_KEY) {
-                console.warn("GOOGLE_GENAI_API_KEY is missing. AI features will fail.");
-                throw new Error("Missing API Key");
-            }
-            ai = genkit({
-                plugins: [googleAI()],
-                model: "googleai/gemini-1.5-flash", 
-            });
-        } catch (e) {
-            console.error("Failed to init Genkit", e);
-            throw new Error("AI Service Unavailable");
-        }
-    }
-    return ai;
-};
-
-const getDb = () => {
-    if (admin.apps.length === 0) {
-        admin.initializeApp();
-    }
-    return admin.firestore();
-};
-
+/**
+ * Super Seed Script for Pilot (Region Aware)
+ * 
+ * Modes:
+ * 1. Default: Seeds students into a region.
+ * 2. action='create_regional_admins': Creates SuperAdmin accounts for all regions.
+ */
 export const seedDemoDataHandler = async (request: CallableRequest) => {
-    const db = getDb();
-    const batch = db.batch();
-    const studentIds: string[] = [];
-
-    const count = 5;
     
-    // Prompt Gemini for rich profiles
-    const profilePrompt = `Generate ${count} diverse student profiles for an elementary school.
-    Include:
-    1. 'riskLevel': 'Low', 'Medium', 'High'
-    2. 'diagnosis': Array of strings (e.g. "ADHD", "None", "Dyslexia")
-    3. 'narrative': A 2-sentence summary of their current educational status.
-    4. 'recentEvents': Array of 3 recent events (e.g. "Failed math test", "Fight in playground").
-    
-    Return pure JSON array.`;
+    // --- MODE: Create Regional Admins ---
+    if (request.data.action === 'create_regional_admins') {
+        const regions = ['uk', 'us', 'eu', 'asia', 'sa', 'me'];
+        const results = [];
+        const globalDb = admin.firestore();
 
-    let aiProfiles: any[] = [];
-    try {
-        const aiInstance = getAi();
-        const { output } = await aiInstance.generate(profilePrompt);
-        const text = output?.text || "[]";
-        const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
-        aiProfiles = JSON.parse(jsonStr);
-    } catch (e) {
-        console.warn("AI Gen Failed, using fallback. Key likely missing or error.", e);
-        // Fallback profiles if AI fails
-        aiProfiles = Array(count).fill({ riskLevel: 'Low', diagnosis: [], narrative: "Standard student (Fallback).", recentEvents: [] });
+        for (const region of regions) {
+            const email = `admin_${region}@mindkindler.com`;
+            const password = `Pilot${region.toUpperCase()}2026!`; // Strong default
+            const displayName = `Regional Admin (${region.toUpperCase()})`;
+            
+            try {
+                // 1. Create Auth User
+                let userRecord;
+                try {
+                    userRecord = await admin.auth().getUserByEmail(email);
+                    console.log(`User ${email} exists, updating...`);
+                } catch (e) {
+                    userRecord = await admin.auth().createUser({
+                        email,
+                        password,
+                        displayName,
+                        emailVerified: true
+                    });
+                    console.log(`Created Auth User: ${email}`);
+                }
+
+                // Set Custom Claims (Fast Path)
+                await admin.auth().setCustomUserClaims(userRecord.uid, { 
+                    role: 'SuperAdmin', 
+                    region,
+                    tenantId: 'default' 
+                });
+
+                // 2. Global Routing (Default DB)
+                await globalDb.doc(`user_routing/${userRecord.uid}`).set({
+                    uid: userRecord.uid,
+                    region,
+                    shardId: `mindkindler-${region}`,
+                    email,
+                    role: 'SuperAdmin',
+                    createdAt: new Date().toISOString()
+                }, { merge: true });
+
+                // 3. Regional Profile (Shard)
+                const shardId = `mindkindler-${region}`;
+                const regionalDb = getFirestore(admin.app(), shardId);
+                
+                await regionalDb.doc(`users/${userRecord.uid}`).set({
+                    uid: userRecord.uid,
+                    firstName: "Regional",
+                    lastName: `Admin ${region.toUpperCase()}`,
+                    displayName,
+                    email,
+                    role: "SuperAdmin", // Regional SuperAdmin
+                    region,
+                    tenantId: "default",
+                    verification: { status: "verified", verifiedAt: new Date().toISOString() },
+                    createdAt: new Date().toISOString(),
+                    isSeed: true
+                }, { merge: true });
+
+                results.push({ region, email, password });
+
+            } catch (err: any) {
+                console.error(`Failed to seed ${region}`, err);
+                results.push({ region, error: err.message });
+            }
+        }
+
+        return { 
+            success: true, 
+            message: "Regional Admins Created", 
+            credentials: results 
+        };
     }
 
-    // 3. Create Entities
-    for (const profile of aiProfiles) {
-        const studentRef = db.collection("students").doc();
-        const studentId = studentRef.id;
-        studentIds.push(studentId);
+    // --- MODE: Seed Students (Existing Logic) ---
+    
+    // 1. Parse Request
+    const region = request.data.region || 'uk'; 
+    const tenantId = request.data.tenantId || 'default';
+    
+    console.log(`[Seed] Starting for Tenant: ${tenantId}, Region: ${region}`);
 
+    // 2. Connect to Shard
+    const shardId = `mindkindler-${region}`;
+    const targetDb = region === 'default' ? admin.firestore() : getFirestore(admin.app(), shardId);
+    const globalDb = admin.firestore();
+
+    const batch = targetDb.batch();
+    
+    // 3. Seed Configuration (Global Router)
+    if (request.data.seedConfig) {
+        const configRef = globalDb.doc(`tenants/${tenantId}/settings/schema_config`);
+        
+        let schemaPayload = {};
+        if (region === 'uk') {
+             schemaPayload = {
+                studentFields: [
+                    { fieldName: "uk_upn", label: "Unique Pupil Number (UPN)", type: "string", required: true },
+                    { fieldName: "uk_pupil_premium", label: "Pupil Premium", type: "boolean" }
+                ],
+                staffFields: [
+                    { fieldName: "scr_dbs_number", label: "DBS Number", type: "string", encrypt: true, required: true }
+                ]
+             };
+        } else if (region === 'us') {
+             schemaPayload = {
+                studentFields: [
+                    { fieldName: "us_state_id", label: "State Student ID", type: "string", required: true },
+                    { fieldName: "us_iep_status", label: "IEP Status", type: "enum", options: ["Active", "Pending", "Exited"] }
+                ],
+                staffFields: []
+             };
+        }
+
+        await configRef.set({
+            updatedAt: new Date().toISOString(),
+            installedPackId: `${region}_pack`,
+            isSeed: true,
+            ...schemaPayload
+        }, { merge: true });
+    }
+
+    // 4. Seed Students (Regional Shard)
+    const count = request.data.count || 5;
+    
+    for (let i = 0; i < count; i++) {
+        const studentRef = targetDb.collection("students").doc();
         const firstName = faker.person.firstName();
         const lastName = faker.person.lastName();
 
-        // Student Doc
+        const extensionData = region === 'uk' ? {
+             uk_upn: `A${faker.number.int({ min: 100000000000, max: 999999999999 })}`,
+             uk_sen_status: faker.helpers.arrayElement(['K', 'E', 'N'])
+        } : {
+             us_state_id: `US-${faker.number.int({ min: 100000, max: 999999 })}`,
+             us_iep_status: faker.helpers.arrayElement(['Active', 'None'])
+        };
+
         batch.set(studentRef, {
-            firstName,
-            lastName,
-            dateOfBirth: faker.date.birthdate({ min: 6, max: 12, mode: 'age' }).toISOString().split('T')[0],
-            gender: faker.person.sexType(),
-            schoolId: "sch_demo_1",
-            districtId: "dst_demo_1",
-            socioEconomicStatus: faker.helpers.arrayElement(['low', 'medium', 'high']),
-            diagnosisCategory: profile.diagnosis,
-            riskLevel: profile.riskLevel, // Custom field for analytics
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            id: studentRef.id,
+            tenantId,
+            isSeed: true, 
+            identity: {
+                firstName: { value: firstName, metadata: { verified: true } },
+                lastName: { value: lastName, metadata: { verified: true } },
+                dateOfBirth: { value: faker.date.birthdate({ min: 5, max: 11, mode: 'age' }).toISOString().split('T')[0], metadata: { verified: true } },
+                gender: { value: faker.person.sexType(), metadata: {} },
+            },
+            education: {
+                currentSchoolId: { value: "demo_school", metadata: {} },
+                yearGroup: { value: region === 'uk' ? `Year ${faker.number.int({ min: 1, max: 6 })}` : `Grade ${faker.number.int({ min: 1, max: 5 })}`, metadata: {} },
+            },
+            extensions: extensionData,
+            family: { parents: [] },
+            health: { allergies: { value: [], metadata: {} }, conditions: { value: [], metadata: {} }, medications: { value: [], metadata: {} } },
+            meta: {
+                trustScore: 100,
+                createdAt: new Date().toISOString()
+            }
         });
-
-        // Assessment Results (Historical Trend)
-        for (let m = 0; m < 6; m++) {
-            const date = new Date();
-            date.setMonth(date.getMonth() - m);
-            
-            let baseScore = profile.riskLevel === 'High' ? 60 : (profile.riskLevel === 'Medium' ? 75 : 90);
-            let variance = faker.number.int({ min: -10, max: 10 });
-            
-            batch.set(db.collection("assessment_results").doc(), {
-                studentId,
-                templateId: "tpl_math_fluency",
-                totalScore: Math.min(100, Math.max(0, baseScore + variance)),
-                maxScore: 100,
-                status: 'graded',
-                completedAt: date.toISOString(),
-                subject: 'Math' 
-            });
-        }
-
-        // Attendance / Behavior Logs 
-        for (const event of profile.recentEvents) {
-            batch.set(db.collection("attendance_logs").doc(), {
-                studentId,
-                date: faker.date.recent({ days: 60 }).toISOString(),
-                type: event.toLowerCase().includes('absent') ? 'absence' : 'incident',
-                description: event,
-                severity: profile.riskLevel === 'High' ? 'high' : 'low'
-            });
-        }
-
-        // Case File
-        if (profile.riskLevel !== 'Low') {
-            const caseRef = db.collection("cases").doc();
-            batch.set(caseRef, {
-                title: `${firstName}'s Intervention Plan`,
-                type: 'student',
-                studentId,
-                status: 'In Progress',
-                priority: profile.riskLevel,
-                description: profile.narrative,
-                openedAt: new Date().toISOString(),
-                activities: [
-                    {
-                        id: "act_1",
-                        type: "note",
-                        summary: "Initial referral triggered by AI Analysis.",
-                        date: new Date().toISOString(),
-                        performedBy: "System AI"
-                    }
-                ]
-            });
-        }
     }
-
-    // 4. Create a Demo School
-    batch.set(db.collection("schools").doc("sch_demo_1"), {
-        name: "MindKindler Academy",
-        district: "District Alpha",
-        level: "Primary",
-        address: faker.location.streetAddress(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-    });
 
     await batch.commit();
 
-    return { success: true, message: `Seeded ${count} students and related records.` };
+    return { success: true, message: `Seeded ${count} ${region.toUpperCase()} students to ${shardId}.` };
 };

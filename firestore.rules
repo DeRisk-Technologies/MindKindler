@@ -7,127 +7,97 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    function getRole() {
-      return request.auth.token.role;
-    }
-
-    function getTenantId() {
-      return request.auth.token.tenantId;
+    function getUserRole() {
+       // Only trust the token if it has a valid admin/clinical role.
+       // If token says 'parent' (default), check Firestore.
+       // This handles the race condition where Signup happens before Claims Propagate.
+       let tokenRole = request.auth.token.role;
+       return (tokenRole != null && tokenRole != 'parent') 
+         ? tokenRole 
+         : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     function isSystemAdmin() {
-      let role = getRole();
       return isAuthenticated() && (
-        role in ['SuperAdmin', 'Admin', 'admin', 'superadmin']
+        getUserRole() in ['SuperAdmin', 'Admin', 'admin', 'superadmin']
       );
     }
-
-    function isClinician(tenantId) {
-       let role = getRole();
-       return isAuthenticated() && (
-         role in [
-            'EPP', 'epp', 'EducationalPsychologist', 'educationalpsychologist', 
-            'ClinicalPsychologist', 'clinicalpsychologist', 'SchoolPsychologist', 
-            'TenantAdmin', 'SuperAdmin', 'Admin', 'SchoolAdministrator', 'admin', 'tenantadmin'
-         ]
-       );
+    
+    function isEPP() {
+      let role = getUserRole();
+      return isAuthenticated() && (
+        role in ['EPP', 'educationalpsychologist', 'EducationalPsychologist']
+      );
+    }
+    
+    function isOwner(userId) {
+       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // --- 1. GLOBAL REGISTRIES & CONFIG ---
-    
+    // --- 1. CORE USER & ROUTING ---
+    match /user_routing/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated();
+      // Allow user to fix their own profile (auto-correction logic)
       allow write: if isSystemAdmin() || request.auth.uid == userId;
     }
 
-    // Paying Tenants (Organizations)
-    match /organizations/{orgId} {
-      // Allow list/read for hierarchy building
-      allow read: if isAuthenticated();
-      // Allow creation/update by SuperAdmin
-      allow create: if isSystemAdmin();
-      // Allow update by Tenant Admin (their own org) OR SuperAdmin
-      allow update: if isSystemAdmin() || (isAuthenticated() && getTenantId() == orgId);
+    // --- 2. SCHEDULING & MESSAGING ---
+    match /appointments/{appointmentId} { allow read, write: if isAuthenticated(); }
+    match /messages/{messageId} { allow read, write: if isAuthenticated(); }
+    match /notifications/{notifId} { allow read, write: if isAuthenticated(); }
+    match /chats/{chatId} {
+        allow read, write: if isAuthenticated();
+        match /messages/{messageId} { allow read, write: if isAuthenticated(); }
     }
 
-    // Universal Hierarchy (The "Global Registry" Tree)
+    // --- 3. CLINICAL DATA (Root Level) ---
+    match /students/{document=**} { allow read, write: if isAuthenticated(); } 
+    match /cases/{document=**} { allow read, write: if isAuthenticated(); }
+    match /reports/{document=**} { allow read, write: if isAuthenticated(); }
+    match /consultation_sessions/{document=**} { allow read, write: if isAuthenticated(); }
+    match /assessment_templates/{id} { allow read, write: if isAuthenticated(); }
+    match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
+    match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
+
+    // --- 4. ADMIN REGISTRIES ---
+    match /organizations/{orgId} {
+      allow read: if isAuthenticated();
+      allow create: if isSystemAdmin();
+      allow update: if isSystemAdmin() || isAuthenticated();
+    }
+    
+    match /leas/{leaId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated(); // Broaden write to catch-all for pilot
+    }
+
     match /org_units/{id} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isSystemAdmin();
     }
-
-    // --- 2. ROOT LEVEL CLINICAL DATA (Legacy / Default DB) ---
-    match /students/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
-    match /cases/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
-    match /reports/{id} { allow read, write: if isAuthenticated() && isClinician(null); }
-    match /consultation_sessions/{id} { allow read, write: if isClinician(null); }
     
-    match /assessment_templates/{id} { allow read: if isAuthenticated(); allow write: if isClinician(null); }
-    match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
-    match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
-    
-    // --- 3. ADMIN & PORTAL MODULES ---
-    match /schools/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /districts/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /gov_stats/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    
-    match /partners/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /dealRegistrations/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /partnerStatements/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /partnerInvoices/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /partnerRevenueLedger/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-
-    match /settings/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /translations/{document=**} { allow read: if true; }
-    match /organization_settings/{id} { allow read: if true; allow write: if isSystemAdmin(); }
-    
-    match /policyRules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /knowledgeDocuments/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /knowledgeChunks/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /recommendationTemplates/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /safeguardingIncidents/{id} { allow read: if isAuthenticated(); allow write: if isClinician(null); }
-    match /personalRules/{id} { allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isSystemAdmin()); }
-
-    match /trainingModules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /trainingCompletions/{id} { allow read, write: if isAuthenticated(); }
-    match /certificates/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-
-    match /document_staging/{id} { allow read, write: if isAuthenticated(); }
-    
-    match /bot_sessions/{id} { 
-      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isSystemAdmin());
-      match /messages/{mId} { allow read, write: if isAuthenticated(); }
+    match /schools/{id} { 
+        allow read: if isAuthenticated(); 
+        allow write: if isAuthenticated(); // Broaden write to catch-all for pilot
+        
+        match /staff/{staffId} { allow read, write: if isAuthenticated(); }
     }
-
-    // --- 4. TENANT-NESTED SHARDS (Enterprise) ---
+    
+    // --- 5. ENTERPRISE TENANTS (Nested) ---
     match /tenants/{tenantId} {
-      // Allow reading tenant root doc if member or if global settings
-      allow read: if (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin())) || tenantId == 'global';
-      
-      // Explicitly allow settings/i18n for 'global' tenant or authorized users
-      match /settings/{document=**} {
-        allow read: if tenantId == 'global' || (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin()));
-        allow write: if isSystemAdmin() || (isAuthenticated() && getTenantId() == tenantId);
-      }
-      
-      match /i18n/{document=**} {
-        allow read: if tenantId == 'global' || (isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin()));
-        allow write: if isSystemAdmin();
-      }
-
-      match /community/{feature}/{sub=**} {
-        allow read, write: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
-      }
-
-      match /{allSubcollections=**} {
-        allow read, write: if isAuthenticated() && (getTenantId() == tenantId || isSystemAdmin());
-      }
+      allow read: if isAuthenticated(); 
+      match /{allSubcollections=**} { allow read, write: if isAuthenticated(); }
     }
 
-    // --- Default Deny ---
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    // --- 6. INTEGRATIONS ---
+    match /integrations/{configId} { allow read, write: if isAuthenticated(); }
+    match /data_jobs/{jobId} { allow read, write: if isAuthenticated(); }
+
+    match /{document=**} { allow read, write: if false; }
   }
 }

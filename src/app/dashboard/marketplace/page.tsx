@@ -2,17 +2,30 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { Loader2, Globe, ShieldCheck, Download, CheckCircle } from 'lucide-react';
-import { installMarketplacePack } from '@/app/actions/install-pack';
+import { Loader2, Globe, ShieldCheck, Download, CheckCircle, AlertTriangle, Building2 } from 'lucide-react';
+// FIX: Import the client-side installer function directly
+import { installPack } from '@/marketplace/installer';
+// import { installMarketplacePack } from '@/app/actions/install-pack'; // Removed Server Action import
 
 // Mock Catalog (In prod, fetch from API)
-const catalog = [
+import ukPack from "@/marketplace/catalog/uk_la_pack.json";
+import { MarketplaceManifest } from '@/marketplace/types';
+import { doc, getDoc } from 'firebase/firestore'; // Import Firestore SDK
+import { db } from '@/lib/firebase'; // Import DB instance
+
+// In a real app, these would be fetched dynamically. 
+// For now, we manually map the ID to the JSON import for the client-side call.
+const CATALOG: Record<string, any> = {
+    'uk_la_pack': ukPack
+};
+
+const catalogDisplay = [
     {
         id: 'uk_la_pack',
         name: 'UK Local Authority Standard',
@@ -36,30 +49,94 @@ export default function MarketplacePage() {
     const { toast } = useToast();
     const [installing, setInstalling] = useState<string | null>(null);
     const [installed, setInstalled] = useState<Record<string, boolean>>({});
+    const [loadingState, setLoadingState] = useState(true);
+    const [targetTenantId, setTargetTenantId] = useState<string | null>(null);
+
+    // Fetch Installed Status on Mount
+    useEffect(() => {
+        if (!user) return;
+
+        // Fallback tenant resolution logic (same as installer)
+        const tid = (user as any).tenantId || (user.email?.includes('admin') ? 'default' : null);
+        setTargetTenantId(tid);
+        
+        if (!tid) {
+            setLoadingState(false);
+            return;
+        }
+
+        async function checkInstalledPacks() {
+            try {
+                const docRef = doc(db, `tenants/${tid}/settings/installed_packs`);
+                const snap = await getDoc(docRef);
+                if (snap.exists()) {
+                    const data = snap.data();
+                    // Map the document fields (which are pack IDs) to boolean true
+                    const statusMap: Record<string, boolean> = {};
+                    Object.keys(data).forEach(key => {
+                        // Assuming the existence of the key means installed
+                        statusMap[key] = true;
+                    });
+                    setInstalled(statusMap);
+                }
+            } catch (e) {
+                console.error("Failed to fetch installed packs", e);
+            } finally {
+                setLoadingState(false);
+            }
+        }
+
+        checkInstalledPacks();
+    }, [user]);
 
     const handleInstall = async (packId: string) => {
-        if (!user?.tenantId) return;
+        if (!user) {
+            toast({ variant: "destructive", title: "Authentication Required", description: "Please log in to install packs." });
+            return;
+        }
+
+        if (!targetTenantId) {
+            toast({ 
+                variant: "destructive", 
+                title: "Configuration Error", 
+                description: "Your user account is not linked to a Tenant ID. Please contact support." 
+            });
+            return;
+        }
+
         setInstalling(packId);
 
         try {
-            const res = await installMarketplacePack(user.tenantId, packId);
+            // Get the manifest JSON
+            const manifest = CATALOG[packId] as MarketplaceManifest;
+            if (!manifest) {
+                // Fallback for demo packs that don't have a JSON file yet
+                throw new Error("Pack manifest not found in catalog (Demo Only).");
+            }
+
+            console.log(`Installing pack ${packId} for tenant ${targetTenantId}...`);
+            
+            // Client-Side Install
+            // This runs in the browser context, using the active User session.
+            const res = await installPack(manifest, targetTenantId);
             
             if (res.success) {
                 toast({
                     title: "Installation Complete",
-                    description: "The Country Pack has been successfully configured for your tenant.",
+                    description: `The Country Pack has been configured for tenant: ${targetTenantId}`,
                 });
                 setInstalled(prev => ({ ...prev, [packId]: true }));
             } else {
+                console.error("Install Failed:", res.errors);
                 toast({
                     variant: "destructive",
                     title: "Installation Failed",
-                    description: res.error,
+                    description: res.errors?.join(", ") || "Unknown error.",
                 });
             }
-        } catch (e) {
-            console.error(e);
-            toast({ variant: "destructive", title: "Error", description: "System error during installation." });
+        } catch (e: any) {
+            console.error("Client Error during Install:", e);
+            toast({ variant: "destructive", title: "Error", description: e.message || "System error during installation." });
         } finally {
             setInstalling(null);
         }
@@ -67,13 +144,21 @@ export default function MarketplacePage() {
 
     return (
         <div className="p-8 space-y-8 max-w-7xl mx-auto">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">Marketplace</h1>
-                <p className="text-muted-foreground">Install regulatory packs, compliance workflows, and analytic engines.</p>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Marketplace</h1>
+                    <p className="text-muted-foreground">Install regulatory packs, compliance workflows, and analytic engines.</p>
+                </div>
+                {targetTenantId && (
+                    <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full text-xs font-medium text-slate-600">
+                        <Building2 className="h-3.5 w-3.5" />
+                        <span>Target: {targetTenantId}</span>
+                    </div>
+                )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {catalog.map(pack => (
+                {catalogDisplay.map(pack => (
                     <Card key={pack.id} className="flex flex-col">
                         <CardHeader>
                             <div className="flex justify-between items-start">
@@ -106,11 +191,11 @@ export default function MarketplacePage() {
                                 <Button 
                                     className="w-full" 
                                     onClick={() => handleInstall(pack.id)} 
-                                    disabled={!!installing}
+                                    disabled={!!installing || loadingState}
                                 >
                                     {installing === pack.id ? (
                                         <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Configuring Tenant...
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Configuring...
                                         </>
                                     ) : (
                                         <>

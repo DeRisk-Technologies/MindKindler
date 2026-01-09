@@ -1,194 +1,189 @@
+// src/app/dashboard/consultations/page.tsx
+
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { 
+    MessageSquare, 
+    Calendar, 
+    Clock, 
+    User, 
+    FileText, 
+    Plus, 
+    Loader2,
+    Filter,
+    Video
+} from 'lucide-react';
+import { useFirestoreCollection } from '@/hooks/use-firestore';
+import { useAuth } from '@/hooks/use-auth';
 import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
-import { FileText, Video, PlayCircle, Plus, BrainCircuit, ExternalLink } from "lucide-react";
-import { useFirestoreCollection } from "@/hooks/use-firestore";
-import { ConsultationSession, Student } from "@/types/schema";
-import { useRouter } from "next/navigation";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { collection, addDoc, serverTimestamp, getDocs, query, limit } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
+import { Input } from "@/components/ui/input";
+import Link from 'next/link';
 
 export default function ConsultationsPage() {
-  const router = useRouter();
-  const { data: sessions, loading } = useFirestoreCollection<ConsultationSession>("consultation_sessions", "date", "desc");
-  const [students, setStudents] = useState<Student[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<string>("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const { user } = useAuth();
+    const [mounted, setMounted] = useState(false);
+    
+    // Fix: Memoize filter to prevent loop
+    const filterOptions = React.useMemo(() => ({
+        field: 'practitionerId', 
+        operator: '==', 
+        value: user?.uid 
+    }), [user?.uid]);
 
-  useEffect(() => {
-      async function fetchStudents() {
-          const q = query(collection(db, "students"), limit(20));
-          const snap = await getDocs(q);
-          setStudents(snap.docs.map(d => ({id: d.id, ...d.data()} as Student)));
-      }
-      fetchStudents();
-  }, []);
+    const { data: consultations, loading } = useFirestoreCollection(
+        'consultation_sessions', 
+        'scheduledAt', 
+        'desc',
+        user?.uid ? { filter: filterOptions } : undefined
+    );
 
-  const handleStartSession = async () => {
-      if (!selectedStudent) return;
-      
-      const newSession = await addDoc(collection(db, "consultation_sessions"), {
-          studentId: selectedStudent,
-          date: new Date().toISOString(),
-          status: 'in_progress',
-          notes: "",
-          tenantId: "global", // Should be dynamic
-          userId: auth.currentUser?.uid
-      });
-      
-      setIsDialogOpen(false);
-      router.push(`/dashboard/consultations/${newSession.id}`);
-  };
+    const [filterStatus, setFilterStatus] = useState('all');
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Consultations</h1>
-          <p className="text-muted-foreground">
-            Manage live sessions and generated clinical reports.
-          </p>
-        </div>
-        
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-                <Button>
-                    <Plus className="mr-2 h-4 w-4" /> Start New Session
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Start Consultation</DialogTitle>
-                    <DialogDescription>Select a student to begin a live session with AI Co-Pilot.</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <Label>Student</Label>
-                    <Select onValueChange={setSelectedStudent}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select student..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {students.map(s => (
-                                <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    const filteredConsultations = consultations.filter(c => 
+        filterStatus === 'all' || c.status === filterStatus
+    );
+
+    // Hydration guard for date rendering
+    const formatDate = (dateString: string) => {
+        if (!mounted) return "";
+        return new Date(dateString).toLocaleDateString();
+    };
+
+    const formatTime = (dateString: string) => {
+        if (!mounted) return "";
+        return new Date(dateString).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    };
+
+    return (
+        <div className="space-y-6 p-8">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Consultations</h1>
+                    <p className="text-muted-foreground">Manage your clinical sessions with students, parents, and staff.</p>
                 </div>
-                <DialogFooter>
-                    <Button onClick={handleStartSession} disabled={!selectedStudent}>
-                        Launch Co-Pilot
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-      </div>
+                <div className="flex gap-2">
+                    <Link href="/dashboard/appointments/calendar">
+                        <Button variant="outline">
+                            <Calendar className="mr-2 h-4 w-4"/> View Calendar
+                        </Button>
+                    </Link>
+                    
+                    <Link href="/dashboard/consultations/new">
+                        <Button>
+                            <Plus className="mr-2 h-4 w-4"/> New Session
+                        </Button>
+                    </Link>
+                </div>
+            </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-gradient-to-br from-purple-50 to-white dark:from-purple-950 dark:to-background border-purple-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
-            <Video className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{sessions.filter(s => s.status === 'in_progress').length}</div>
-            <p className="text-xs text-muted-foreground">Live consultations</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Reports Generated</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{sessions.filter(s => s.reportId).length}</div>
-            <p className="text-xs text-muted-foreground">This month</p>
-          </CardContent>
-        </Card>
+            {/* Filters */}
+            <div className="flex items-center gap-4">
+                <div className="relative w-72">
+                    <Input placeholder="Search participants..." className="pl-8" />
+                    <Filter className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                </div>
+                
+                <div className="w-[180px]">
+                    <select 
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                    >
+                        <option value="all">All Statuses</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+            </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">AI Insights</CardTitle>
-            <BrainCircuit className="h-4 w-4 text-indigo-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">156</div>
-            <p className="text-xs text-muted-foreground">Suggestions provided</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Session History</CardTitle>
-          <CardDescription>Past consultations and generated reports.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Student</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Report</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sessions.map(session => (
-                <TableRow key={session.id}>
-                  <TableCell>{new Date(session.date).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                      {students.find(s => s.id === session.studentId)?.firstName || "Unknown"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={session.status === 'in_progress' ? 'default' : 'secondary'}>
-                        {session.status === 'in_progress' ? 'In Progress' : 'Completed'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                      {session.reportId ? (
-                          <Link href={`/dashboard/reports/editor/${session.reportId}`} className="flex items-center text-blue-600 hover:underline text-sm">
-                              <FileText className="mr-1 h-3 w-3" /> View Report
-                          </Link>
-                      ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                      )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/dashboard/consultations/${session.id}`}>
-                              {session.status === 'in_progress' ? <PlayCircle className="h-4 w-4 text-green-600" /> : <ExternalLink className="h-4 w-4" />}
-                          </Link>
-                      </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
+            <Card>
+                <CardHeader>
+                    <CardTitle>Session Log</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Date & Time</TableHead>
+                                <TableHead>Participant</TableHead>
+                                <TableHead>Type</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Outcome</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {loading && <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="animate-spin inline"/></TableCell></TableRow>}
+                            {!loading && filteredConsultations.length === 0 && (
+                                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No consultations found.</TableCell></TableRow>
+                            )}
+                            {filteredConsultations.map((session: any) => (
+                                <TableRow key={session.id}>
+                                    <TableCell>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium flex items-center gap-2">
+                                                <Calendar className="h-3 w-3 text-slate-500"/> 
+                                                {formatDate(session.scheduledAt)}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground flex items-center gap-2 ml-5">
+                                                <Clock className="h-3 w-3"/>
+                                                {formatTime(session.scheduledAt)}
+                                            </span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="flex items-center gap-2">
+                                            <User className="h-4 w-4 text-indigo-500" />
+                                            <div>
+                                                <div className="font-medium">{session.participantName || "Unknown"}</div>
+                                                <div className="text-xs text-muted-foreground capitalize">{session.participantType}</div>
+                                            </div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className="capitalize">{session.type || "General"}</Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        {session.status === 'completed' && <Badge variant="default" className="bg-green-600">Completed</Badge>}
+                                        {session.status === 'scheduled' && <Badge variant="secondary" className="bg-blue-100 text-blue-800">Scheduled</Badge>}
+                                        {session.status === 'cancelled' && <Badge variant="destructive" className="bg-red-100 text-red-800">Cancelled</Badge>}
+                                    </TableCell>
+                                    <TableCell>
+                                        <span className="text-sm truncate max-w-[200px] block">
+                                            {session.outcomeSummary || "-"}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <div className="flex justify-end gap-2">
+                                            {/* START LIVE SESSION BUTTON */}
+                                            {session.status === 'scheduled' && (
+                                                <Link href={`/dashboard/consultations/${session.id}`}>
+                                                    <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                                                        <Video className="mr-2 h-3 w-3" /> Start
+                                                    </Button>
+                                                </Link>
+                                            )}
+                                            <Link href={`/dashboard/consultations/${session.id}`}>
+                                                <Button variant="ghost" size="sm">View Notes</Button>
+                                            </Link>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    );
 }

@@ -1,9 +1,20 @@
 // src/types/schema.ts
 
-export type Role = 'SuperAdmin' | 'TenantAdmin' | 'EPP' | 'Assistant' | 'TrustedAssistant' | 'SchoolAdmin' | 'ParentUser' | 'GovAnalyst';
+// ... (Existing Roles)
+// NOTE: We permit both "EPP" and "EducationalPsychologist" as strings here to support legacy/variant roles, 
+// but code should ideally normalize.
+export type Role = 
+    'SuperAdmin' | 
+    'TenantAdmin' | 
+    'EPP' | 
+    'EducationalPsychologist' | 
+    'Assistant' | 
+    'TrustedAssistant' | 
+    'SchoolAdmin' | 
+    'ParentUser' | 
+    'GovAnalyst';
 
-// --- Provenance & Trust (Sprint 1-3) ---
-
+// ... (Provenance & Trust)
 export interface ProvenanceMetadata {
     source: 'manual' | 'ocr' | 'lms' | 'parent_portal' | 'migration';
     sourceId?: string;
@@ -33,8 +44,7 @@ export interface VerificationTask {
     resolvedBy?: string;
 }
 
-// --- Student 360 Core ---
-
+// ... (Student 360 Core)
 export interface ParentRecord {
     id: string;
     tenantId: string;
@@ -169,8 +179,7 @@ export interface StudentRecord {
     };
 }
 
-// --- Legacy & Support Types ---
-
+// ... (Legacy & Support Types)
 export interface AiFeedback {
     id: string;
     tenantId: string;
@@ -350,14 +359,35 @@ export interface Case {
   slaDueAt?: string;
 }
 
+// NEW: Task Management for Assistants
 export interface CaseTask {
   id?: string;
+  tenantId: string; // Tenant Context
+  caseId?: string;  // Linked to a clinical case?
+  studentId?: string; // Linked to a student?
+  
   title: string;
-  status: 'pending' | 'done';
-  dueAt?: string;
-  assignedTo?: string;
-  createdBy: string;
+  description?: string;
+  type: 'data_entry' | 'interview' | 'research' | 'observation' | 'report_drafting' | 'general'; // Added general
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'pending' | 'in_progress' | 'review' | 'completed' | 'late';
+  
+  assignedTo: string; // User ID (Assistant)
+  assignedBy: string; // User ID (EPP)
+  dueAt: string;
+  
+  attachments?: {
+      name: string;
+      url: string;
+  }[];
+  
+  escalationPolicy?: {
+      escalateAt: string; // if not done by this time
+      escalateTo: string; // User ID (EPP)
+  };
+  
   createdAt: string;
+  completedAt?: string;
 }
 
 export interface CaseTimelineEvent {
@@ -541,6 +571,7 @@ export interface GuardianFinding {
     blocking: boolean;
     simulated: boolean;
     createdAt: string;
+    updatedAt?: string;
 }
 
 export interface GuardianEvent {
@@ -807,4 +838,52 @@ export interface StaffProfile {
     
     // Country OS Extensions (SCR)
     extensions?: Record<string, any>;
+}
+
+export interface MarketplaceItem {
+    id: string;
+    type: 'pack' | 'template' | 'workflow';
+    title: string;
+    description: string;
+    version: string;
+    publisherId: string;
+    publisherOrg: string;
+    regionTags: string[]; // e.g. 'UK', 'US', 'Global'
+    categories: string[]; // e.g. 'Compliance', 'Assessment'
+    
+    licensing: {
+        licenseType: 'free' | 'per_seat' | 'site_license';
+        price?: { amount: number; currency: string };
+    };
+    
+    installManifest: any; // The JSON blob
+    certified: boolean; // MindKindler Verified
+    
+    stats: {
+        installs: number;
+        rating: number;
+    };
+    
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface MarketplaceReview {
+    id: string;
+    itemId: string;
+    userId: string;
+    rating: number; // 1-5
+    comment?: string;
+    createdAt: string;
+}
+
+export interface InstalledPack {
+    id: string;
+    tenantId: string;
+    packId: string;
+    version: string;
+    status: 'installed' | 'updating' | 'error';
+    installedAt: string;
+    installedBy: string;
+    configSnapshot?: any;
 }
