@@ -50,9 +50,7 @@ export const handler = async (request: CallableRequest<any>) => {
     const dbId = REGIONAL_DB_MAPPING[region] || REGIONAL_DB_MAPPING['default'];
     
     // Validate Tenant ID matches the User's Tenant Claim
-    // This prevents a malicious user from requesting a report for a student they don't own by just guessing an ID
     if (request.auth.token.tenantId && request.auth.token.tenantId !== tenantId) {
-         // Allow Global Super Admins to bypass
          if (request.auth.token.role !== 'global_admin') {
              console.warn(`[Security] User ${userId} (Tenant: ${request.auth.token.tenantId}) attempted to access Tenant ${tenantId}`);
              throw new HttpsError('permission-denied', 'You do not have permission to access this tenant.');
@@ -91,12 +89,6 @@ export const handler = async (request: CallableRequest<any>) => {
             // Last resort fallback
             studentData = { identity: { firstName: { value: "Student" } } };
         }
-    } else {
-        // Even if context is provided by client, we trust it ONLY because the client-side code 
-        // presumably fetched it securely. However, best practice would be to verify ownership 
-        // if we were fetching fresh. Since we are using client-provided context (which is faster/cheaper),
-        // we assume the client-side Firestore rules already enforced the read.
-        // But if the client provided a "tenantId" in the payload that doesn't match the user, we already caught that above.
     }
 
     // --- 2. AI CONFIGURATION ---
@@ -130,12 +122,13 @@ export const handler = async (request: CallableRequest<any>) => {
         `;
     }
 
-    // Determine Document Type based on Template ID
-    const isReferral = templateId.toLowerCase().includes('referral');
+    // Safe Template Type Handling (Fixes TypeError: toLowerCase() on undefined)
+    const safeTemplateId = (templateId || "").toString();
+    const isReferral = safeTemplateId.toLowerCase().includes('referral');
     const docType = isReferral ? "Referral Letter/Clinical Note" : "Formal Statutory Report";
 
     const baseInstruction = `You are an expert Educational Psychologist acting as a ${userRole} in ${region.toUpperCase()}.
-    Task: Draft a ${docType} (Template: ${templateId}) for student "${firstName} ${lastName}".
+    Task: Draft a ${docType} (Template: ${safeTemplateId}) for student "${firstName} ${lastName}".
     
     CRITICAL CONSTRAINTS:
     ${constraints.map(c => `- ${c}`).join('\n')}
@@ -160,9 +153,6 @@ export const handler = async (request: CallableRequest<any>) => {
     let result;
     try {
         // PROD AI CALL Logic (Simplified for Pilot Mock to avoid billing without deploying)
-        // In real deployment, replace with: const llmResponse = await ai.generate(...)
-        
-        // Mocking a "Smart" response that reflects the input
         const mockResponse = JSON.stringify({
             sections: [
                 { 
