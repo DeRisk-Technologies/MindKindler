@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Causing Recursion Error
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/hooks/use-auth';
@@ -30,28 +29,45 @@ export default function NewConsultationPage() {
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!user) return;
+        
+        // Use robust tenant logic matching StudentEntryForm
+        const effectiveTenantId = user?.tenantId || (user?.role === 'EPP' ? `practice_${user?.uid}` : 'default');
+
+        if (!user || !shardId) {
+             toast({ title: "Error", description: "Identity or Region not resolved. Please wait a moment and try again.", variant: "destructive" });
+             return;
+        }
         
         setIsSubmitting(true);
         const formData = new FormData(e.currentTarget);
         const studentId = formData.get('studentId') as string;
         const student = students.find(s => s.id === studentId);
 
+        if (!studentId) {
+             toast({ title: "Validation Error", description: "You must select a student for the consultation.", variant: "destructive" });
+             setIsSubmitting(false);
+             return;
+        }
+
         const data = {
             practitionerId: user.uid,
             practitionerName: user.displayName || 'Unknown Practitioner',
-            tenantId: user.tenantId,
+            tenantId: effectiveTenantId,
             
+            // LINKING STUDENT
+            studentId: studentId, // Required for LiveConsultationPage
             participantId: studentId,
-            participantName: student ? `${student.firstName} ${student.lastName}` : formData.get('participantName'),
-            participantType: 'student', // simplified for MVP
+            participantName: student ? `${student.firstName} ${student.lastName}` : "Unknown Student",
+            participantType: 'student',
 
             type: formData.get('type'),
-            scheduledAt: formData.get('scheduledAt'), // ISO string from datetime-local
+            scheduledAt: formData.get('scheduledAt'), 
+            date: formData.get('scheduledAt'), // Legacy field support
             durationMinutes: parseInt(formData.get('duration') as string),
             location: formData.get('location'),
             
             agenda: formData.get('agenda'),
+            notes: "", // Initialize empty
             status: 'scheduled',
             
             createdAt: serverTimestamp(),
@@ -98,7 +114,7 @@ export default function NewConsultationPage() {
                                     </option>
                                     {students.map((s: any) => (
                                         <option key={s.id} value={s.id}>
-                                            {s.firstName} {s.lastName}
+                                            {s.firstName || s.identity?.firstName?.value} {s.lastName || s.identity?.lastName?.value}
                                         </option>
                                     ))}
                                 </select>
