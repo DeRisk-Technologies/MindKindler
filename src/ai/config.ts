@@ -10,7 +10,7 @@ export const AVAILABLE_MODELS = [
 
 export const FEATURE_MODEL_DEFAULTS: Record<string, string> = {
     consultationInsights: 'googleai/gemini-2.0-flash',
-    consultationReport: 'googleai/gemini-1.5-pro',
+    consultationReport: 'googleai/gemini-2.0-flash', // SWAPPED to 2.0 Flash for Pilot Speed
     assessmentGrading: 'googleai/gemini-1.5-pro',
     govIntel: 'googleai/gemini-1.5-pro',
     documentExtraction: 'googleai/gemini-2.0-flash', 
@@ -26,7 +26,7 @@ export const FEATURE_METADATA: Record<string, { label: string, description: stri
     consultationReport: {
         label: "Report Generation",
         description: "Drafts formal clinical documents and letters.",
-        recommended: 'googleai/gemini-1.5-pro'
+        recommended: 'googleai/gemini-2.0-flash'
     },
     assessmentGrading: {
         label: "Assessment Grading",
@@ -54,34 +54,23 @@ export const DEFAULT_MODEL = 'googleai/gemini-2.0-flash';
 
 // Standardized Parameters for different AI Tasks
 export const FLOW_PARAMS = {
-    // Risk & Insights: Deterministic, concise, low hallucination risk
     consultationInsights: { 
         temperature: 0.0, 
         maxOutputTokens: 512,
         topK: 1,
         topP: 0.1
     },
-    // Clinical Reports: Highly structured, consistent tone
     consultationReport: { 
-        temperature: 0.0, 
-        maxOutputTokens: 4096, // Reports can be long
+        temperature: 0.2, // Slightly more natural flow than insights
+        maxOutputTokens: 4096, 
         topK: 1
     },
-    // Brainstorming: Slightly more creative
     creativeSuggestions: { 
         temperature: 0.25, 
         maxOutputTokens: 1024 
     }
 };
 
-// Helper function to match the one I used in the Services
 export async function generateContent(prompt: string, model: string = DEFAULT_MODEL) {
-    // Lazy load logic to prevent circular dependency if possible, but simplest is to use 'ai' from genkit.ts
-    // However, genkit.ts imports DEFAULT_MODEL from here. Circular dependency!
-    // Solution: Move generateContent to a new file or keep it here but remove 'ai' import and pass 'ai' instance?
-    // Better: Just use a server action. 
-    // I will remove the import of 'ai' here and let the caller handle it or move this helper to a utility file.
-    // Actually, simply defining the interface here is not enough.
-    // I will CREATE a new file src/ai/utils.ts for this helper to avoid cycles.
     throw new Error("Use src/app/actions/ai-actions.ts for server-side generation.");
 }

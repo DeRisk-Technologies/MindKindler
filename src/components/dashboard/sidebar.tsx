@@ -118,12 +118,10 @@ export function DashboardSidebar() {
                         {/* Parent Portal Link */}
                         <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/students/parents")}>
-                             {/* Assuming logic handles parent view in students tab */}
                             <Link href="/dashboard/students?tab=parents"><span>Parents & Guardians</span></Link>
                         </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                         
-                        {/* Consultation Link - ADDED as per Request #2 */}
                         <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild isActive={isActive("/dashboard/consultations")}>
                                 <Link href="/dashboard/consultations"><span>Consultations</span></Link>
@@ -169,7 +167,8 @@ export function DashboardSidebar() {
                         </SidebarMenuSubItem>
                         <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/reports")}>
-                            <Link href="/dashboard/reports"><span>Archive</span></Link>
+                            {/* CHANGED: Name from Archive to Report Directory */}
+                            <Link href="/dashboard/reports"><span>Reports Directory</span></Link>
                         </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                     </SidebarMenuSub>
@@ -180,7 +179,7 @@ export function DashboardSidebar() {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* 2. PRACTICE MANAGEMENT (New for Independent EPPs) */}
+        {/* 2. PRACTICE MANAGEMENT */}
         {isPracticeOwner && !isSuperAdmin && (
             <SidebarGroup>
                 <SidebarGroupLabel>My Practice</SidebarGroupLabel>
@@ -263,7 +262,7 @@ export function DashboardSidebar() {
             </SidebarMenu>
         </SidebarGroup>
         
-        {/* 5. DATA OPERATIONS (RESTORED) */}
+        {/* 5. DATA OPERATIONS */}
         {(can('manage_data_ingestion') || isAssistant) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Data Operations</SidebarGroupLabel>
@@ -296,7 +295,7 @@ export function DashboardSidebar() {
             </SidebarGroup>
         )}
 
-        {/* 6. COMMUNITY & INTELLIGENCE (RESTORED) */}
+        {/* 6. COMMUNITY & INTELLIGENCE */}
         {(can('access_community') || can('view_gov_intel')) && (
             <SidebarGroup>
                 <SidebarGroupLabel>Community & Knowledge</SidebarGroupLabel>

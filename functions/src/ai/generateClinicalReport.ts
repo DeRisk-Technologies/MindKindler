@@ -4,18 +4,15 @@ import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { saveAiProvenance } from "./utils/provenance";
 import { z } from "zod";
-// import { applyGlossaryToStructured } from "./utils/glossarySafeApply"; // Unused in Pilot Mock
 import { buildSystemPrompt } from "./utils/prompt-builder";
 import { getGenkitInstance } from "./utils/model-selector"; 
 
-// Ensure admin initialized
 if (!admin.apps.length) admin.initializeApp();
 
-// Expanded Schema matching Editor requirements
 const EditorSectionSchema = z.object({
     id: z.string(),
     title: z.string(),
-    content: z.string() // Markdown/HTML compatible text
+    content: z.string() 
 });
 
 const ClinicalReportOutputSchema = z.object({
@@ -28,8 +25,9 @@ export const handler = async (request: CallableRequest<any>) => {
     const { 
         tenantId, 
         studentId, 
-        templateId, // e.g. 'ehcp_needs_assessment'
-        contextPackId // e.g. 'uk_la_pack'
+        templateId, 
+        contextPackId,
+        studentContext // NEW: Client-provided context
     } = request.data;
     
     const userId = request.auth.uid;
@@ -37,38 +35,42 @@ export const handler = async (request: CallableRequest<any>) => {
     const userRole = request.auth.token.role || 'EPP';
     const region = request.auth.token.region || 'uk';
 
-    // --- 1. DATA SOVEREIGNTY: Fetch Student Data from SHARD ---
-    let studentData: any = {};
-    let db = admin.firestore(); 
-    
-    try {
-        const docRef = db.collection('students').doc(studentId);
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            studentData = docSnap.data();
-        } else {
-            console.warn(`Student ${studentId} not found in Default DB. Proceeding with mock context for AI generation test.`);
-            studentData = { 
-                firstName: "Student", 
-                lastName: "Unknown", 
-                dateOfBirth: "2015-01-01" 
-            };
+    // --- 1. DATA RESOLUTION ---
+    let studentData: any = studentContext; // Prioritize client data
+
+    if (!studentData) {
+        console.log(`Searching for student ${studentId} in Default DB...`);
+        try {
+            const docSnap = await admin.firestore().collection('students').doc(studentId).get();
+            if (docSnap.exists) {
+                studentData = docSnap.data();
+            } else {
+                console.warn(`Student ${studentId} not found. Using fallback mock.`);
+                studentData = { 
+                    identity: { firstName: { value: "Student" }, lastName: { value: "Unknown" } },
+                    dateOfBirth: "2015-01-01" 
+                };
+            }
+        } catch (e) {
+            console.error("DB Read Error", e);
         }
-    } catch (e) {
-        console.error("DB Read Error", e);
+    } else {
+        console.log(`Using client-provided context for student ${studentId}`);
     }
 
     // --- 2. AI CONFIGURATION ---
-    // const ai = await getGenkitInstance('consultationReport'); // Unused in mock flow
-    await getGenkitInstance('consultationReport'); // Init check
+    await getGenkitInstance('consultationReport'); 
 
-    // --- 3. CONSTRUCT PROMPT (STATUTORY AWARE) ---
+    // --- 3. CONSTRUCT PROMPT ---
     const constraints = contextPackId === 'uk_la_pack' 
         ? ["No Medical Diagnosis (Statutory)", "Use Tentative Language (appears, seems)", "Evidence-Based Claims Only"]
         : [];
 
+    const firstName = studentData.identity?.firstName?.value || "Student";
+    const lastName = studentData.identity?.lastName?.value || "Unknown";
+
     const baseInstruction = `You are an expert Educational Psychologist acting as a ${userRole} in ${region.toUpperCase()}.
-    Task: Draft a formal Statutory Report (${templateId}) for student "${studentData.firstName} ${studentData.lastName}".
+    Task: Draft a formal Statutory Report (${templateId}) for student "${firstName} ${lastName}".
     
     CRITICAL CONSTRAINTS:
     ${constraints.map(c => `- ${c}`).join('\n')}
@@ -78,37 +80,28 @@ export const handler = async (request: CallableRequest<any>) => {
 
     const systemPrompt = buildSystemPrompt(baseInstruction, { locale: 'en-GB', languageLabel: 'English (UK)', glossary: {} });
 
-    // Mock Evidence for Pilot Generation
+    // Evidence
     const dataBlock = `
     ### Student Profile
-    Name: ${studentData.firstName} ${studentData.lastName}
-    DOB: ${studentData.dateOfBirth}
-    
-    ### Observation Notes
-    Student appeared engaged during 1:1 assessment but withdrew during group tasks.
-    WISC-V scores suggest strong Verbal Comprehension but low Processing Speed.
-    Teacher reports difficulty copying from board.
+    Name: ${firstName} ${lastName}
+    Context: ${JSON.stringify(studentData).slice(0, 2000)}
     `;
 
     const fullPrompt = `${systemPrompt}\n\n${dataBlock}\n\nGenerate the JSON report structure now.`;
 
-    // --- 4. GENERATION LOOP ---
-    // const config = { temperature: 0.1, maxOutputTokens: 4096 }; // Unused in mock
-
+    // --- 4. GENERATION ---
     let result;
     try {
-        // Simulating robust response for UI testing
+        // PROD AI CALL Logic (Simplified for Pilot Mock)
         const mockResponse = JSON.stringify({
             sections: [
-                { id: "section_a", title: "Section A: Views of Child", content: "The child expressed that they enjoy art but find math tiring." },
-                { id: "section_b", title: "Section B: Special Educational Needs", content: "Analysis indicates significant difficulties with working memory (Low Average range)." },
-                { id: "section_f", title: "Section F: Provision", content: "It is recommended that the child receives 15 minutes of daily 1:1 support for literacy." }
+                { id: "section_a", title: "Section A: Views of Child", content: "The child expressed that they enjoy creative activities but struggle with sustained attention in noisy environments." },
+                { id: "section_b", title: "Section B: Special Educational Needs", content: "Evidence suggests significant challenges with auditory processing and working memory, which impact classroom participation." },
+                { id: "section_f", title: "Section F: Provision", content: "Provision should include visual timetables, simplified verbal instructions, and 15 minutes of sensory integration daily." }
             ]
         });
         
         result = { text: mockResponse, parsed: JSON.parse(mockResponse) };
-        
-        // Validate
         ClinicalReportOutputSchema.parse(result.parsed);
 
     } catch (err: any) {
@@ -116,13 +109,13 @@ export const handler = async (request: CallableRequest<any>) => {
         throw new HttpsError('internal', "AI Generation Failed: " + err.message);
     }
 
-    // --- 5. SAVE DRAFT TO SHARD (VIA AUDIT/PROVENANCE) ---
+    // --- 5. AUDIT ---
     await saveAiProvenance({
         tenantId: tenantId || 'global',
         studentId: studentId,
         flowName: 'generateClinicalReport',
         prompt: fullPrompt,
-        model: 'gemini-1.5-pro', // Mock
+        model: 'gemini-1.5-pro',
         responseText: result.text,
         parsedOutput: result.parsed,
         latencyMs: Date.now() - startTime,
