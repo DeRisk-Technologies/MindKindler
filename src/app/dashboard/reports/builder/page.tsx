@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react'; // Added Suspense
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
@@ -39,7 +39,7 @@ const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
     }
 ];
 
-export default function ReportBuilderPage() {
+function ReportBuilderContent() {
     const { user } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
@@ -130,7 +130,6 @@ export default function ReportBuilderPage() {
             const targetDb = getRegionalDb(region);
 
             // 2. Fetch Full Student Data
-            console.log(`[Builder] Fetching Student ${selectedStudentId} from ${region}`);
             const studentRef = doc(targetDb, 'students', selectedStudentId);
             const studentSnap = await getDoc(studentRef);
             
@@ -144,7 +143,6 @@ export default function ReportBuilderPage() {
             // 3. Fetch Session Data (if applicable)
             let sessionContext = {};
             if (sourceSessionId) {
-                console.log(`[Builder] Fetching Session ${sourceSessionId}`);
                 const sessionSnap = await getDoc(doc(targetDb, 'consultation_sessions', sourceSessionId));
                 if (sessionSnap.exists()) {
                     sessionContext = JSON.parse(JSON.stringify(sessionSnap.data()));
@@ -282,5 +280,14 @@ export default function ReportBuilderPage() {
                 </Card>
             )}
         </div>
+    );
+}
+
+// Wrapper to satisfy Next.js Suspense requirement for useSearchParams
+export default function ReportBuilderPage() {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-indigo-600"/></div>}>
+            <ReportBuilderContent />
+        </Suspense>
     );
 }
