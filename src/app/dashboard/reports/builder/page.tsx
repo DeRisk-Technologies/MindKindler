@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useEffect, useState, Suspense } from 'react'; // Added Suspense
+import React, { useEffect, useState, Suspense } from 'react'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
@@ -111,6 +111,38 @@ function ReportBuilderContent() {
         init();
     }, [user, sourceSessionId]);
 
+    // --- PRIVACY HELPER: Redact PII before sending to AI ---
+    const redactForAI = (student: any) => {
+        if (!student) return {};
+        
+        // Calculate Age instead of sending DOB
+        let age = "Unknown";
+        if (student.identity?.dateOfBirth?.value) {
+            const dob = new Date(student.identity.dateOfBirth.value);
+            const diff = Date.now() - dob.getTime();
+            const ageDate = new Date(diff);
+            age = Math.abs(ageDate.getUTCFullYear() - 1970).toString();
+        }
+
+        return {
+            identity: {
+                firstName: { value: student.identity?.firstName?.value || "Student" },
+                // Use Initial for Last Name
+                lastName: { value: student.identity?.lastName?.value ? student.identity.lastName.value.charAt(0) + "." : "" },
+                age: age, 
+                gender: { value: student.identity?.gender?.value || "Not specified" }
+            },
+            education: {
+                senStatus: { value: student.education?.senStatus?.value },
+                yearGroup: { value: student.education?.yearGroup?.value }
+            },
+            health: {
+                conditions: { value: student.health?.conditions?.value || [] }
+            },
+            // Explicitly exclude: nationalId, upn, address, contact info, parents
+        };
+    };
+
     const handleGenerate = async () => {
         if (!selectedTemplateId || !selectedStudentId || !activeTemplate || !user) return;
         setGenerating(true);
@@ -129,7 +161,7 @@ function ReportBuilderContent() {
             }
             const targetDb = getRegionalDb(region);
 
-            // 2. Fetch Full Student Data
+            // 2. Fetch Full Student Data (Client Side)
             const studentRef = doc(targetDb, 'students', selectedStudentId);
             const studentSnap = await getDoc(studentRef);
             
@@ -137,10 +169,9 @@ function ReportBuilderContent() {
                 throw new Error("Student record not found in regional database.");
             }
             
-            // Sanitize
-            const plainStudentContext = JSON.parse(JSON.stringify(studentSnap.data()));
+            const rawStudentData = studentSnap.data();
 
-            // 3. Fetch Session Data (if applicable)
+            // 3. Fetch Session Data
             let sessionContext = {};
             if (sourceSessionId) {
                 const sessionSnap = await getDoc(doc(targetDb, 'consultation_sessions', sourceSessionId));
@@ -149,28 +180,33 @@ function ReportBuilderContent() {
                 }
             }
 
-            console.log("[Builder] Sending Context to AI:", { student: plainStudentContext, session: sessionContext });
+            // 4. PRIVACY: Redact Context
+            const redactedStudentContext = redactForAI(rawStudentData);
+            
+            console.log("[Builder] Sending REDACTED Context to AI:", { student: redactedStudentContext });
 
-            // 4. AI Generation
+            // 5. AI Generation
             const generateFn = httpsCallable(functions, 'generateClinicalReport');
             const result = await generateFn({
                 tenantId: user?.tenantId,
                 studentId: selectedStudentId,
                 templateId: selectedTemplateId,
                 contextPackId: 'uk_la_pack',
-                studentContext: plainStudentContext,
+                studentContext: redactedStudentContext, // SAFE
                 sessionContext: sessionContext       
             });
 
             const responseData = result.data as any;
             
-            // 5. Persistence
+            // 6. Persistence (Save with REAL Name for internal record)
+            const realName = rawStudentData.identity?.firstName?.value + ' ' + rawStudentData.identity?.lastName?.value;
+            
             const newReport = {
                 title: activeTemplate.name + ' - Draft',
                 templateId: selectedTemplateId,
                 studentId: selectedStudentId,
                 sessionId: sourceSessionId || null, 
-                studentName: plainStudentContext.identity?.firstName?.value + ' ' + plainStudentContext.identity?.lastName?.value || 'Unknown Student',
+                studentName: realName || 'Unknown Student',
                 status: 'draft',
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
@@ -183,7 +219,7 @@ function ReportBuilderContent() {
             const reportRef = await addDoc(collection(targetDb, 'reports'), newReport);
 
             setJustFinished(true);
-            toast({ title: "Draft Created", description: "Report generated from session evidence." });
+            toast({ title: "Draft Created", description: "Report generated (PII redacted during processing)." });
 
             setTimeout(() => {
                 router.push(`/dashboard/reports/editor/${reportRef.id}`);
@@ -283,7 +319,6 @@ function ReportBuilderContent() {
     );
 }
 
-// Wrapper to satisfy Next.js Suspense requirement for useSearchParams
 export default function ReportBuilderPage() {
     return (
         <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-indigo-600"/></div>}>
