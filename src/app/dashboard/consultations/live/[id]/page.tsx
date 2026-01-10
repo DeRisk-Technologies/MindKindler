@@ -6,7 +6,8 @@ import { use } from 'react';
 import { 
     Mic, MicOff, AlertCircle, ChevronRight, 
     LayoutDashboard, FileText, User, 
-    BrainCircuit, Sparkles, MessageSquare, TabletSmartphone, Video, Loader2, CheckCircle
+    BrainCircuit, Sparkles, MessageSquare, TabletSmartphone, Video, Loader2, CheckCircle,
+    UserCircle, GraduationCap
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -32,8 +33,9 @@ import { analyzeSegmentAction, AiInsight, ConsultationMode } from '@/app/actions
 
 // FIREBASE IMPORTS
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { getRegionalDb, db as globalDb } from '@/lib/firebase'; 
+import { getRegionalDb, db as globalDb, functions } from '@/lib/firebase'; 
 import { useAuth } from '@/hooks/use-auth';
+import { httpsCallable } from 'firebase/functions';
 
 // --- Types ---
 
@@ -55,7 +57,7 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
     const { id } = use(params);
     const router = useRouter(); 
     const { toast } = useToast();
-    const { user } = useAuth(); // Get user for Region
+    const { user } = useAuth(); 
     
     // State
     const [isRecording, setIsRecording] = useState(false);
@@ -66,8 +68,11 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
     const [insights, setInsights] = useState<AiInsight[]>([]);
     const [studentContext, setStudentContext] = useState<any>(null); 
     const [isSaving, setIsSaving] = useState(false);
-    const [activeShard, setActiveShard] = useState<string>('default'); // Track shard explicitly
+    const [activeShard, setActiveShard] = useState<string>('default');
     
+    // Active Speaker Toggle (Manual override for MVP)
+    const [activeSpeaker, setActiveSpeaker] = useState<'EPP' | 'Student'>('EPP');
+
     // Refs
     const transcriptEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any>(null); 
@@ -140,7 +145,7 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
     const handleFinalTranscript = async (text: string) => {
         const newSegment: TranscriptSegment = {
             id: Date.now().toString(),
-            speaker: 'EPP', 
+            speaker: activeSpeaker, // Use the manually toggled speaker for now
             text: text,
             timestamp: new Date(),
             isFinal: true
@@ -149,34 +154,24 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
         setTranscript(prev => [...prev, newSegment]);
         setInterimText(""); 
 
-        // Trigger Co-Pilot
-        // FIX: Extract only plain values
-        const plainContext = studentContext ? {
-            identity: {
-                dateOfBirth: { value: studentContext.identity?.dateOfBirth?.value }
-            },
-            education: {
-                senStatus: { value: studentContext.education?.senStatus?.value }
-            },
-            health: {
-                conditions: { value: studentContext.health?.conditions?.value || [] }
-            }
-        } : {};
-
-        const context = {
-            transcriptSegment: text,
-            recentHistory: transcript.slice(-3).map(t => `${t.speaker}: ${t.text}`),
-            studentContext: plainContext as any, // FIX: Cast to any to bypass strict Partial check
-            mode
-        };
-
+        // Trigger Co-Pilot (Cloud Function Fallback)
         try {
-            const newInsights = await analyzeSegmentAction(context);
-            if (newInsights && newInsights.length > 0) {
-                    setInsights(prev => [...newInsights, ...prev]);
-                    toast({
+            // FIX: Use Cloud Function if hosted environment
+            const analyzeFn = httpsCallable(functions, 'analyzeConsultationInsight');
+            const result = await analyzeFn({
+                transcriptChunk: text,
+                tenantId: user?.tenantId,
+                studentId: studentContext?.id,
+                context: mode
+            });
+            
+            const newInsight = result.data as AiInsight;
+            
+            if (newInsight && newInsight.type !== 'none') {
+                setInsights(prev => [newInsight, ...prev]);
+                toast({
                     title: "AI Suggestion",
-                    description: newInsights[0].text,
+                    description: newInsight.text,
                     duration: 4000,
                 });
             }
@@ -303,6 +298,8 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
                     </Badge>
                     <h1 className="text-lg font-bold text-slate-800">Consultation Session #{id.substring(0, 6)}</h1>
                     <Separator orientation="vertical" className="h-6" />
+                    
+                    {/* Mode Selector */}
                     <div className="flex items-center gap-2">
                          <Label className="text-sm font-medium text-slate-600">Mode:</Label>
                          <DropdownMenu>
@@ -317,6 +314,28 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
                                 <DropdownMenuItem onClick={() => setMode('standard')}>Standard</DropdownMenuItem>
                             </DropdownMenuContent>
                          </DropdownMenu>
+                    </div>
+
+                    <Separator orientation="vertical" className="h-6" />
+
+                    {/* Active Speaker Toggle (Manual for MVP) */}
+                    <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg border">
+                        <Button 
+                            variant={activeSpeaker === 'EPP' ? "default" : "ghost"} 
+                            size="sm" 
+                            className={`h-7 px-3 text-xs ${activeSpeaker === 'EPP' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}
+                            onClick={() => setActiveSpeaker('EPP')}
+                        >
+                            <UserCircle className="w-3 h-3 mr-1" /> EPP
+                        </Button>
+                        <Button 
+                            variant={activeSpeaker === 'Student' ? "default" : "ghost"} 
+                            size="sm" 
+                            className={`h-7 px-3 text-xs ${activeSpeaker === 'Student' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}
+                            onClick={() => setActiveSpeaker('Student')}
+                        >
+                            <GraduationCap className="w-3 h-3 mr-1" /> Student
+                        </Button>
                     </div>
                 </div>
 
@@ -400,7 +419,7 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
                                         <div key={seg.id} className={`flex gap-3 ${seg.speaker === 'EPP' ? 'flex-row-reverse' : ''}`}>
                                             <Avatar className="w-8 h-8 mt-1">
                                                 <AvatarFallback className={seg.speaker === 'EPP' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}>
-                                                    {seg.speaker[0]}
+                                                    {seg.speaker === 'EPP' ? 'EPP' : 'ST'}
                                                 </AvatarFallback>
                                             </Avatar>
                                             <div className={`flex flex-col max-w-[85%] ${seg.speaker === 'EPP' ? 'items-end' : 'items-start'}`}>
@@ -421,12 +440,18 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
                                 
                                 {/* Interim (Pending) Text */}
                                 {interimText && (
-                                    <div className="flex gap-3 flex-row-reverse animate-pulse opacity-70">
+                                    <div className={`flex gap-3 animate-pulse opacity-70 ${activeSpeaker === 'EPP' ? 'flex-row-reverse' : ''}`}>
                                         <Avatar className="w-8 h-8 mt-1 opacity-50">
-                                            <AvatarFallback className="bg-indigo-100 text-indigo-700">EPP</AvatarFallback>
+                                            <AvatarFallback className={activeSpeaker === 'EPP' ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100"}>
+                                                {activeSpeaker === 'EPP' ? 'EPP' : 'ST'}
+                                            </AvatarFallback>
                                         </Avatar>
-                                        <div className="flex flex-col max-w-[85%] items-end">
-                                            <div className="px-4 py-2 rounded-2xl text-sm leading-relaxed bg-indigo-50 text-indigo-800 rounded-tr-sm italic">
+                                        <div className={`flex flex-col max-w-[85%] ${activeSpeaker === 'EPP' ? 'items-end' : 'items-start'}`}>
+                                            <div className={`px-4 py-2 rounded-2xl text-sm leading-relaxed ${
+                                                activeSpeaker === 'EPP' 
+                                                    ? 'bg-indigo-50 text-indigo-800 rounded-tr-sm italic' 
+                                                    : 'bg-slate-100 text-slate-600 rounded-tl-sm italic'
+                                            }`}>
                                                 {interimText}...
                                             </div>
                                         </div>
