@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { 
     CheckCircle, AlertTriangle, FileText, ArrowRight, 
     Sparkles, Edit3, MessageSquare, Plus, Trash2,
-    Clock, Activity, BrainCircuit, Save, X
+    Clock, Activity, BrainCircuit, Save, X, Highlighter, Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -18,11 +18,12 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { StudentRecord, AssessmentResult } from '@/types/schema';
 import { InterventionLogic } from '@/marketplace/types';
-import { Input } from '@/components/ui/input'; // Added Input
+import { Input } from '@/components/ui/input'; 
 
 import { askSessionQuestionAction, AiInsight } from '@/app/actions/consultation';
 import { generateInterventionPlanAction, PlannedIntervention } from '@/app/actions/intervention';
-import { useRouter } from 'next/navigation';
+import { SessionTimeline } from './analysis/SessionTimeline'; 
+import { ReferralGeneratorModal } from '@/components/reporting/modals/ReferralGeneratorModal'; // Phase 22 Integration
 
 const MOCK_UK_LIBRARY: InterventionLogic[] = [
     { id: "uk_elklan_vci", domain: "VCI", threshold: 85, programName: "ELKLAN Language Builders", description: "Structured oral language support.", evidenceLevel: "gold" },
@@ -35,7 +36,7 @@ export interface SynthesisResult {
     referrals: string[];
     editedTranscript: string;
     reportType: 'statutory' | 'custom';
-    manualClinicalNotes?: string[]; // Added manual notes
+    manualClinicalNotes?: string[];
 }
 
 interface PostSessionSynthesisProps {
@@ -56,17 +57,17 @@ export function PostSessionSynthesis({
     onComplete 
 }: PostSessionSynthesisProps) {
     const { toast } = useToast();
-    const router = useRouter(); 
     
     // State
     const [activeTab, setActiveTab] = useState('review');
     const [clinicalOpinions, setClinicalOpinions] = useState<AiInsight[]>(initialInsights);
-    const [manualOpinions, setManualOpinions] = useState<string[]>([]); // New state for manual opinions
-    const [newManualOpinion, setNewManualOpinion] = useState(""); // Input for new manual opinion
+    const [manualOpinions, setManualOpinions] = useState<string[]>([]);
+    const [newManualOpinion, setNewManualOpinion] = useState("");
     
     const [plannedInterventions, setPlannedInterventions] = useState<PlannedIntervention[]>([]);
     const [referrals, setReferrals] = useState<string[]>([]);
     const [editedTranscript, setEditedTranscript] = useState(transcript); 
+    const [promotedEvidence, setPromotedEvidence] = useState<string[]>([]);
     
     const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
     
@@ -74,6 +75,9 @@ export function PostSessionSynthesis({
     const [question, setQuestion] = useState("");
     const [answer, setAnswer] = useState("");
     const [isAsking, setIsAsking] = useState(false);
+
+    // Referral Modal State (Phase 22)
+    const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
 
     // --- Helpers ---
     const sanitizeForServer = (obj: any): any => {
@@ -98,13 +102,20 @@ export function PostSessionSynthesis({
         setManualOpinions(prev => prev.filter((_, i) => i !== idx));
     };
 
+    const handleTextSelect = () => {
+        const selection = window.getSelection();
+        if (selection && selection.toString().length > 5) {
+            const text = selection.toString();
+            setPromotedEvidence(prev => [...prev, text]);
+            toast({ title: "Evidence Promoted", description: "Added to clinical context." });
+        }
+    };
+
     const generateTreatmentPlan = async () => {
         setIsGeneratingPlan(true);
         try {
             const cleanStudent = sanitizeForServer(student);
             const cleanAssessments = sanitizeForServer(assessments);
-            
-            // Get only confirmed opinions to influence the plan
             const confirmedOpinions = clinicalOpinions.filter(op => (op as any).confirmed);
 
             const context = {
@@ -112,38 +123,21 @@ export function PostSessionSynthesis({
                 student: cleanStudent,
                 assessments: cleanAssessments,
                 clinicalOpinions: confirmedOpinions, 
-                manualEntries: manualOpinions, // Pass manual notes
+                manualEntries: [...manualOpinions, ...promotedEvidence], 
                 availableInterventions: MOCK_UK_LIBRARY,
-                region: 'UK' // Hardcoded for now, ideally passed via props
+                region: 'UK' 
             };
             
             const plans = await generateInterventionPlanAction(context);
             setPlannedInterventions(plans);
             
-            toast({
-                title: "Plan Generated",
-                description: `Created ${plans.length} targeted interventions based on confirmed & manual opinions.`,
-            });
+            toast({ title: "Plan Generated", description: `Created ${plans.length} targeted interventions.` });
         } catch (e) {
             console.error(e);
             toast({ title: "Error", description: "Failed to generate plan.", variant: "destructive" });
         } finally {
             setIsGeneratingPlan(false);
         }
-    };
-
-    const updateInterventionStep = (planId: string, stepIdx: number, val: string) => {
-        setPlannedInterventions(prev => prev.map(p => 
-             p.id === planId 
-             ? { ...p, steps: p.steps.map((s, i) => i === stepIdx ? val : s) } 
-             : p
-        ));
-    };
-
-    const addInterventionStep = (planId: string) => {
-        setPlannedInterventions(prev => prev.map(p => 
-            p.id === planId ? { ...p, steps: [...p.steps, "New step..."] } : p
-        ));
     };
 
     const handleReferralAdd = (val: string) => {
@@ -166,21 +160,38 @@ export function PostSessionSynthesis({
             referrals,
             editedTranscript,
             reportType: type,
-            manualClinicalNotes: manualOpinions
+            manualClinicalNotes: [...manualOpinions, ...promotedEvidence]
         };
         onComplete(synthesisResult);
     };
 
+    const mockTimelineEvents = initialInsights.map((insight, i) => ({
+        timestamp: new Date(Date.now() - (1000 * 60 * (10 - i))),
+        type: 'insight' as const,
+        label: insight.type
+    }));
+
     return (
         <div className="flex flex-col h-full bg-slate-50 p-6">
-            <div className="flex justify-between items-center mb-6">
+            
+            {/* Modal */}
+            <ReferralGeneratorModal 
+                isOpen={isReferralModalOpen} 
+                onClose={() => setIsReferralModalOpen(false)}
+                sessionId={sessionId}
+                studentName={student.identity?.firstName?.value || 'Student'}
+                context={{ clinicalOpinions, promotedEvidence }}
+            />
+
+            <div className="flex justify-between items-center mb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Post-Session Synthesis</h1>
-                    <p className="text-slate-500 text-sm">Review insights, confirm clinical opinions, and draft the statutory output.</p>
+                    <p className="text-slate-500 text-sm">Review timeline, triangulate findings, and plan interventions.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => handleDraftReport('custom')}>
-                        <Plus className="mr-2 h-4 w-4" /> Custom Report / Referral
+                    {/* Phase 22: Updated Actions */}
+                    <Button variant="outline" onClick={() => setIsReferralModalOpen(true)}>
+                        <Send className="mr-2 h-4 w-4" /> Generate Referral
                     </Button>
                     <Button onClick={() => handleDraftReport('statutory')} className="bg-indigo-600 hover:bg-indigo-700">
                         <FileText className="mr-2 h-4 w-4" /> Draft Statutory Report
@@ -188,105 +199,106 @@ export function PostSessionSynthesis({
                 </div>
             </div>
 
+            <SessionTimeline events={mockTimelineEvents} durationMs={1000 * 60 * 15} />
+
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-grow flex flex-col">
                 <TabsList className="w-full justify-start border-b rounded-none bg-transparent p-0 mb-4">
-                    <TabsTrigger value="review" className="rounded-t-lg data-[state=active]:bg-white data-[state=active]:border-b-indigo-500 data-[state=active]:text-indigo-700 border-b-2 border-transparent px-6 py-2">
-                        1. Clinical Review
-                    </TabsTrigger>
-                    <TabsTrigger value="plan" className="rounded-t-lg data-[state=active]:bg-white data-[state=active]:border-b-indigo-500 data-[state=active]:text-indigo-700 border-b-2 border-transparent px-6 py-2">
-                        2. Treatment Plan
-                    </TabsTrigger>
-                    <TabsTrigger value="qa" className="rounded-t-lg data-[state=active]:bg-white data-[state=active]:border-b-indigo-500 data-[state=active]:text-indigo-700 border-b-2 border-transparent px-6 py-2">
-                        3. AI Q&A
-                    </TabsTrigger>
+                    <TabsTrigger value="review" className="px-6 py-2">1. Clinical Review</TabsTrigger>
+                    <TabsTrigger value="plan" className="px-6 py-2">2. Treatment Plan</TabsTrigger>
+                    <TabsTrigger value="qa" className="px-6 py-2">3. AI Q&A</TabsTrigger>
                 </TabsList>
 
-                {/* Tab 1: Clinical Review */}
+                {/* Tab 1: Clinical Review (Enhanced) */}
                 <TabsContent value="review" className="flex-grow flex gap-6 mt-0">
+                    
+                    {/* Left: Transcript Review */}
                     <Card className="w-1/2 flex flex-col">
-                        <CardHeader>
-                            <CardTitle className="text-lg">Session Transcript</CardTitle>
-                            <CardDescription>Edit to correct transcription errors.</CardDescription>
+                        <CardHeader className="py-3 bg-slate-50 border-b">
+                            <CardTitle className="text-sm font-semibold flex justify-between items-center">
+                                Transcript Review
+                                <Badge variant="outline" className="text-[10px]">Select text to promote</Badge>
+                            </CardTitle>
                         </CardHeader>
-                        <CardContent className="flex-grow">
+                        <CardContent className="flex-grow p-0 relative">
                             <Textarea 
-                                className="h-full resize-none font-mono text-sm leading-relaxed p-4 focus-visible:ring-indigo-500"
+                                className="h-full resize-none font-mono text-sm leading-relaxed p-4 focus-visible:ring-indigo-500 border-none"
                                 value={editedTranscript}
                                 onChange={(e) => setEditedTranscript(e.target.value)} 
+                                onMouseUp={handleTextSelect} 
                             />
                         </CardContent>
                     </Card>
 
-                    <Card className="w-1/2 flex flex-col bg-slate-100/50">
-                        <CardHeader>
-                            <CardTitle className="text-lg flex items-center">
-                                <Sparkles className="w-4 h-4 mr-2 text-indigo-500" />
-                                AI Hypotheses &gt; Clinical Opinions
-                            </CardTitle>
-                            <CardDescription>Confirm AI suggestions OR add your own manual observations.</CardDescription>
-                        </CardHeader>
-                        <ScrollArea className="flex-grow px-6 pb-6">
-                            <div className="space-y-6">
-                                {/* AI Section */}
-                                <div className="space-y-3">
-                                    <h3 className="text-xs font-semibold text-slate-500 uppercase">AI Suggestions</h3>
-                                    {clinicalOpinions.map((insight) => (
-                                        <div 
-                                            key={insight.id} 
-                                            className={`p-4 rounded-lg border transition-all cursor-pointer group ${
-                                                (insight as any).confirmed 
-                                                    ? 'bg-emerald-50 border-emerald-200 shadow-sm' 
-                                                    : 'bg-white border-slate-200 hover:border-indigo-300'
-                                            }`}
-                                            onClick={() => toggleConfirmation(insight.id)}
-                                        >
-                                            <div className="flex justify-between items-start mb-2">
-                                                <Badge variant="outline" className={`uppercase text-[10px] ${
-                                                    insight.type === 'risk' ? 'text-red-600 bg-red-50' : 
-                                                    insight.type === 'strength' ? 'text-green-600 bg-green-50' : 'text-slate-600'
-                                                }`}>
-                                                    {insight.type}
-                                                </Badge>
-                                                {(insight as any).confirmed ? (
-                                                    <CheckCircle className="w-4 h-4 text-emerald-500" />
-                                                ) : (
-                                                    <div className="w-4 h-4 rounded-full border-2 border-slate-300 group-hover:border-indigo-400" />
-                                                )}
-                                            </div>
-                                            <p className={`text-sm ${(insight as any).confirmed ? 'text-emerald-900 font-medium' : 'text-slate-600'}`}>
-                                                {insight.text}
-                                            </p>
+                    {/* Right: Triangulation Panel */}
+                    <div className="w-1/2 flex flex-col gap-4">
+                        
+                        {/* 1. Evidence Bank */}
+                        <Card className="flex-grow bg-white border-indigo-100 shadow-sm">
+                            <CardHeader className="py-3 border-b bg-indigo-50/50">
+                                <CardTitle className="text-sm font-semibold text-indigo-900 flex items-center">
+                                    <Sparkles className="w-4 h-4 mr-2 text-indigo-500" />
+                                    Triangulated Findings
+                                </CardTitle>
+                            </CardHeader>
+                            <ScrollArea className="flex-grow h-[300px] px-4 py-2">
+                                <div className="space-y-4">
+                                    {/* Promoted Evidence */}
+                                    {promotedEvidence.length > 0 && (
+                                        <div className="space-y-2">
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase">Transcript Evidence</h4>
+                                            {promotedEvidence.map((text, i) => (
+                                                <div key={i} className="p-2 bg-yellow-50 border border-yellow-100 rounded text-xs text-yellow-900 italic">
+                                                    "{text}"
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
+                                    )}
 
-                                {/* Manual Section */}
-                                <div className="space-y-3">
-                                    <h3 className="text-xs font-semibold text-slate-500 uppercase">Manual Notes</h3>
-                                    {manualOpinions.map((note, i) => (
-                                        <div key={i} className="p-3 bg-white border border-slate-200 rounded flex justify-between items-start">
-                                            <p className="text-sm text-slate-800">{note}</p>
-                                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-slate-400 hover:text-red-500" onClick={() => removeManualOpinion(i)}>
-                                                <X className="w-3 h-3" />
-                                            </Button>
-                                        </div>
-                                    ))}
-                                    <div className="flex gap-2">
-                                        <Input 
-                                            placeholder="Add a manual observation..." 
-                                            value={newManualOpinion}
-                                            onChange={(e) => setNewManualOpinion(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && addManualOpinion()}
-                                        />
-                                        <Button onClick={addManualOpinion} size="sm" variant="secondary"><Plus className="w-4 h-4" /></Button>
+                                    {/* AI Insights */}
+                                    <div className="space-y-2">
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase">AI Hypotheses</h4>
+                                        {clinicalOpinions.map((insight) => (
+                                            <div 
+                                                key={insight.id} 
+                                                className={`p-3 rounded border cursor-pointer transition-all ${
+                                                    (insight as any).confirmed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200 hover:border-indigo-300'
+                                                }`}
+                                                onClick={() => toggleConfirmation(insight.id)}
+                                            >
+                                                <div className="flex justify-between mb-1">
+                                                    <Badge variant="secondary" className="text-[10px] uppercase">{insight.type}</Badge>
+                                                    {(insight as any).confirmed && <CheckCircle className="w-3 h-3 text-emerald-500" />}
+                                                </div>
+                                                <p className="text-xs text-slate-700">{insight.text}</p>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-                            </div>
-                        </ScrollArea>
-                    </Card>
+                            </ScrollArea>
+                        </Card>
+
+                        {/* 2. Manual Notes */}
+                        <Card className="h-1/3">
+                            <CardHeader className="py-2"><CardTitle className="text-xs">Manual Notes</CardTitle></CardHeader>
+                            <CardContent className="p-2">
+                                <ScrollArea className="h-24 mb-2">
+                                    {manualOpinions.map((note, i) => (
+                                        <div key={i} className="text-xs p-1 border-b flex justify-between group">
+                                            <span>{note}</span>
+                                            <X className="w-3 h-3 text-slate-300 cursor-pointer hover:text-red-500 opacity-0 group-hover:opacity-100" onClick={() => removeManualOpinion(i)}/>
+                                        </div>
+                                    ))}
+                                </ScrollArea>
+                                <div className="flex gap-2">
+                                    <Input className="h-7 text-xs" placeholder="Add observation..." value={newManualOpinion} onChange={e => setNewManualOpinion(e.target.value)} onKeyDown={e => e.key === 'Enter' && addManualOpinion()}/>
+                                    <Button size="sm" variant="secondary" className="h-7" onClick={addManualOpinion}><Plus className="w-3 h-3"/></Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
                 </TabsContent>
 
-                {/* Tab 2: Treatment Plan */}
+                {/* Tab 2: Treatment Plan (Existing) */}
                 <TabsContent value="plan" className="flex-grow flex gap-6 mt-0">
                     <Card className="w-2/3 flex flex-col">
                         <CardHeader className="flex flex-row items-center justify-between">
@@ -334,16 +346,10 @@ export function PostSessionSynthesis({
                                                             <li key={i} className="flex gap-2 items-start">
                                                                 <input 
                                                                     className="bg-transparent border-none w-full focus:outline-none focus:bg-white rounded px-1"
-                                                                    value={step}
-                                                                    onChange={(e) => updateInterventionStep(plan.id, i, e.target.value)}
+                                                                    defaultValue={step} 
                                                                 />
                                                             </li>
                                                         ))}
-                                                        <li className="list-none pt-1">
-                                                            <button onClick={() => addInterventionStep(plan.id)} className="text-xs text-indigo-500 hover:underline flex items-center">
-                                                                <Plus className="w-3 h-3 mr-1" /> Add Step
-                                                            </button>
-                                                        </li>
                                                     </ul>
                                                 </div>
                                             </div>
@@ -369,7 +375,7 @@ export function PostSessionSynthesis({
                                     <SelectItem value="CAMHS (Mental Health)">CAMHS (Mental Health)</SelectItem>
                                     <SelectItem value="Pediatrician">Pediatrician</SelectItem>
                                     <SelectItem value="Social Care (MASH)">Social Care (MASH)</SelectItem>
-                                    <SelectItem value="SENCO (School Counselor)">SENCO (School Counselor)</SelectItem> {/* Added SENCO */}
+                                    <SelectItem value="SENCO (School Counselor)">SENCO (School Counselor)</SelectItem>
                                 </SelectContent>
                             </Select>
 
@@ -387,11 +393,6 @@ export function PostSessionSynthesis({
                                         </Button>
                                     </div>
                                 ))}
-                                {referrals.length === 0 && (
-                                    <div className="text-sm text-slate-400 italic text-center py-4">
-                                        No referrals added yet.
-                                    </div>
-                                )}
                             </div>
                         </CardContent>
                     </Card>

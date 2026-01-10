@@ -2,7 +2,7 @@
   "id": "uk_la_pack",
   "name": "UK Local Authority Standard (EYFS 2025)",
   "description": "Statutory compliance pack including First Day Calling, WISC-V norms, and EHCP templates.",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "regionTags": [
     "UK",
     "Europe"
@@ -10,6 +10,41 @@
   "actions": [],
   "capabilities": {
     "countryCode": "UK",
+    "statutory_timeline": {
+      "process_name": "EHCP Needs Assessment",
+      "total_weeks": 20,
+      "stages": [
+        {
+          "week_start": 0,
+          "week_end": 6,
+          "name": "Evidence Gathering (Advice Seeking)",
+          "actor": "EPP",
+          "deadline_action": "submit_report"
+        },
+        {
+          "week_start": 6,
+          "week_end": 16,
+          "name": "Drafting & Moderation",
+          "actor": "LA Officer",
+          "deadline_action": "issue_draft_plan"
+        },
+        {
+          "week_start": 16,
+          "week_end": 20,
+          "name": "Consultation & Finalization",
+          "actor": "LA & Parents",
+          "deadline_action": "issue_final_plan"
+        }
+      ],
+      "rules": [
+        {
+          "condition": "current_week > 5 AND status != 'submitted'",
+          "action": "trigger_alert",
+          "alert_level": "critical",
+          "message": "Statutory Breach Risk: Educational Advice is overdue (Week 6 Deadline)."
+        }
+      ]
+    },
     "schemaExtensions": {
       "student": [
         {

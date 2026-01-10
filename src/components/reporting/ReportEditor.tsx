@@ -6,37 +6,54 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Save, Sparkles, FileText, Share2, History } from 'lucide-react';
+import { Loader2, Save, Sparkles, FileText, Share2, History, SidebarOpen, CheckCircle } from 'lucide-react';
 import { CitationSidebar } from './CitationSidebar';
+import { ProvisionPicker } from './ProvisionPicker';
 import { ReportService } from '@/services/report-service';
 import { useToast } from '@/hooks/use-toast';
 import { Report } from '@/types/schema';
 import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; 
+import { SubmitForReviewModal } from './modals/SubmitForReviewModal'; 
+import { ExportOptionsModal } from './modals/ExportOptionsModal'; // Phase 24 Task 3
+
+// Mock Supervisors (In real app, fetch from Staff Service)
+const MOCK_SUPERVISORS = [
+    { id: 'sup_001', name: 'Dr. Sarah Smith (Senior EPP)' },
+    { id: 'sup_002', name: 'Dr. James Wilson (Lead)' }
+];
 
 interface ReportEditorProps {
     reportId: string;
     tenantId: string;
-    studentId: string; // Used for context fetching
+    studentId: string; 
     initialContent?: any;
-    userId: string; // Added for feedback
+    userId: string; 
+    userRole?: string; 
 }
 
-export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId }: ReportEditorProps) {
+export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId, userRole = 'EPP' }: ReportEditorProps) {
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
-    const [provenanceId, setProvenanceId] = useState<string | null>(null); // Track AI run
+    const [provenanceId, setProvenanceId] = useState<string | null>(null);
+    const [activeSidebar, setActiveSidebar] = useState<'none' | 'citations' | 'provisions'>('none');
+    
+    // Modals
+    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false); // Phase 24
+
+    const isTrainee = userRole === 'Trainee' || userRole === 'Assistant'; 
 
     const editor = useEditor({
-        immediatelyRender: false, // FIX: SSR Hydration mismatch error
+        immediatelyRender: false,
         extensions: [
             StarterKit,
             Placeholder.configure({
                 placeholder: 'Start typing or request an AI draft...',
             }),
         ],
-        content: '', // Will populate
+        content: '',
         editorProps: {
             attributes: {
                 class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl m-5 focus:outline-none min-h-[500px]',
@@ -44,22 +61,14 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         },
     });
 
-    // Populate initial content
     useEffect(() => {
         if (initialContent && editor) {
-            // Transform structured sections to HTML for Tiptap
             let html = '';
             if (initialContent.sections) {
                 initialContent.sections.forEach((s: any) => {
                     html += `<h2>${s.title}</h2><p>${s.content}</p>`;
                 });
-            } else if (typeof initialContent === 'string') {
-                 // Handle if initialContent is raw HTML string or other format
-                 // But typically our structure is sections array
             }
-            // Only set content if empty to prevent overwriting user changes on re-renders, 
-            // or if we explicitly want to load a draft. 
-            // For now, assuming initial load:
             if (editor.isEmpty) { 
                  editor.commands.setContent(html);
             }
@@ -71,8 +80,6 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         setIsSaving(true);
         try {
             const json = editor.getJSON();
-            // In reality, we'd parse Tiptap JSON back to 'sections' or save purely as JSON blob
-            // For now, saving raw JSON as content
             await ReportService.saveDraft(tenantId, reportId, json);
             setLastSaved(new Date());
             toast({ title: 'Saved', description: 'Draft updated.' });
@@ -87,26 +94,21 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         if (!editor) return;
         setIsGenerating(true);
         try {
-            // Mock context - in real app would gather from props/store
             const context = {
                 studentId,
                 notes: 'Student struggles with attention.',
                 history: 'Diagnosed ADHD in 2020.',
-                glossary: { 'Student': 'Learner' } // Test glossary
+                glossary: { 'Student': 'Learner' }
             };
 
             const result = await ReportService.requestAiDraft(tenantId, reportId, context);
             
-            // Populate Editor
             let html = '';
             result.sections.forEach((s: any) => {
                 html += `<h2>${s.title}</h2><p>${s.content}</p>`;
             });
             editor.commands.setContent(html);
             
-            // Assuming result includes provenance ID in V2 service response
-            // setProvenanceId(result.provenanceId); 
-
             toast({ title: 'Draft Generated', description: 'AI content inserted.' });
         } catch (e) {
             console.error(e);
@@ -116,16 +118,48 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         }
     };
 
-    const insertCitation = (token: string) => {
+    const insertText = (text: string) => {
         if (editor) {
-            editor.chain().focus().insertContent(` ${token} `).run();
+            editor.chain().focus().insertContent(` ${text} `).run();
         }
+    };
+
+    const handleSubmitForReview = async (supervisorId: string, note: string) => {
+        toast({ 
+            title: "Submitted for Supervision", 
+            description: `Sent to ${MOCK_SUPERVISORS.find(s => s.id === supervisorId)?.name}` 
+        });
     };
 
     if (!editor) return null;
 
+    // Construct partial report object for export
+    const currentReport = {
+        id: reportId,
+        tenantId,
+        studentId,
+        title: "Statutory Advice Draft", // Should ideally come from props
+        content: { sections: initialContent?.sections || [] } // Using initial for now, but ideally editor state
+    };
+
     return (
         <div className="flex h-screen bg-background">
+            
+            <SubmitForReviewModal 
+                isOpen={isReviewModalOpen}
+                onClose={() => setIsReviewModalOpen(false)}
+                onSubmit={handleSubmitForReview}
+                supervisors={MOCK_SUPERVISORS}
+            />
+
+            {/* Phase 24: Export Modal */}
+            <ExportOptionsModal 
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                report={currentReport}
+                tenantName="MindKindler Practice" 
+            />
+
             {/* Main Editor Area */}
             <div className="flex-1 flex flex-col">
                 {/* Toolbar */}
@@ -145,19 +179,46 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                             />
                         )}
 
-                        <Button variant="ghost" size="sm">
-                            <History className="mr-2 h-4 w-4" /> Versions
+                        <div className="h-6 w-px bg-slate-200 mx-2" />
+
+                        {/* Sidebar Toggles */}
+                        <Button 
+                            variant={activeSidebar === 'provisions' ? "secondary" : "ghost"} 
+                            size="sm" 
+                            onClick={() => setActiveSidebar(activeSidebar === 'provisions' ? 'none' : 'provisions')}
+                        >
+                            <SidebarOpen className="mr-2 h-4 w-4" /> Statutory Bank
+                        </Button>
+                        <Button 
+                            variant={activeSidebar === 'citations' ? "secondary" : "ghost"} 
+                            size="sm" 
+                            onClick={() => setActiveSidebar(activeSidebar === 'citations' ? 'none' : 'citations')}
+                        >
+                            <SidebarOpen className="mr-2 h-4 w-4" /> Evidence
                         </Button>
                     </div>
                     <div className="flex gap-2 items-center">
                         <span className="text-xs text-muted-foreground mr-2">
                             {lastSaved ? `Saved ${lastSaved.toLocaleTimeString()}` : 'Unsaved'}
                         </span>
-                        <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                        
+                        <Button size="sm" variant="ghost" onClick={handleSave} disabled={isSaving}>
                             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                             <Save className="mr-2 h-4 w-4" /> Save
                         </Button>
-                        <Button size="sm" variant="secondary">
+
+                        {isTrainee ? (
+                            <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={() => setIsReviewModalOpen(true)}>
+                                <CheckCircle className="mr-2 h-4 w-4" /> Submit for Review
+                            </Button>
+                        ) : (
+                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                                <FileText className="mr-2 h-4 w-4" /> Finalize
+                            </Button>
+                        )}
+                        
+                        {/* Phase 24: Connected Export Action */}
+                        <Button size="sm" variant="secondary" onClick={() => setIsExportModalOpen(true)}>
                             <Share2 className="mr-2 h-4 w-4" /> Export
                         </Button>
                     </div>
@@ -171,8 +232,9 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                 </div>
             </div>
 
-            {/* Sidebar */}
-            <CitationSidebar onInsert={insertCitation} />
+            {/* Sidebars */}
+            {activeSidebar === 'citations' && <CitationSidebar onInsert={insertText} />}
+            {activeSidebar === 'provisions' && <ProvisionPicker onInsert={insertText} />}
         </div>
     );
 }

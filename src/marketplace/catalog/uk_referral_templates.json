@@ -1,0 +1,42 @@
+[
+  {
+    "id": "camhs_referral",
+    "destination": "CAMHS (Child & Adolescent Mental Health Services)",
+    "title": "Mental Health Referral (Standard)",
+    "entry_criteria": "Moderate to severe mental health difficulties affecting daily functioning.",
+    "required_evidence": ["anxiety", "depression", "self-harm", "emotional_dysregulation"],
+    "prompt_instruction": "Draft a formal clinical referral letter. Focus on: 1. Duration of symptoms (>6 months?), 2. Impact on daily functioning, 3. Risk assessment. Use medical terminology."
+  },
+  {
+    "id": "salt_referral",
+    "destination": "NHS Speech and Language Therapy (SALT)",
+    "title": "Communication Needs Referral",
+    "entry_criteria": "Significant delay in receptive or expressive language not explained by hearing loss.",
+    "required_evidence": ["language_delay", "vocabulary", "social_communication", "stammer"],
+    "prompt_instruction": "Draft a referral for assessment. Highlight discrepancies between Verbal and Non-Verbal scores if available. Describe functional impact in the classroom."
+  },
+  {
+    "id": "mash_referral",
+    "destination": "Social Care (MASH)",
+    "title": "Safeguarding / Social Care Referral",
+    "entry_criteria": "Immediate concerns regarding significant harm or neglect.",
+    "required_evidence": ["neglect", "abuse", "domestic_violence", "unexplained_injury"],
+    "prompt_instruction": "URGENT SAFEGUARDING REFERRAL. State facts only. Do not interpret. Include dates, times, and direct quotes from the child. Follow 'Working Together to Safeguard Children' protocols."
+  },
+  {
+    "id": "early_help_hub",
+    "destination": "Early Help Hub",
+    "title": "Family Support & Early Help Request",
+    "entry_criteria": "Family requires support with housing, finance, or parenting strategies preventing escalation to social care.",
+    "required_evidence": ["attendance_issues", "financial_hardship", "housing_instability", "parenting_struggles"],
+    "prompt_instruction": "Draft a 'Request for Early Help'. Focus on the family context, systemic barriers, and the specific support required (e.g., Family Support Worker), emphasizing prevention of escalation."
+  },
+  {
+    "id": "pediatrician_referral",
+    "destination": "Community Pediatrician",
+    "title": "Medical / Neurodevelopmental Referral",
+    "entry_criteria": "Concerns regarding neurodevelopmental conditions (ASD/ADHD) or physical health impacting learning.",
+    "required_evidence": ["adhd_traits", "asd_traits", "developmental_delay", "motor_skills"],
+    "prompt_instruction": "Request for neurodevelopmental assessment (e.g. ASD/ADHD pathway). Summarize school-based evidence and graduated response (Plan-Do-Review) history."
+  }
+]

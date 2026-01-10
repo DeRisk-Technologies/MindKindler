@@ -5,6 +5,7 @@ import { ai } from "@/ai/genkit";
 import { FEATURE_MODEL_DEFAULTS } from "@/ai/config";
 import { StudentRecord, AssessmentResult } from "@/types/schema";
 import { InterventionLogic } from "@/marketplace/types";
+import PROVISION_BANK from "@/marketplace/catalog/uk_send_provision_bank.json"; // Phase 20: Import Bank
 
 // Types
 export interface PlannedIntervention {
@@ -34,6 +35,14 @@ export interface PlanningContext {
     observationNotes?: string; // From the Observation Mode
 }
 
+interface ProvisionEntry {
+    category: string;
+    sub_category: string;
+    trigger_keywords: string[];
+    statutory_provision: string;
+    suggested_intervention: string;
+}
+
 /**
  * Generates a tailored intervention plan by mapping student needs to the tenant's approved library.
  */
@@ -43,6 +52,16 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
     const needsSummary = summarizeNeeds(context);
     const libraryContext = formatLibrary(context.availableInterventions);
     const region = context.region || "UK"; 
+
+    // --- PHASE 20: Provision Bank Retrieval ---
+    const matchedProvisions = retrieveProvisions(context, PROVISION_BANK as ProvisionEntry[]);
+    
+    const provisionInjection = matchedProvisions.length > 0 
+        ? `### 5. LOCAL AUTHORITY STANDARD PROVISION BANK (Statutory Wording)
+           The following provisions match the student's observed needs. Please PRIORITIZE these specific wordings in your recommendation:
+           ${matchedProvisions.map(p => `- [${p.category}: ${p.sub_category}] Provision: "${p.statutory_provision}" -> Intervention: "${p.suggested_intervention}"`).join('\n')}
+          `
+        : "";
 
     // 2. Construct Prompt (Enhanced Context)
     const prompt = `
@@ -65,7 +84,9 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
     ### 4. HISTORY
     - Previous Intervention Plan: ${context.lastTreatmentPlan ? JSON.stringify(context.lastTreatmentPlan).slice(0, 1000) : "None available."}
 
-    ### 5. APPROVED INTERVENTION LIBRARY
+    ${provisionInjection}
+
+    ### 6. APPROVED INTERVENTION LIBRARY (Fallback)
     (Select from this list if relevant):
     ${libraryContext}
 
@@ -73,7 +94,7 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
     1. ANALYZE SPEAKER DYNAMICS: Differentiate between the EPP (Professional) and Student/Parent in the transcript to understand the full context of the dialogue.
     2. SYNTHESIZE: Combine the WISC-V scores (if present) with the qualitative transcript evidence and your confirmed opinions.
     3. CONTINUITY: If a previous plan exists, build upon it or explain why a change is needed based on new evidence.
-    4. SELECT: Choose the best matching interventions. Prioritize the "Approved Library" but suggest standard clinical strategies if gaps exist.
+    4. SELECT: Choose the best matching interventions. **CRITICAL:** If a match exists in the "Standard Provision Bank" above, YOU MUST USE THAT WORDING for the 'rationale' and 'programName'.
     5. JUSTIFY: Write a clear Rationale for each point, linking it to specific evidence (e.g., "Due to low Matrix Reasoning score of 85...").
     6. COMPLIANCE: Cite relevant ${region} educational law (e.g., SEND Code of Practice 2015, IDEA) where applicable.
 
@@ -113,6 +134,28 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
         console.error("Intervention Planning Failed:", error);
         return []; 
     }
+}
+
+// --- Helper Functions ---
+
+function retrieveProvisions(context: PlanningContext, bank: ProvisionEntry[]): ProvisionEntry[] {
+    const combinedText = [
+        context.transcript,
+        ...(context.clinicalOpinions?.map(o => o.text || "") || []),
+        ...(context.manualEntries || []),
+        context.observationNotes || ""
+    ].join(" ").toLowerCase();
+
+    // Simple keyword matching (enhanced logic could use embeddings)
+    const matches = bank.filter(entry => {
+        return entry.trigger_keywords.some(keyword => combinedText.includes(keyword.toLowerCase()));
+    });
+
+    // Remove duplicates based on sub_category
+    const uniqueMatches = Array.from(new Map(matches.map(item => [item.sub_category, item])).values());
+    
+    // Limit to top 5 most relevant to avoid context window overload
+    return uniqueMatches.slice(0, 5);
 }
 
 function summarizeNeeds(context: PlanningContext): string {
