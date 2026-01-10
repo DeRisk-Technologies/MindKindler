@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, use } from 'react';
 import { BlogPost } from '@/types/mindkindler';
 import { communityService } from '@/services/community-service';
 import { Button } from "@/components/ui/button";
@@ -11,14 +11,15 @@ import Link from 'next/link';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-export default function BlogPostPage({ params }: { params: { id: string } }) {
+export default function BlogPostPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [post, setPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-         const docRef = doc(db, `tenants/default-tenant/blog/posts`, params.id);
+         const docRef = doc(db, `tenants/default-tenant/blog/posts`, id);
          const docSnap = await getDoc(docRef);
          if (docSnap.exists()) {
              setPost({ id: docSnap.id, ...docSnap.data() } as BlogPost);
@@ -30,7 +31,7 @@ export default function BlogPostPage({ params }: { params: { id: string } }) {
       }
     }
     loadData();
-  }, [params.id]);
+  }, [id]);
 
   if (loading) return <div>Loading post...</div>;
   if (!post) return <div>Post not found.</div>;
