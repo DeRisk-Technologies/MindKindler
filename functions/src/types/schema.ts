@@ -22,6 +22,7 @@ export interface ReportSection {
     internalOnly?: boolean; // If true, redacted in PARENT_SAFE level
 }
 
+
 export interface Report {
     id: string;
     tenantId: string;

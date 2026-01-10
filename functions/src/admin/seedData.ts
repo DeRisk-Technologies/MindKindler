@@ -1,7 +1,7 @@
 // functions/src/admin/seedData.ts
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { faker } from '@faker-js/faker';
 
 if (admin.apps.length === 0) {
