@@ -23,9 +23,15 @@ export interface PlanningContext {
     student: Partial<StudentRecord>;
     assessments: AssessmentResult[];
     clinicalOpinions?: any[]; 
-    manualEntries?: string[]; // Added manual entries
-    region?: string; // Added Region
-    availableInterventions: InterventionLogic[]; 
+    manualEntries?: string[]; 
+    region?: string; 
+    availableInterventions: InterventionLogic[];
+    
+    // NEW: Comprehensive Context Fields
+    consultationReason?: string;
+    consultationMode?: string; // 'person_centered' | 'complex' etc.
+    lastTreatmentPlan?: any; // Previous plan for continuity
+    observationNotes?: string; // From the Observation Mode
 }
 
 /**
@@ -36,41 +42,46 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
     // 1. Prepare Data for Prompt
     const needsSummary = summarizeNeeds(context);
     const libraryContext = formatLibrary(context.availableInterventions);
-    const region = context.region || "UK"; // Default to UK if undefined
+    const region = context.region || "UK"; 
 
-    // 2. Construct Prompt
+    // 2. Construct Prompt (Enhanced Context)
     const prompt = `
     You are a Clinical Intervention Specialist practicing in ${region}.
-    Create a 3-point Intervention Plan for a student based on their assessment profile, CONFIRMED clinical opinions, and consultation evidence.
+    Create a 3-point Intervention Plan for a student based on the following COMPREHENSIVE CLINICAL CONTEXT.
 
-    STUDENT PROFILE:
+    ### 1. SESSION CONTEXT
+    - Reason for Consultation: "${context.consultationReason || "General Assessment"}"
+    - Clinical Mode: ${context.consultationMode || "Standard"} (Adjust tone accordingly)
+    - Live Observations: "${context.observationNotes || "None recorded."}"
+
+    ### 2. STUDENT PROFILE
     ${needsSummary}
 
-    CONFIRMED CLINICAL OPINIONS (Use these to drive recommendations):
-    ${context.clinicalOpinions ? JSON.stringify(context.clinicalOpinions, null, 2) : "None provided."}
+    ### 3. CLINICAL EVIDENCE
+    - Confirmed AI Opinions: ${context.clinicalOpinions ? JSON.stringify(context.clinicalOpinions, null, 2) : "None."}
+    - Manual EPP Notes: ${context.manualEntries ? JSON.stringify(context.manualEntries) : "None."}
+    - Transcript Excerpts: "${context.transcript.slice(0, 4000)}..."
 
-    ADDITIONAL CLINICAL NOTES (Manual Entries by EPP):
-    ${context.manualEntries ? JSON.stringify(context.manualEntries) : "None."}
+    ### 4. HISTORY
+    - Previous Intervention Plan: ${context.lastTreatmentPlan ? JSON.stringify(context.lastTreatmentPlan).slice(0, 1000) : "None available."}
 
-    TRANSCRIPT EXCERPTS (Clinical Evidence):
-    "${context.transcript.slice(0, 3000)}..."
-
-    APPROVED INTERVENTION LIBRARY (Use ONLY these if applicable):
+    ### 5. APPROVED INTERVENTION LIBRARY
+    (Select from this list if relevant):
     ${libraryContext}
 
-    INSTRUCTIONS:
-    1. Select the best matching interventions from the Library based on the CONFIRMED OPINIONS, MANUAL NOTES, and Assessment Scores. 
-       - If a confirmed opinion identifies a "Language" deficit, prioritize "Language" interventions.
-    2. If no library item matches perfectly, suggest a standard clinical strategy but mark evidence as 'bronze'.
-    3. For each intervention, write a clear Rationale linking it to the specific clinical opinion or score (e.g. "Due to confirmed Low VCI...").
-    4. Define practical steps for a teacher.
-    5. LEGAL COMPLIANCE: Where applicable, cite relevant ${region} educational law (e.g., "SEND Code of Practice 2015" for UK, "IDEA" for US) that supports this provision.
+    ### INSTRUCTIONS:
+    1. ANALYZE SPEAKER DYNAMICS: Differentiate between the EPP (Professional) and Student/Parent in the transcript to understand the full context of the dialogue.
+    2. SYNTHESIZE: Combine the WISC-V scores (if present) with the qualitative transcript evidence and your confirmed opinions.
+    3. CONTINUITY: If a previous plan exists, build upon it or explain why a change is needed based on new evidence.
+    4. SELECT: Choose the best matching interventions. Prioritize the "Approved Library" but suggest standard clinical strategies if gaps exist.
+    5. JUSTIFY: Write a clear Rationale for each point, linking it to specific evidence (e.g., "Due to low Matrix Reasoning score of 85...").
+    6. COMPLIANCE: Cite relevant ${region} educational law (e.g., SEND Code of Practice 2015, IDEA) where applicable.
 
     OUTPUT FORMAT:
     JSON Array of objects:
     {
         "programName": string,
-        "category": string (e.g. "Language", "Social", "Memory"),
+        "category": string,
         "rationale": string,
         "duration": string,
         "frequency": string,
@@ -100,7 +111,7 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
 
     } catch (error) {
         console.error("Intervention Planning Failed:", error);
-        return []; // Fail gracefully
+        return []; 
     }
 }
 
