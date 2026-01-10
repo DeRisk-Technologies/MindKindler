@@ -15,8 +15,7 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
     
     // --- MODE: Create Regional Admins ---
     if (request.data.action === 'create_regional_admins') {
-        // ... (Existing Admin Creation Logic remains if needed)
-        // For brevity, skipping unless explicitly requested to rewrite that block
+        // ... (Existing Admin Creation Logic)
     }
 
     const region = request.data.region || 'uk'; 
@@ -27,31 +26,31 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
     console.log(`[SuperSeed] Starting Phase 26 Seed for ${region}...`);
 
     // --- 1. STAFF CREATION ---
-    // Ensure Users exist in Auth (Global) AND Profile (Shard)
     const staff = [
         { 
             email: "sarah.super@pilot.com", 
             name: "Dr. Sarah Super", 
             role: "EPP", 
             uid: "pilot_user_sarah",
-            isSenior: true
+            isSenior: true,
+            password: "PilotUK2026!" // Updated to match PILOT_MANUAL.md
         },
         { 
             email: "bella.beginner@pilot.com", 
             name: "Bella Beginner", 
             role: "Trainee", 
             uid: "pilot_user_bella",
-            isSenior: false 
+            isSenior: false,
+            password: "PilotUK2026!" 
         }
     ];
 
     for (const member of staff) {
-        // Global Auth & Routing
         try {
             await admin.auth().getUser(member.uid).catch(() => admin.auth().createUser({
                 uid: member.uid,
                 email: member.email,
-                password: "Password123!",
+                password: member.password,
                 displayName: member.name
             }));
             
@@ -69,7 +68,6 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
                 tenantId
             }, { merge: true });
 
-            // Regional Profile
             await targetDb.doc(`users/${member.uid}`).set({
                 id: member.uid,
                 firstName: member.name.split(' ')[0],
@@ -87,7 +85,6 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
     const batch = targetDb.batch();
 
     // --- 2. STUDENT 1: CHARLIE COMPLEX (Statutory Mode) ---
-    // Goal: Test Breach Risk & Report Writer
     for (let i = 0; i < 2; i++) {
         const id = `pilot_charlie_${i}`;
         const studentRef = targetDb.collection("students").doc(id);
@@ -99,12 +96,12 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             identity: {
                 firstName: { value: "Charlie", metadata: { verified: true } },
                 lastName: { value: `Complex ${i+1}`, metadata: { verified: true } },
-                dateOfBirth: { value: "2015-05-12", metadata: { verified: true } }, // Age ~9
+                dateOfBirth: { value: "2015-05-12", metadata: { verified: true } },
                 gender: { value: "Male", metadata: {} }
             },
             education: {
                 currentSchoolId: { value: "Pilot Primary", metadata: {} },
-                senStatus: { value: "E", metadata: {} }, // EHCP
+                senStatus: { value: "E", metadata: {} }, 
                 yearGroup: { value: "Year 4", metadata: {} }
             },
             extensions: { uk_upn: `H${faker.number.int({ min: 100000000000, max: 999999999999 })}` },
@@ -113,10 +110,9 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             meta: { createdAt: new Date().toISOString(), trustScore: 100 }
         });
 
-        // CASE: 18 Weeks Old (Breach Risk)
         const caseRef = targetDb.collection("cases").doc(`case_charlie_${i}`);
         const startDate = new Date();
-        startDate.setDate(startDate.getDate() - (18 * 7)); // 18 weeks ago
+        startDate.setDate(startDate.getDate() - (18 * 7)); 
 
         batch.set(caseRef, {
             id: caseRef.id,
@@ -125,29 +121,27 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             subjectId: id,
             title: "Statutory Assessment (Breach Risk)",
             status: 'active',
-            stage: 'drafting', // Late stage
+            stage: 'drafting',
             priority: 'Critical',
             createdAt: startDate.toISOString(),
-            slaDueAt: new Date().toISOString() // Now = Overdue
+            slaDueAt: new Date().toISOString()
         });
 
-        // PSYCHOMETRICS: Low WMI
         const psychRef = targetDb.collection("assessment_results").doc(`wisc_charlie_${i}`);
         batch.set(psychRef, {
             id: psychRef.id,
             studentId: id,
             templateId: "WISC-V",
-            totalScore: 72, // Low
+            totalScore: 72,
             responses: {
                 "Verbal Comprehension (VCI)": 95,
-                "Working Memory (WMI)": 72, // The trigger
+                "Working Memory (WMI)": 72,
                 "Processing Speed (PSI)": 88
             },
             completedAt: new Date().toISOString(),
             status: "graded"
         });
 
-        // CONSULTATION: "I hate reading"
         const consultRef = targetDb.collection("consultation_sessions").doc(`session_charlie_${i}`);
         batch.set(consultRef, {
             id: consultRef.id,
@@ -157,7 +151,7 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             mode: "standard",
             transcript: [
                 { id: "1", speaker: "EPP", text: "How do you feel about library time?", timestamp: new Date().toISOString() },
-                { id: "2", speaker: "Student", text: "I hate reading. The words move around.", timestamp: new Date().toISOString() } // Matches WMI/Dyslexia
+                { id: "2", speaker: "Student", text: "I hate reading. The words move around.", timestamp: new Date().toISOString() }
             ],
             status: "completed",
             outcome: {
@@ -167,7 +161,6 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
     }
 
     // --- 3. STUDENT 2: SAMMY SIMPLE (Early Help Mode) ---
-    // Goal: Test Live Cockpit
     for (let i = 0; i < 2; i++) {
         const id = `pilot_sammy_${i}`;
         const studentRef = targetDb.collection("students").doc(id);
@@ -179,12 +172,12 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             identity: {
                 firstName: { value: "Sammy", metadata: { verified: true } },
                 lastName: { value: `Simple ${i+1}`, metadata: { verified: true } },
-                dateOfBirth: { value: "2018-09-01", metadata: { verified: true } }, // Age ~6
+                dateOfBirth: { value: "2018-09-01", metadata: { verified: true } },
                 gender: { value: "Female", metadata: {} }
             },
             education: {
                 currentSchoolId: { value: "Pilot Primary", metadata: {} },
-                senStatus: { value: "K", metadata: {} }, // SEN Support
+                senStatus: { value: "K", metadata: {} },
                 yearGroup: { value: "Year 1", metadata: {} }
             },
             extensions: { uk_upn: `J${faker.number.int({ min: 100000000000, max: 999999999999 })}` },
@@ -193,24 +186,20 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             meta: { createdAt: new Date().toISOString(), trustScore: 100 }
         });
 
-        // No Case (Ad-hoc)
-        
-        // Active Consultation (P.A.T.H Mode)
         const consultRef = targetDb.collection("consultation_sessions").doc(`session_sammy_${i}`);
         batch.set(consultRef, {
             id: consultRef.id,
             tenantId,
             studentId: id,
             date: new Date().toISOString(),
-            mode: "person_centered", // Triggers Live Cockpit PATH
-            status: "in_progress", // Can resume
-            transcript: [], // Empty to start fresh
+            mode: "person_centered",
+            status: "in_progress",
+            transcript: [],
             createdAt: new Date().toISOString()
         });
     }
 
     // --- 4. STUDENT 3: REVIEW CASE (Supervision) ---
-    // Goal: Test Supervisor Dashboard
     for (let i = 0; i < 2; i++) {
         const id = `pilot_review_${i}`;
         const studentRef = targetDb.collection("students").doc(id);
@@ -222,7 +211,7 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             identity: {
                 firstName: { value: "Riley", metadata: { verified: true } },
                 lastName: { value: `Review ${i+1}`, metadata: { verified: true } },
-                dateOfBirth: { value: "2010-03-15", metadata: { verified: true } }, // Age 14
+                dateOfBirth: { value: "2010-03-15", metadata: { verified: true } },
                 gender: { value: "Non-binary", metadata: {} }
             },
             education: {
@@ -235,7 +224,6 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             meta: { createdAt: new Date().toISOString(), trustScore: 100 }
         });
 
-        // Pending Report
         const reportRef = targetDb.collection("reports").doc(`report_review_${i}`);
         batch.set(reportRef, {
             id: reportRef.id,
@@ -243,8 +231,8 @@ export const seedDemoDataHandler = async (request: CallableRequest) => {
             studentId: id,
             title: "Appendix K (Draft) - For Approval",
             status: "pending_review",
-            supervisorId: "pilot_user_sarah", // Assign to Sarah (Admin)
-            createdBy: "pilot_user_bella", // Created by Bella (Trainee)
+            supervisorId: "pilot_user_sarah",
+            createdBy: "pilot_user_bella",
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             type: "statutory",
