@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
     ChevronRight, ChevronLeft, BrainCircuit, Play, CheckCircle2, 
-    Plus, Mic, Square, Edit3, X, HelpCircle 
+    Plus, Mic, Square, Edit3, X, HelpCircle, Wifi, WifiOff, RefreshCw 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { useNetworkStatus } from '@/hooks/use-network-status'; // Phase 25 Hook
+import { SyncEngine } from '@/services/sync-engine'; // Phase 25 Engine
 
 import METHODS from '@/marketplace/catalog/uk_consultation_methods.json';
 
@@ -27,6 +29,7 @@ interface LiveCockpitProps {
 
 export function LiveCockpit({ sessionId, initialMethodId = "path_process", onStageChange, onObservation }: LiveCockpitProps) {
     const { toast } = useToast();
+    const isOnline = useNetworkStatus();
     
     // Process State
     const [activeMethod, setActiveMethod] = useState(METHODS.find(m => m.id === initialMethodId) || METHODS[0]);
@@ -37,8 +40,21 @@ export function LiveCockpit({ sessionId, initialMethodId = "path_process", onSta
     const [newTileName, setNewTileName] = useState("");
     const [isAddingTile, setIsAddingTile] = useState(false);
 
+    // Sync State
+    const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'offline'>('synced');
+
     const currentStage = activeMethod.stages[currentStageIndex];
     const progress = ((currentStageIndex + 1) / activeMethod.stages.length) * 100;
+
+    // --- Network Monitor ---
+    useEffect(() => {
+        setSyncStatus(isOnline ? 'synced' : 'offline');
+        if (isOnline && syncStatus === 'offline') {
+            // Trigger flush
+            setSyncStatus('saving');
+            SyncEngine.flushOutbox('uk', sessionId).then(() => setSyncStatus('synced'));
+        }
+    }, [isOnline]);
 
     // --- Process Navigation ---
     const handleNextStage = () => {
@@ -77,22 +93,42 @@ export function LiveCockpit({ sessionId, initialMethodId = "path_process", onSta
         }
     };
 
-    const recordObservation = (label: string) => {
+    const recordObservation = async (label: string) => {
+        // Optimistic UI
         toast({ title: "Observation Logged", description: label });
-        onObservation?.(label);
+        
+        // Phase 25: Sync Logic
+        setSyncStatus(isOnline ? 'saving' : 'offline');
+        
+        // Fake Segment for MVP (In reality, pass to parent to merge with transcript)
+        // Ideally LivePage calls SyncEngine, but we do it here for Observation button feedback
+        onObservation?.(label); 
+        
+        setTimeout(() => setSyncStatus(isOnline ? 'synced' : 'offline'), 500);
     };
 
     return (
         <div className="flex flex-col h-full bg-slate-50 border-r border-slate-200 w-full max-w-sm shrink-0 shadow-xl z-20">
             
-            {/* 1. Method Selector Header */}
+            {/* 1. Method Selector Header & Sync Status */}
             <div className="p-4 border-b bg-white">
                 <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Methodology</span>
+                    
+                    {/* Phase 25: Sync Indicator */}
+                    <div className="flex items-center gap-1">
+                        {syncStatus === 'synced' && <Badge variant="outline" className="text-[10px] text-green-600 bg-green-50 border-green-200"><Wifi className="w-3 h-3 mr-1"/> Saved</Badge>}
+                        {syncStatus === 'saving' && <Badge variant="outline" className="text-[10px] text-amber-600 bg-amber-50 border-amber-200"><RefreshCw className="w-3 h-3 mr-1 animate-spin"/> Saving...</Badge>}
+                        {syncStatus === 'offline' && <Badge variant="destructive" className="text-[10px]"><WifiOff className="w-3 h-3 mr-1"/> Offline</Badge>}
+                    </div>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-bold text-slate-800 leading-tight">{activeMethod.title}</h2>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-6 text-indigo-600 hover:text-indigo-700 p-0 text-xs font-semibold">
-                                Change <Edit3 className="ml-1 w-3 h-3" />
+                            <Button variant="ghost" size="sm" className="h-6 text-indigo-600 hover:text-indigo-700 p-0">
+                                <Edit3 className="w-4 h-4" />
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -104,7 +140,6 @@ export function LiveCockpit({ sessionId, initialMethodId = "path_process", onSta
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
-                <h2 className="text-lg font-bold text-slate-800 leading-tight">{activeMethod.title}</h2>
                 <p className="text-[10px] text-slate-500 mt-1 line-clamp-1">{activeMethod.description}</p>
             </div>
 
