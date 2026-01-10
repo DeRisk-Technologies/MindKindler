@@ -11,7 +11,7 @@ import { CitationSidebar } from './CitationSidebar';
 import { ReportService } from '@/services/report-service';
 import { useToast } from '@/hooks/use-toast';
 import { Report } from '@/types/schema';
-import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; // Integration
+import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; 
 
 interface ReportEditorProps {
     reportId: string;
@@ -29,6 +29,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     const [provenanceId, setProvenanceId] = useState<string | null>(null); // Track AI run
 
     const editor = useEditor({
+        immediatelyRender: false, // FIX: SSR Hydration mismatch error
         extensions: [
             StarterKit,
             Placeholder.configure({
@@ -52,8 +53,16 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                 initialContent.sections.forEach((s: any) => {
                     html += `<h2>${s.title}</h2><p>${s.content}</p>`;
                 });
+            } else if (typeof initialContent === 'string') {
+                 // Handle if initialContent is raw HTML string or other format
+                 // But typically our structure is sections array
             }
-            editor.commands.setContent(html);
+            // Only set content if empty to prevent overwriting user changes on re-renders, 
+            // or if we explicitly want to load a draft. 
+            // For now, assuming initial load:
+            if (editor.isEmpty) { 
+                 editor.commands.setContent(html);
+            }
         }
     }, [initialContent, editor]);
 

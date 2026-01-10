@@ -2,7 +2,7 @@
   "id": "uk_la_pack",
   "name": "UK Local Authority Standard (EYFS 2025)",
   "description": "Statutory compliance pack including First Day Calling, WISC-V norms, and EHCP templates.",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "regionTags": [
     "UK",
     "Europe"
@@ -101,6 +101,46 @@
           "message": "Urgent: Staff member {{name}} requires DBS renewal in <90 days. Statutory breach risk.",
           "priority": "high"
         }
+      }
+    ],
+    "consultationTemplates": [
+      {
+        "id": "uk_person_centered_consultation",
+        "title": "Person-Centered Consultation",
+        "description": "Focus on the child's voice, aspirations, and strengths.",
+        "system_prompt": "You are an assistant for a Person-Centered interview. Focus on the child's voice, aspirations, and strengths. Do not jump to pathology.",
+        "required_sections": [
+          "Views of Child",
+          "Aspirations",
+          "Barriers"
+        ],
+        "tags": ["clinical", "student_voice"]
+      },
+      {
+        "id": "uk_multi_agency_meeting",
+        "title": "Multi-Agency Meeting",
+        "description": "Inter-operability between Health, Social Care, and Education.",
+        "system_prompt": "Focus on inter-operability between Health, Social Care, and Education.",
+        "required_sections": [
+          "Health Inputs",
+          "Social Care Inputs",
+          "Educational Outcomes",
+          "Action Plan"
+        ],
+        "tags": ["multi_agency", "statutory"]
+      },
+      {
+        "id": "uk_complex_consultation",
+        "title": "Complex Case Consultation (Systemic)",
+        "description": "For high-complexity cases (EBSA, Trauma, LAC) using a Bio-Psycho-Social formulation.",
+        "system_prompt": "You are an expert Clinical Psychologist assistant acting in a 'Complex Case' mode. Use a Bio-Psycho-Social model. Identify Risk Factors, Protective Factors, and Systemic Loops (Circular Causality). Flag safeguarding concerns immediately.",
+        "required_sections": [
+          "Presenting Concerns (Systemic)",
+          "Bio-Psycho-Social Factors",
+          "Hypothesis / Formulation",
+          "Intervention Plan (Home/School/Community)"
+        ],
+        "tags": ["clinical", "complex", "safeguarding"]
       }
     ],
     "psychometricConfig": {

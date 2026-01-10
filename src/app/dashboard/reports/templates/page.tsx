@@ -1,207 +1,264 @@
+// src/app/dashboard/reports/templates/page.tsx
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash, GripVertical, Save, ArrowLeft, Bot } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import React, { useEffect, useState, Suspense } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Search, FileText, ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/hooks/use-auth';
+import { doc, getDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { getRegionalDb, db as globalDb } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 
-// Basic Drag-and-Drop feel (simplified for speed without dnd-kit yet)
-// Users can add sections to a report template
-
-interface TemplateSection {
-    id: string;
-    title: string;
-    prompt: string; // Instructions for AI
-    type: 'text' | 'list' | 'table';
-    required: boolean;
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  type: 'statutory' | 'clinical' | 'referral' | 'custom';
+  tags: string[];
+  structure?: any;
 }
 
-export default function TemplateDesignerPage() {
+const MOCK_TEMPLATES: Template[] = [
+  {
+    id: 'referral_camhs',
+    name: 'CAMHS Referral Letter',
+    description: 'Standard referral to Child & Adolescent Mental Health Services focusing on emotional regulation and anxiety.',
+    type: 'referral',
+    tags: ['Mental Health', 'Anxiety', 'Referral']
+  },
+  {
+    id: 'referral_salt',
+    name: 'Speech & Language Referral',
+    description: 'Referral for communication assessment highlighting receptive/expressive language gaps.',
+    type: 'referral',
+    tags: ['Communication', 'SALT', 'Referral']
+  },
+  {
+    id: 'school_obs_summary',
+    name: 'School Observation Summary',
+    description: 'Feedback for teachers following a classroom observation.',
+    type: 'clinical',
+    tags: ['School', 'Observation']
+  }
+];
+
+function TemplatesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
   const { toast } = useToast();
   
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("general");
-  const [sections, setSections] = useState<TemplateSection[]>([
-      { id: '1', title: 'Introduction', prompt: 'Summarize the reason for referral and background.', type: 'text', required: true }
-  ]);
+  const sourceSessionId = searchParams.get('sourceSessionId');
+  
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<Template[]>(MOCK_TEMPLATES);
+  const [search, setSearch] = useState('');
+  
+  // Load session data if context exists to pre-fetch student
+  const [studentId, setStudentId] = useState<string | null>(null);
+  const [studentName, setStudentName] = useState<string>("");
 
-  const addSection = () => {
-      setSections([...sections, {
-          id: Date.now().toString(),
-          title: "New Section",
-          prompt: "",
-          type: "text",
-          required: true
-      }]);
-  };
+  useEffect(() => {
+    async function loadContext() {
+       if (!user) return;
+       
+       try {
+           // Resolve Region
+           let region = user.region;
+           if (!region || region === 'default') {
+               const rRef = doc(globalDb, 'user_routing', user.uid);
+               const rSnap = await getDoc(rRef);
+               region = rSnap.exists() ? rSnap.data().region : 'uk';
+           }
+           
+           if (sourceSessionId) {
+               const db = getRegionalDb(region);
+               const sessionSnap = await getDoc(doc(db, 'consultation_sessions', sourceSessionId));
+               if (sessionSnap.exists()) {
+                   const sData = sessionSnap.data();
+                   setStudentId(sData.studentId);
+                   
+                   // Fetch Student Name
+                   if (sData.studentId) {
+                       const stSnap = await getDoc(doc(db, 'students', sData.studentId));
+                       if (stSnap.exists()) {
+                           const st = stSnap.data();
+                           setStudentName(`${st.identity?.firstName?.value || ''} ${st.identity?.lastName?.value || ''}`);
+                       }
+                   }
+               }
+           }
+       } catch (e) {
+           console.error("Context load failed", e);
+       } finally {
+           setLoading(false);
+       }
+    }
+    loadContext();
+  }, [user, sourceSessionId]);
 
-  const updateSection = (id: string, field: keyof TemplateSection, value: any) => {
-      setSections(sections.map(s => s.id === id ? { ...s, [field]: value } : s));
-  };
+  const filteredTemplates = templates.filter(t => 
+    t.name.toLowerCase().includes(search.toLowerCase()) || 
+    t.tags.some(tag => tag.toLowerCase().includes(search.toLowerCase()))
+  );
 
-  const removeSection = (id: string) => {
-      setSections(sections.filter(s => s.id !== id));
-  };
-
-  const handleSave = async () => {
-      if (!title) {
-          toast({ title: "Error", description: "Template title is required.", variant: "destructive" });
+  const handleCreate = async (template: Template) => {
+      if (!studentId) {
+          toast({ variant: "destructive", title: "Missing Context", description: "No student selected." });
           return;
       }
-
+      
+      setGenerating(template.id);
+      
       try {
-          await addDoc(collection(db, "report_templates"), {
-              title,
-              description,
-              category,
-              sections,
-              createdBy: "user", // In real app, auth.currentUser.uid
-              createdAt: serverTimestamp(),
-              status: 'active'
-          });
+          // Trigger Generation Logic similar to Report Builder but optimized for referrals
+          // 1. Resolve DB
+          let region = user?.region || 'uk';
+          // (Mock region resolution if needed, relying on stored state usually)
+          const db = getRegionalDb(region);
+
+          // 2. Fetch Data
+          const studentSnap = await getDoc(doc(db, 'students', studentId));
+          const sessionSnap = sourceSessionId ? await getDoc(doc(db, 'consultation_sessions', sourceSessionId)) : null;
           
-          toast({ title: "Template Saved", description: "Your custom report template is ready." });
-          router.push('/dashboard/reports');
+          const rawStudent = studentSnap.exists() ? studentSnap.data() : {};
+          const rawSession = sessionSnap?.exists() ? sessionSnap.data() : {};
+
+          // 3. Redact PII (Helper logic duplicated for safety)
+          // Ideally this should be a shared utility
+          const redactedStudent = {
+              identity: {
+                  firstName: { value: rawStudent.identity?.firstName?.value || "Student" },
+                  lastName: { value: rawStudent.identity?.lastName?.value ? rawStudent.identity.lastName.value.charAt(0) + "." : "" },
+                  age: "Unknown" // Simplify
+              },
+              // Allow some medical context for referrals if relevant, else strip
+              health: rawStudent.health || {} 
+          };
+
+          // 4. Call AI
+          const generateFn = httpsCallable(functions, 'generateClinicalReport');
+          const result = await generateFn({
+              tenantId: user?.tenantId,
+              studentId: studentId,
+              templateId: template.id,
+              contextPackId: 'uk_la_pack', // Default
+              studentContext: redactedStudent,
+              sessionContext: rawSession
+          });
+
+          const responseData = result.data as any;
+
+          // 5. Save Report
+          const newReport = {
+              title: `${template.name} - ${studentName}`,
+              templateId: template.id,
+              studentId: studentId,
+              studentName: studentName,
+              status: 'draft',
+              type: template.type,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              content: responseData.sections || [],
+              createdBy: user?.uid
+          };
+          
+          const ref = await addDoc(collection(db, 'reports'), newReport);
+          
+          toast({ title: "Draft Created", description: "Redirecting to editor..." });
+          router.push(`/dashboard/reports/editor/${ref.id}`);
+
       } catch (e) {
           console.error(e);
-          toast({ title: "Error", description: "Failed to save template.", variant: "destructive" });
+          toast({ variant: "destructive", title: "Generation Failed", description: "Could not create draft." });
+      } finally {
+          setGenerating(null);
       }
   };
 
   return (
-    <div className="space-y-6 p-8 pt-6 max-w-5xl mx-auto">
-        <div className="flex items-center gap-4 mb-6">
-            <Button variant="ghost" size="icon" onClick={() => router.back()}>
-                <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div>
-                <h1 className="text-2xl font-bold tracking-tight">Template Designer</h1>
-                <p className="text-muted-foreground">Create custom structures for AI-generated reports.</p>
+    <div className="p-8 max-w-7xl mx-auto">
+        <div className="mb-8">
+            <h1 className="text-3xl font-bold text-slate-800">Report Templates</h1>
+            <p className="text-slate-500 mt-2">Choose a template to generate documents based on consultation evidence.</p>
+        </div>
+
+        {sourceSessionId && (
+            <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-lg mb-8 flex items-center gap-3">
+                <Sparkles className="text-indigo-600 h-5 w-5" />
+                <div>
+                    <p className="text-sm font-medium text-indigo-900">Context Active</p>
+                    <p className="text-xs text-indigo-700">Generating for <span className="font-bold">{studentName}</span> based on recent session.</p>
+                </div>
             </div>
-            <Button onClick={handleSave} className="ml-auto">
-                <Save className="mr-2 h-4 w-4" /> Save Template
-            </Button>
+        )}
+
+        <div className="relative mb-6">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <Input 
+                placeholder="Search templates (e.g., 'Referral', 'Observation')..." 
+                className="pl-10 max-w-md"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+            />
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
-            {/* Metadata Sidebar */}
-            <Card className="md:col-span-1 h-fit">
-                <CardHeader>
-                    <CardTitle>Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>Template Name</Label>
-                        <Input placeholder="e.g. Monthly Behavioral Report" value={title} onChange={e => setTitle(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Category</Label>
-                        <Select value={category} onValueChange={setCategory}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="general">General</SelectItem>
-                                <SelectItem value="clinical">Clinical</SelectItem>
-                                <SelectItem value="educational">Educational</SelectItem>
-                                <SelectItem value="administrative">Administrative</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Description</Label>
-                        <Textarea placeholder="What is this report for?" value={description} onChange={e => setDescription(e.target.value)} />
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Editor Area */}
-            <Card className="md:col-span-2">
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Sections Structure</CardTitle>
-                    <Button variant="outline" size="sm" onClick={addSection}>
-                        <Plus className="mr-2 h-4 w-4" /> Add Section
-                    </Button>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {sections.length === 0 && (
-                        <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                            No sections yet. Add one to start.
-                        </div>
-                    )}
-                    
-                    {sections.map((section, index) => (
-                        <div key={section.id} className="border rounded-lg p-4 bg-muted/20 relative group transition-all hover:bg-muted/40">
-                            <div className="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab text-muted-foreground opacity-50 hover:opacity-100">
-                                <GripVertical className="h-5 w-5" />
+        {loading ? (
+            <div className="flex justify-center py-20"><Loader2 className="animate-spin h-8 w-8 text-slate-300" /></div>
+        ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredTemplates.map(template => (
+                    <Card key={template.id} className="hover:shadow-md transition-shadow cursor-pointer border-slate-200">
+                        <CardHeader>
+                            <div className="flex justify-between items-start">
+                                <Badge variant={template.type === 'referral' ? 'destructive' : 'secondary'} className="mb-2">
+                                    {template.type}
+                                </Badge>
                             </div>
-                            
-                            <div className="pl-8 space-y-4">
-                                <div className="flex gap-4">
-                                    <div className="flex-1 space-y-2">
-                                        <Label className="text-xs font-semibold uppercase text-muted-foreground">Section Title</Label>
-                                        <Input 
-                                            value={section.title} 
-                                            onChange={(e) => updateSection(section.id, 'title', e.target.value)} 
-                                            className="font-semibold"
-                                        />
-                                    </div>
-                                    <div className="w-32 space-y-2">
-                                        <Label className="text-xs font-semibold uppercase text-muted-foreground">Format</Label>
-                                        <Select 
-                                            value={section.type} 
-                                            onValueChange={(val) => updateSection(section.id, 'type', val)}
-                                        >
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="text">Paragraph</SelectItem>
-                                                <SelectItem value="list">Bullet List</SelectItem>
-                                                <SelectItem value="table">Table</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Bot className="h-3 w-3 text-primary" />
-                                        <Label className="text-xs font-semibold uppercase text-muted-foreground">AI Instructions</Label>
-                                    </div>
-                                    <Textarea 
-                                        value={section.prompt} 
-                                        onChange={(e) => updateSection(section.id, 'prompt', e.target.value)}
-                                        placeholder="Tell the AI what to include in this section..."
-                                        className="h-20 text-sm"
-                                    />
-                                </div>
-
-                                <div className="flex items-center justify-between pt-2">
-                                    <div className="flex items-center gap-2">
-                                        <Switch 
-                                            checked={section.required} 
-                                            onCheckedChange={(checked) => updateSection(section.id, 'required', checked)} 
-                                        />
-                                        <Label className="text-sm text-muted-foreground">Required Section</Label>
-                                    </div>
-                                    <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => removeSection(section.id)}>
-                                        <Trash className="h-4 w-4" />
-                                    </Button>
-                                </div>
+                            <CardTitle className="text-lg">{template.name}</CardTitle>
+                            <CardDescription className="line-clamp-2 min-h-[40px]">
+                                {template.description}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex flex-wrap gap-2">
+                                {template.tags.map(tag => (
+                                    <span key={tag} className="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-600">
+                                        {tag}
+                                    </span>
+                                ))}
                             </div>
-                        </div>
-                    ))}
-                </CardContent>
-            </Card>
-        </div>
+                        </CardContent>
+                        <CardFooter className="pt-0">
+                            <Button 
+                                className="w-full" 
+                                variant="outline"
+                                onClick={() => handleCreate(template)}
+                                disabled={!!generating}
+                            >
+                                {generating === template.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                                {generating === template.id ? 'Drafting...' : 'Use Template'}
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                ))}
+            </div>
+        )}
     </div>
   );
+}
+
+export default function TemplatesPage() {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-8 w-8 text-slate-300" /></div>}>
+            <TemplatesContent />
+        </Suspense>
+    );
 }

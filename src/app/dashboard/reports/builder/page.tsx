@@ -2,21 +2,21 @@
 
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react'; 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Fixed: Using standard Select wrapper
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { db, functions } from '@/lib/firebase';
+import { doc, getDoc, addDoc, collection } from 'firebase/firestore'; 
+import { db, functions, getRegionalDb, db as globalDb } from '@/lib/firebase';
 import { StatutoryReportTemplate } from '@/marketplace/types';
-import { Loader2, FileText, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Loader2, FileText, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestoreCollection } from '@/hooks/use-firestore';
+import { useRouter, useSearchParams } from 'next/navigation'; 
 
-// FALLBACK UK TEMPLATES (If Pack Installer not run)
+// FALLBACK UK TEMPLATES
 const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
     {
         id: "ehcp_needs_assessment",
@@ -39,100 +39,216 @@ const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
     }
 ];
 
-export default function ReportBuilderPage() {
+function ReportBuilderContent() {
     const { user } = useAuth();
+    const router = useRouter();
     const { toast } = useToast();
+    const searchParams = useSearchParams(); 
+    
+    const sourceSessionId = searchParams.get('sourceSessionId');
+    const paramTemplateId = searchParams.get('templateId');
+
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
+    const [justFinished, setJustFinished] = useState(false);
     
-    // Config
     const [templates, setTemplates] = useState<StatutoryReportTemplate[]>([]);
-    const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string>(paramTemplateId || '');
     const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
-    // Fetch Students for Dropdown
-    const { data: students, loading: loadingStudents } = useFirestoreCollection('students', 'lastName', 'asc');
-
+    const { data: students } = useFirestoreCollection('students', 'lastName', 'asc');
     const activeTemplate = templates.find(t => t.id === selectedTemplateId);
 
-    // Fetch Installed Templates (e.g. UK EHCP)
+    // --- 1. Fetch Templates & Pre-fill ---
     useEffect(() => {
         if (!user) return;
         
-        async function fetchTemplates() {
-            let loadedTemplates: StatutoryReportTemplate[] = [];
-            const tenantId = (user as any).tenantId || 'default';
+        async function init() {
+            // A. Resolve Region
+            let region = user?.region;
+            if (!region || region === 'default') {
+                if (user?.uid) {
+                    const routingRef = doc(globalDb, 'user_routing', user.uid);
+                    const routingSnap = await getDoc(routingRef);
+                    region = routingSnap.exists() ? routingSnap.data().region : 'uk';
+                } else {
+                    region = 'uk';
+                }
+            }
+            const targetDb = getRegionalDb(region);
 
+            // B. Load Templates
+            const tenantId = user?.tenantId || 'default';
             try {
-                // 1. Try fetching installed pack from tenant settings
                 const ref = doc(db, `tenants/${tenantId}/settings/reporting`);
                 const snap = await getDoc(ref);
-                
                 if (snap.exists() && snap.data().templates) {
-                    loadedTemplates = snap.data().templates;
-                } else {
-                    // 2. FALLBACK: Use hardcoded UK Templates for Pilot if UK user
-                    if ((user as any)?.region === 'uk' || user.email?.includes('uk') || user.email?.includes('mindsuk')) {
-                        console.log("Using Fallback UK Templates for Pilot");
-                        loadedTemplates = FALLBACK_UK_TEMPLATES;
-                    }
+                    setTemplates(snap.data().templates);
+                } else if (region === 'uk' || user?.email?.includes('uk')) {
+                    setTemplates(FALLBACK_UK_TEMPLATES);
                 }
-                setTemplates(loadedTemplates);
             } catch (e) {
-                console.error("Failed to load templates", e);
-                // Last resort fallback
                 setTemplates(FALLBACK_UK_TEMPLATES);
-            } finally {
-                setLoading(false);
             }
+
+            // C. If sourceSessionId, load Session
+            if (sourceSessionId) {
+                try {
+                    const sessionSnap = await getDoc(doc(targetDb, 'consultation_sessions', sourceSessionId));
+                    if (sessionSnap.exists()) {
+                        const sData = sessionSnap.data();
+                        if (sData.studentId) {
+                            setSelectedStudentId(sData.studentId);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load session linkage", e);
+                }
+            }
+            
+            setLoading(false);
         }
-        fetchTemplates();
-    }, [user]);
+        init();
+    }, [user, sourceSessionId]);
+
+    // --- PRIVACY HELPER: Redact PII before sending to AI ---
+    const redactForAI = (student: any) => {
+        if (!student) return {};
+        
+        // Calculate Age instead of sending DOB
+        let age = "Unknown";
+        if (student.identity?.dateOfBirth?.value) {
+            const dob = new Date(student.identity.dateOfBirth.value);
+            const diff = Date.now() - dob.getTime();
+            const ageDate = new Date(diff);
+            age = Math.abs(ageDate.getUTCFullYear() - 1970).toString();
+        }
+
+        return {
+            identity: {
+                firstName: { value: student.identity?.firstName?.value || "Student" },
+                // Use Initial for Last Name
+                lastName: { value: student.identity?.lastName?.value ? student.identity.lastName.value.charAt(0) + "." : "" },
+                age: age, 
+                gender: { value: student.identity?.gender?.value || "Not specified" }
+            },
+            education: {
+                senStatus: { value: student.education?.senStatus?.value },
+                yearGroup: { value: student.education?.yearGroup?.value }
+            },
+            health: {
+                conditions: { value: student.health?.conditions?.value || [] }
+            },
+            // Explicitly exclude: nationalId, upn, address, contact info, parents
+        };
+    };
 
     const handleGenerate = async () => {
-        if (!selectedTemplateId || !selectedStudentId || !activeTemplate) {
-            toast({ title: "Validation", description: "Please select both a student and a template.", variant: "destructive" });
-            return;
-        }
+        if (!selectedTemplateId || !selectedStudentId || !activeTemplate || !user) return;
         setGenerating(true);
 
         try {
-            // Call the Cloud Function we hooked up in Phase 4
-            const generateFn = httpsCallable(functions, 'generateClinicalReport');
+            // 1. Resolve Region
+            let region = user?.region; 
+            if (!region || region === 'default') {
+                if (user?.uid) {
+                    const routingRef = doc(globalDb, 'user_routing', user.uid);
+                    const routingSnap = await getDoc(routingRef);
+                    region = routingSnap.exists() ? routingSnap.data().region : 'uk';
+                } else {
+                    region = 'uk';
+                }
+            }
+            const targetDb = getRegionalDb(region);
+
+            // 2. Fetch Full Student Data (Client Side)
+            const studentRef = doc(targetDb, 'students', selectedStudentId);
+            const studentSnap = await getDoc(studentRef);
             
-            await generateFn({
+            if (!studentSnap.exists()) {
+                throw new Error("Student record not found in regional database.");
+            }
+            
+            const rawStudentData = studentSnap.data();
+
+            // 3. Fetch Session Data
+            let sessionContext = {};
+            if (sourceSessionId) {
+                const sessionSnap = await getDoc(doc(targetDb, 'consultation_sessions', sourceSessionId));
+                if (sessionSnap.exists()) {
+                    sessionContext = JSON.parse(JSON.stringify(sessionSnap.data()));
+                }
+            }
+
+            // 4. PRIVACY: Redact Context
+            const redactedStudentContext = redactForAI(rawStudentData);
+            
+            console.log("[Builder] Sending REDACTED Context to AI:", { student: redactedStudentContext });
+
+            // 5. AI Generation
+            const generateFn = httpsCallable(functions, 'generateClinicalReport');
+            const result = await generateFn({
                 tenantId: user?.tenantId,
                 studentId: selectedStudentId,
                 templateId: selectedTemplateId,
-                // Pass the context pack ID to trigger RAG constraints
-                contextPackId: 'uk_la_pack' 
+                contextPackId: 'uk_la_pack',
+                studentContext: redactedStudentContext, // SAFE
+                sessionContext: sessionContext       
             });
 
-            toast({
-                title: "Draft Generated",
-                description: "The AI has drafted the report adhering to statutory constraints. Check your 'Reports' archive.",
-            });
+            const responseData = result.data as any;
+            
+            // 6. Persistence (Save with REAL Name for internal record)
+            const realName = rawStudentData.identity?.firstName?.value + ' ' + rawStudentData.identity?.lastName?.value;
+            
+            const newReport = {
+                title: activeTemplate.name + ' - Draft',
+                templateId: selectedTemplateId,
+                studentId: selectedStudentId,
+                sessionId: sourceSessionId || null, 
+                studentName: realName || 'Unknown Student',
+                status: 'draft',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                createdBy: user?.uid, 
+                content: responseData.sections || responseData.content || [], 
+                summary: responseData.summary || "",
+                type: 'statutory'
+            };
+
+            const reportRef = await addDoc(collection(targetDb, 'reports'), newReport);
+
+            setJustFinished(true);
+            toast({ title: "Draft Created", description: "Report generated (PII redacted during processing)." });
+
+            setTimeout(() => {
+                router.push(`/dashboard/reports/editor/${reportRef.id}`);
+            }, 800);
 
         } catch (error: any) {
             console.error(error);
-            toast({
-                title: "Generation Failed",
-                description: "Cloud Function Error (Pilot Mode): " + error.message,
-                variant: "destructive"
-            });
+            toast({ title: "Failed", description: error.message, variant: "destructive" });
         } finally {
             setGenerating(false);
         }
     };
+
+    if (justFinished) {
+        return (
+            <div className="flex flex-col h-[60vh] items-center justify-center gap-4">
+                <CheckCircle2 className="h-12 w-12 text-emerald-500 animate-bounce" />
+                <h2 className="text-xl font-bold">Draft Generated!</h2>
+                <p className="text-slate-500">Opening editor...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-4xl mx-auto py-8 space-y-8">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Statutory Report Writer</h1>
-                    <p className="text-muted-foreground">
-                        Generate compliant drafts using the installed Country Pack templates.
-                    </p>
+                    <p className="text-muted-foreground">Generate compliant drafts using Country Pack templates.</p>
                 </div>
             </div>
 
@@ -140,54 +256,44 @@ export default function ReportBuilderPage() {
                 <div className="flex justify-center py-12"><Loader2 className="animate-spin h-8 w-8" /></div>
             ) : (
                 <Card>
-                    <CardHeader>
-                        <CardTitle className="text-lg">Configuration</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle className="text-lg">Configuration</CardTitle></CardHeader>
                     <CardContent className="space-y-6">
-                        
-                        {/* Student Selector */}
                         <div className="grid gap-2">
                             <label className="text-sm font-medium">Select Student</label>
-                            {/* Standard Select to avoid recursion errors */}
                             <select 
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
                                 value={selectedStudentId}
                                 onChange={(e) => setSelectedStudentId(e.target.value)}
+                                disabled={!!sourceSessionId} 
                             >
-                                <option value="" disabled selected>Select Student...</option>
+                                <option value="" disabled>Select Student...</option>
                                 {students.map(s => (
-                                    <option key={s.id} value={s.id}>
-                                        {s.firstName} {s.lastName}
-                                    </option>
+                                    <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>
                                 ))}
                             </select>
+                            {sourceSessionId && <p className="text-xs text-muted-foreground">Locked to current session context.</p>}
                         </div>
 
-                        {/* Template Selector */}
                         <div className="grid gap-2">
                             <label className="text-sm font-medium">Select Template</label>
                             <select 
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
                                 value={selectedTemplateId}
                                 onChange={(e) => setSelectedTemplateId(e.target.value)}
                             >
-                                <option value="" disabled selected>Choose a statutory framework...</option>
+                                <option value="" disabled>Choose a framework...</option>
                                 {templates.map(t => (
                                     <option key={t.id} value={t.id}>{t.name}</option>
                                 ))}
                             </select>
                         </div>
 
-                        {/* RAG Constraints Visualization (Research Section 4.2.2) */}
                         {activeTemplate && (
                             <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
                                 <div className="flex items-center gap-2 mb-2">
                                     <ShieldCheck className="h-5 w-5 text-amber-700" />
-                                    <h3 className="font-semibold text-amber-800">Compliance Mode Active</h3>
+                                    <h3 className="font-semibold text-amber-800">Compliance Mode: Gemini 2.0 Flash</h3>
                                 </div>
-                                <p className="text-sm text-amber-700 mb-3">
-                                    The AI Guardian will enforce the following statutory constraints for this report:
-                                </p>
                                 <div className="flex flex-wrap gap-2">
                                     {activeTemplate.constraints?.map(c => (
                                         <Badge key={c} variant="outline" className="bg-white text-amber-800 border-amber-300 capitalize">
@@ -197,33 +303,26 @@ export default function ReportBuilderPage() {
                                 </div>
                             </div>
                         )}
-
-                        {activeTemplate && (
-                            <div className="grid gap-2 border rounded p-4 bg-slate-50">
-                                <h4 className="font-medium text-sm flex items-center gap-2">
-                                    <FileText className="h-4 w-4" />
-                                    Sections to Generate
-                                </h4>
-                                <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                                    {activeTemplate.sections.map(s => (
-                                        <li key={s.id}>{s.title}</li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
                     </CardContent>
                     <CardFooter className="flex justify-end border-t bg-slate-50 p-4">
                         <Button 
                             onClick={handleGenerate} 
                             disabled={!selectedTemplateId || !selectedStudentId || generating} 
-                            className="w-[200px]"
+                            className="w-[200px] bg-indigo-600 hover:bg-indigo-700"
                         >
-                            {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {generating ? 'Drafting...' : 'Generate Draft'}
+                            {generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Drafting...</> : 'Generate Draft'}
                         </Button>
                     </CardFooter>
                 </Card>
             )}
         </div>
+    );
+}
+
+export default function ReportBuilderPage() {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-indigo-600"/></div>}>
+            <ReportBuilderContent />
+        </Suspense>
     );
 }

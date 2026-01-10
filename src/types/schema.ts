@@ -125,6 +125,7 @@ export interface ConsentRecord {
 export interface StudentRecord {
     id: string;
     tenantId: string;
+    schoolId?: string; // Links student to a School Organization
     
     identity: {
         firstName: ProvenanceField<string>;
@@ -309,11 +310,43 @@ export interface ConsultationSession {
   studentId: string;
   date: string;
   notes: string;
-  transcript?: string;
-  insights?: any[];
-  status?: 'scheduled' | 'in_progress' | 'completed';
+  mode: 'person_centered' | 'multi_agency' | 'complex' | 'standard';
+  participants: string[];
+  audio_url?: string;
+  transcript?: {
+    startTime: number;
+    endTime: number;
+    speaker: string;
+    text: string;
+  }[];
+  ai_insights?: {
+    timestamp: number;
+    text: string;
+    type: string;
+  }[];
+  clinical_observations?: {
+    timestamp: number;
+    text: string;
+  }[];
+  linked_assessment_id?: string;
+  accessibility?: {
+    visual_aids: boolean;
+    sign_language_record: boolean;
+    live_captions: boolean;
+  };
+  participant_device_id?: string;
+  // UPDATED: Added synthesized and completed statuses
+  status?: 'scheduled' | 'in_progress' | 'completed' | 'synthesized' | 'cancelled';
+  type?: string; // Added type property
   reportId?: string;
   caseId?: string;
+}
+
+export interface ConsultationEvent {
+  timestamp: string; // ISO String
+  speaker: 'epp' | 'student';
+  type: 'audio_transcript' | 'visual_card_selection' | 'ai_insight';
+  data?: any; // To hold type-specific payloads like the text or card ID
 }
 
 export interface Student {

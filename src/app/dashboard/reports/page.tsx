@@ -1,179 +1,166 @@
+// src/app/dashboard/reports/page.tsx
+
 "use client";
 
-import { useFirestoreCollection } from "@/hooks/use-firestore";
-import { Report } from "@/types/schema";
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Edit, Plus, MoreHorizontal, Trash } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { DataTable } from "@/components/ui/data-table";
-import { ColumnDef } from "@tanstack/react-table";
-import { AdhocReportGenerator } from "@/components/dashboard/reports/adhoc-generator";
-import { TranslatorTool } from "@/components/dashboard/translator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
-    DropdownMenu, 
-    DropdownMenuContent, 
-    DropdownMenuItem, 
-    DropdownMenuLabel, 
-    DropdownMenuSeparator, 
-    DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu";
-import { format } from "date-fns";
-import { doc, deleteDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { useToast } from "@/hooks/use-toast";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    FileText, Calendar, User, Eye, Plus, Loader2, Search, ArrowRight, CheckCircle, Clock
+} from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import Link from 'next/link';
+import { Input } from "@/components/ui/input";
+import { useAuth } from '@/hooks/use-auth';
+import { getRegionalDb, db as globalDb } from '@/lib/firebase';
+import { collection, query, orderBy, onSnapshot, doc, getDoc } from 'firebase/firestore';
 
-export default function ReportsPage() {
-  const router = useRouter();
-  const { toast } = useToast();
-  const { data: reports, loading } = useFirestoreCollection<Report>("reports", "createdAt", "desc");
+export default function ReportsDirectoryPage() {
+    const { user } = useAuth();
+    const [reports, setReports] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
-  const handleDelete = async (id: string) => {
-      try {
-          await deleteDoc(doc(db, "reports", id));
-          toast({ title: "Report deleted" });
-      } catch (e) {
-          console.error(e);
-          toast({ title: "Error deleting report", variant: "destructive" });
-      }
-  };
+    // Robust Real-time fetching from Shard
+    useEffect(() => {
+        if (!user) return;
 
-  const columns: ColumnDef<Report>[] = [
-    {
-        accessorKey: "title",
-        header: "Title",
-        cell: ({ row }) => (
-            <div className="flex items-center gap-2 font-medium">
-                <FileText className="h-4 w-4 text-blue-500" />
-                {row.getValue("title") || "Untitled Report"}
+        let unsubscribe: () => void;
+
+        async function initRealtime() {
+            try {
+                // 1. Resolve Region
+                let region = user?.region; // Safe Access
+                if (!region || region === 'default') {
+                    if (user?.uid) {
+                        const routingRef = doc(globalDb, 'user_routing', user.uid);
+                        const routingSnap = await getDoc(routingRef);
+                        region = routingSnap.exists() ? routingSnap.data().region : 'uk';
+                    } else {
+                        region = 'uk';
+                    }
+                }
+
+                const targetDb = getRegionalDb(region);
+                console.log(`[Reports] Listing from shard: ${region}`);
+
+                // 2. Setup Listener
+                const q = query(collection(targetDb, 'reports'), orderBy('createdAt', 'desc'));
+                unsubscribe = onSnapshot(q, (snapshot) => {
+                    const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    setReports(data);
+                    setLoading(false);
+                }, (err) => {
+                    console.error("Listener error", err);
+                    setLoading(false);
+                });
+
+            } catch (e) {
+                console.error(e);
+                setLoading(false);
+            }
+        }
+
+        initRealtime();
+        return () => unsubscribe?.();
+    }, [user]);
+
+    const filteredReports = reports.filter(r => 
+        r.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.studentName?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return (
+        <div className="space-y-6 p-8">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Clinical Reports Directory</h1>
+                    <p className="text-muted-foreground">Access and manage all statutory drafts and finalized documentation.</p>
+                </div>
+                <div className="flex gap-2">
+                    <Link href="/dashboard/reports/builder">
+                        <Button className="bg-indigo-600 hover:bg-indigo-700">
+                            <Plus className="mr-2 h-4 w-4"/> New Report
+                        </Button>
+                    </Link>
+                </div>
             </div>
-        )
-    },
-    {
-        accessorKey: "type",
-        header: "Type",
-        cell: ({ row }) => <span className="capitalize">{row.getValue("type")?.toString().replace("_", " ")}</span>
-    },
-    {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => (
-            <Badge variant={row.getValue("status") === 'final' ? 'default' : 'outline'}>
-                {row.getValue("status")}
-            </Badge>
-        )
-    },
-    {
-        accessorKey: "createdAt",
-        header: "Date",
-        cell: ({ row }) => {
-            const date = row.getValue("createdAt");
-            return date ? format(new Date(date as any), "MMM d, yyyy") : "-";
-        }
-    },
-    {
-        id: "actions",
-        cell: ({ row }) => {
-            const report = row.original;
-            return (
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => router.push(`/dashboard/reports/editor/${report.id}`)}>
-                            <Edit className="mr-2 h-4 w-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                            <Download className="mr-2 h-4 w-4" /> Download PDF
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(report.id)}>
-                            <Trash className="mr-2 h-4 w-4" /> Delete
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            )
-        }
-    }
-  ];
 
-  return (
-    <div className="space-y-8 p-8 pt-6">
-       <div className="flex items-center justify-between">
-          <div>
-             <h1 className="text-3xl font-bold tracking-tight text-primary">Reports & Documents</h1>
-             <p className="text-muted-foreground">Manage generated assessments, consultation summaries, and translations.</p>
-          </div>
-          <div className="flex gap-2">
-              <AdhocReportGenerator />
-              <Button onClick={() => router.push('/dashboard/reports/templates')}>
-                  <Plus className="mr-2 h-4 w-4" /> Template Designer
-              </Button>
-          </div>
-       </div>
+            <div className="flex items-center gap-4">
+                <div className="relative w-full md:w-96">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="Search reports or students..." 
+                        className="pl-8" 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+            </div>
 
-       <Tabs defaultValue="library" className="space-y-4">
-           <TabsList>
-               <TabsTrigger value="library">Library</TabsTrigger>
-               <TabsTrigger value="tools">Tools & Translation</TabsTrigger>
-           </TabsList>
-
-           <TabsContent value="library">
-               <Card>
-                   <CardHeader>
-                       <CardTitle>Report Library</CardTitle>
-                       <CardDescription>
-                           Search, filter, and manage all your clinical documentation.
-                       </CardDescription>
-                   </CardHeader>
-                   <CardContent>
-                       <DataTable 
-                           columns={columns} 
-                           data={reports} 
-                           searchKey="title" 
-                           filterableColumns={[
-                               { 
-                                   id: "status", 
-                                   title: "Status", 
-                                   options: [{label: "Draft", value: "draft"}, {label: "Final", value: "final"}] 
-                               },
-                               {
-                                   id: "type",
-                                   title: "Type",
-                                   options: [
-                                       {label: "Clinical Summary", value: "clinical_summary"},
-                                       {label: "Progress Note", value: "progress_note"},
-                                       {label: "IEP Draft", value: "iep_draft"}
-                                   ]
-                               }
-                           ]}
-                        />
-                   </CardContent>
-               </Card>
-           </TabsContent>
-
-           <TabsContent value="tools">
-               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                   <div className="lg:col-span-2">
-                       <TranslatorTool />
-                   </div>
-                   <div className="space-y-6">
-                       <Card>
-                           <CardHeader><CardTitle>Quick Links</CardTitle></CardHeader>
-                           <CardContent className="space-y-2">
-                               <Button variant="outline" className="w-full justify-start">DSM-5 Reference</Button>
-                               <Button variant="outline" className="w-full justify-start">ICD-10 Codes</Button>
-                               <Button variant="outline" className="w-full justify-start">Intervention Bank</Button>
-                           </CardContent>
-                       </Card>
-                   </div>
-               </div>
-           </TabsContent>
-       </Tabs>
-    </div>
-  );
+            <Card className="border-none shadow-sm overflow-hidden">
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader className="bg-slate-50">
+                            <TableRow>
+                                <TableHead className="w-[300px]">Document Title</TableHead>
+                                <TableHead>Student</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Last Updated</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                <TableRow><TableCell colSpan={5} className="text-center py-12"><Loader2 className="animate-spin inline h-6 w-6 text-indigo-500"/></TableCell></TableRow>
+                            ) : filteredReports.length === 0 ? (
+                                <TableRow><TableCell colSpan={5} className="text-center py-12 text-muted-foreground italic">No clinical reports found in your directory.</TableCell></TableRow>
+                            ) : (
+                                filteredReports.map((report: any) => (
+                                    <TableRow key={report.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <TableCell>
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-indigo-50 rounded-lg">
+                                                    <FileText className="h-4 w-4 text-indigo-600" />
+                                                </div>
+                                                <div className="font-semibold text-slate-800">{report.title || "Untitled Report"}</div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                <User className="h-3.5 w-3.5 text-slate-400" />
+                                                <span className="text-sm font-medium">{report.studentName || "N/A"}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            {report.status === 'final' ? (
+                                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100 flex w-fit gap-1">
+                                                    <CheckCircle className="h-3 w-3" /> Finalized
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="secondary" className="bg-amber-50 text-amber-800 border-amber-200 flex w-fit gap-1">
+                                                    <Clock className="h-3 w-3" /> Draft
+                                                </Badge>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-xs text-slate-500 font-medium">
+                                            {report.updatedAt ? new Date(report.updatedAt).toLocaleDateString() : new Date(report.createdAt).toLocaleDateString()}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Link href={`/dashboard/reports/editor/${report.id}`}>
+                                                <Button variant="outline" size="sm" className="hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200">
+                                                    Open Editor <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                                                </Button>
+                                            </Link>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    );
 }
