@@ -13,65 +13,68 @@ service cloud.firestore {
       );
     }
 
-    // --- 1. GLOBAL ACCESS (Pilot Mode: Relaxed) ---
-    // Allow verified users to read/write their own data context
-    
+    // --- 1. CORE USER & ROUTING ---
+    // Allow users to create their own routing doc on signup (Fixes Signup Permission Error)
     match /user_routing/{userId} {
       allow read: if isAuthenticated();
-      // Allow create/update during signup/login repair
-      allow write: if isAuthenticated() && request.auth.uid == userId; 
+      allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // Allow user to update their own profile (e.g. onboarding)
-      allow write: if isAuthenticated() && request.auth.uid == userId;
+      // Allow user to write their own profile (e.g. during onboarding flow)
+      // Allow admin to create/update any user
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
     }
 
-    // --- 2. KNOWLEDGE & ASSETS ---
-    // Fix for Knowledge Page Permission Denied
-    match /knowledgeDocuments/{docId} {
-      allow read, write: if isAuthenticated();
-    }
-    
-    match /uploaded_documents/{docId} {
-      allow read, write: if isAuthenticated();
+    // --- 2. SCHEDULING & MESSAGING ---
+    match /appointments/{appointmentId} { allow read, write: if isAuthenticated(); }
+    match /messages/{messageId} { allow read, write: if isAuthenticated(); }
+    match /notifications/{notifId} { allow read, write: if isAuthenticated(); }
+    match /chats/{chatId} {
+        allow read, write: if isAuthenticated();
+        match /messages/{messageId} { allow read, write: if isAuthenticated(); }
     }
 
     // --- 3. CLINICAL DATA (Root Level) ---
-    // Broadened for Pilot to prevent "Missing Permissions" blocking critical flows
     match /students/{document=**} { allow read, write: if isAuthenticated(); } 
     match /cases/{document=**} { allow read, write: if isAuthenticated(); }
     match /reports/{document=**} { allow read, write: if isAuthenticated(); }
     match /consultation_sessions/{document=**} { allow read, write: if isAuthenticated(); }
-    
     match /assessment_templates/{id} { allow read, write: if isAuthenticated(); }
     match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
     match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
 
-    // --- 4. ADMIN & TENANT STRUCTURES ---
+    // --- 4. ADMIN REGISTRIES ---
     match /organizations/{orgId} {
-      allow read, write: if isAuthenticated(); // Relaxed for self-provisioning
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // Relaxed for self-provisioning in pilot
     }
     
     match /leas/{leaId} {
-        allow read, write: if isAuthenticated();
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
     }
 
+    match /org_units/{id} {
+      allow read, write: if isAuthenticated();
+    }
+    
     match /schools/{id} { 
         allow read, write: if isAuthenticated();
         match /staff/{staffId} { allow read, write: if isAuthenticated(); }
     }
     
+    // --- 5. ENTERPRISE TENANTS (Nested) ---
     match /tenants/{tenantId} {
       allow read, write: if isAuthenticated(); 
       match /{allSubcollections=**} { allow read, write: if isAuthenticated(); }
     }
 
+    // --- 6. INTEGRATIONS ---
     match /integrations/{configId} { allow read, write: if isAuthenticated(); }
     match /data_jobs/{jobId} { allow read, write: if isAuthenticated(); }
 
-    // Default Deny
     match /{document=**} { allow read, write: if false; }
   }
 }

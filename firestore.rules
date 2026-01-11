@@ -7,42 +7,24 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    function getUserRole() {
-       // Only trust the token if it has a valid admin/clinical role.
-       // If token says 'parent' (default), check Firestore.
-       // This handles the race condition where Signup happens before Claims Propagate.
-       let tokenRole = request.auth.token.role;
-       return (tokenRole != null && tokenRole != 'parent') 
-         ? tokenRole 
-         : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-    }
-
     function isSystemAdmin() {
       return isAuthenticated() && (
-        getUserRole() in ['SuperAdmin', 'Admin', 'admin', 'superadmin']
+        request.auth.token.role in ['SuperAdmin', 'Admin', 'admin', 'superadmin']
       );
-    }
-    
-    function isEPP() {
-      let role = getUserRole();
-      return isAuthenticated() && (
-        role in ['EPP', 'educationalpsychologist', 'EducationalPsychologist']
-      );
-    }
-    
-    function isOwner(userId) {
-       return isAuthenticated() && request.auth.uid == userId;
     }
 
     // --- 1. CORE USER & ROUTING ---
+    // Allow users to create their own routing doc on signup (Fixes Signup Permission Error)
     match /user_routing/{userId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // Allow user to fix their own profile (auto-correction logic)
-      allow write: if isSystemAdmin() || request.auth.uid == userId;
+      // Allow user to write their own profile (e.g. during onboarding flow)
+      // Allow admin to create/update any user
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
     }
 
     // --- 2. SCHEDULING & MESSAGING ---
@@ -66,31 +48,26 @@ service cloud.firestore {
     // --- 4. ADMIN REGISTRIES ---
     match /organizations/{orgId} {
       allow read: if isAuthenticated();
-      allow create: if isSystemAdmin();
-      allow update: if isSystemAdmin() || isAuthenticated();
+      allow write: if isAuthenticated(); // Relaxed for self-provisioning in pilot
     }
     
     match /leas/{leaId} {
         allow read: if isAuthenticated();
-        allow write: if isAuthenticated(); // Broaden write to catch-all for pilot
+        allow write: if isAuthenticated();
     }
 
     match /org_units/{id} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isSystemAdmin();
+      allow read, write: if isAuthenticated();
     }
     
     match /schools/{id} { 
-        allow read: if isAuthenticated(); 
-        allow write: if isAuthenticated(); // Broaden write to catch-all for pilot
-        
+        allow read, write: if isAuthenticated();
         match /staff/{staffId} { allow read, write: if isAuthenticated(); }
     }
     
     // --- 5. ENTERPRISE TENANTS (Nested) ---
     match /tenants/{tenantId} {
-      allow read: if isAuthenticated(); 
+      allow read, write: if isAuthenticated(); 
       match /{allSubcollections=**} { allow read, write: if isAuthenticated(); }
     }
 
