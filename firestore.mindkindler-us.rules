@@ -13,8 +13,18 @@ service cloud.firestore {
       );
     }
 
+    // STRICT TENANT CHECK:
+    // 1. If reading/updating/deleting: The existing doc (resource) must have matching tenantId.
+    // 2. If creating/updating: The new data (request.resource) must have matching tenantId.
+    function isTenantScoped() {
+      return isSystemAdmin() || (
+        isAuthenticated() && 
+        (resource == null || resource.data.tenantId == request.auth.token.tenantId) &&
+        (request.resource == null || request.resource.data.tenantId == request.auth.token.tenantId)
+      );
+    }
+
     // --- 1. CORE USER & ROUTING ---
-    // Allow users to create their own routing doc on signup (Fixes Signup Permission Error)
     match /user_routing/{userId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && request.auth.uid == userId;
@@ -22,33 +32,44 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // Allow user to write their own profile (e.g. during onboarding flow)
-      // Allow admin to create/update any user
       allow write: if isAuthenticated() && (request.auth.uid == userId || isSystemAdmin());
     }
 
     // --- 2. SCHEDULING & MESSAGING ---
-    match /appointments/{appointmentId} { allow read, write: if isAuthenticated(); }
-    match /messages/{messageId} { allow read, write: if isAuthenticated(); }
-    match /notifications/{notifId} { allow read, write: if isAuthenticated(); }
+    match /appointments/{appointmentId} { allow read, write: if isTenantScoped(); }
+    
+    // Notifications are user-centric, not always tenant-centric (e.g. system alerts)
+    match /notifications/{notifId} { 
+      allow read, write: if isAuthenticated() && (resource == null || resource.data.recipientUserId == request.auth.uid);
+    }
+    
+    // Chat participants check is safer than tenantId for cross-tenant comms
     match /chats/{chatId} {
-        allow read, write: if isAuthenticated();
+        allow read, write: if isAuthenticated() && (resource == null || request.auth.uid in resource.data.participantIds);
         match /messages/{messageId} { allow read, write: if isAuthenticated(); }
     }
+    // Fallback for generic messages if used
+    match /messages/{messageId} { allow read, write: if isAuthenticated(); }
 
     // --- 3. CLINICAL DATA (Root Level) ---
-    match /students/{document=**} { allow read, write: if isAuthenticated(); } 
-    match /cases/{document=**} { allow read, write: if isAuthenticated(); }
-    match /reports/{document=**} { allow read, write: if isAuthenticated(); }
-    match /consultation_sessions/{document=**} { allow read, write: if isAuthenticated(); }
-    match /assessment_templates/{id} { allow read, write: if isAuthenticated(); }
-    match /assessment_assignments/{id} { allow read, write: if isAuthenticated(); }
-    match /assessment_results/{id} { allow read, write: if isAuthenticated(); }
+    // Enforce Strict Tenant Isolation
+    match /students/{document=**} { allow read, write: if isTenantScoped(); } 
+    match /cases/{document=**} { allow read, write: if isTenantScoped(); }
+    match /reports/{document=**} { allow read, write: if isTenantScoped(); }
+    match /consultation_sessions/{document=**} { allow read, write: if isTenantScoped(); }
+    match /assessment_results/{id} { allow read, write: if isTenantScoped(); }
+    match /assessment_assignments/{id} { allow read, write: if isTenantScoped(); }
+
+    // Templates might be shared (Global) or Tenant Specific
+    match /assessment_templates/{id} { 
+      allow read: if isAuthenticated(); 
+      allow write: if isSystemAdmin();
+    }
 
     // --- 4. ADMIN REGISTRIES ---
     match /organizations/{orgId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated(); // Relaxed for self-provisioning in pilot
+      allow write: if isAuthenticated(); 
     }
     
     match /leas/{leaId} {
@@ -66,14 +87,24 @@ service cloud.firestore {
     }
     
     // --- 5. ENTERPRISE TENANTS (Nested) ---
+    // Explicit tenant sub-collection protection
     match /tenants/{tenantId} {
-      allow read, write: if isAuthenticated(); 
-      match /{allSubcollections=**} { allow read, write: if isAuthenticated(); }
+      allow read, write: if isSystemAdmin() || (isAuthenticated() && request.auth.token.tenantId == tenantId);
+      match /{allSubcollections=**} { 
+        allow read, write: if isSystemAdmin() || (isAuthenticated() && request.auth.token.tenantId == tenantId);
+      }
     }
 
-    // --- 6. INTEGRATIONS ---
-    match /integrations/{configId} { allow read, write: if isAuthenticated(); }
-    match /data_jobs/{jobId} { allow read, write: if isAuthenticated(); }
+    // --- 6. ASSETS & INTEGRATIONS ---
+    match /integrations/{configId} { allow read, write: if isTenantScoped(); }
+    match /data_jobs/{jobId} { allow read, write: if isTenantScoped(); }
+    
+    match /knowledgeDocuments/{docId} { 
+      allow read: if isAuthenticated(); 
+      allow write: if isSystemAdmin(); 
+    }
+    
+    match /uploaded_documents/{docId} { allow read, write: if isTenantScoped(); }
 
     match /{document=**} { allow read, write: if false; }
   }
