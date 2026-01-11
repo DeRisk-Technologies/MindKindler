@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { User, getIdTokenResult } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 export interface AuthUser extends User {
     role?: string;
@@ -21,8 +22,8 @@ export function useAuth() {
       if (u) {
           try {
             // 1. Force Refresh Token to get latest Custom Claims
-            const tokenResult = await getIdTokenResult(u, true);
-            const claims = tokenResult.claims;
+            let tokenResult = await getIdTokenResult(u, true);
+            let claims = tokenResult.claims;
 
             let role = claims.role as string;
             let tenantId = claims.tenantId as string;
@@ -34,18 +35,51 @@ export function useAuth() {
             let routingData = routingDoc.exists() ? routingDoc.data() : null;
 
             if (routingData) {
-                // If claims are missing but routing has data, we prioritize routing for UI 
-                // BUT we know Security Rules will fail until claims sync.
+                // AUTO-HEAL: If claims are missing but routing has data, call repair function
                 if (!tenantId && routingData.tenantId) {
-                    console.warn(`[useAuth] Tenant mismatch! Claims: ${tenantId}, Routing: ${routingData.tenantId}. Sync required.`);
+                    console.warn(`[useAuth] Missing Claims detected (Tenant: ${routingData.tenantId}). Attempting auto-repair...`);
+                    try {
+                        const functions = getFunctions(undefined, "europe-west3");
+                        const setupProfile = httpsCallable(functions, "setupUserProfile");
+                        const result = await setupProfile();
+                        console.log("[useAuth] Repair Result:", result.data);
+                        
+                        // Refresh Token AGAIN to get new claims
+                        tokenResult = await getIdTokenResult(u, true);
+                        claims = tokenResult.claims;
+                        tenantId = claims.tenantId as string;
+                        region = claims.region as string;
+                        role = claims.role as string;
+                    } catch (e) {
+                        console.error("[useAuth] Repair failed:", e);
+                    }
                 }
                 
+                // Fallback to routing data if repair failed or for local state
                 region = region || routingData.region;
                 tenantId = tenantId || routingData.tenantId;
                 role = role || routingData.role;
+            } else if (u.email?.includes('pilot')) {
+                // EMERGENCY PILOT FIX
+                const pilotRegion = 'uk';
+                const pilotRole = 'EPP';
+                const pilotTenant = 'default';
+                
+                await setDoc(routingRef, {
+                    uid: u.uid,
+                    region: pilotRegion,
+                    shardId: `mindkindler-${pilotRegion}`,
+                    role: pilotRole,
+                    tenantId: pilotTenant,
+                    email: u.email
+                });
+                
+                region = pilotRegion;
+                tenantId = pilotTenant;
+                role = pilotRole;
             }
 
-            // 3. Fallback to default DB Profile
+            // 3. Fallback to Default Firestore Profile
             if (!role || !tenantId) {
                 const userRef = doc(db, 'users', u.uid);
                 const userDoc = await getDoc(userRef);
@@ -68,7 +102,7 @@ export function useAuth() {
                 Role: ${extendedUser.role} 
                 Tenant: ${extendedUser.tenantId} 
                 Region: ${extendedUser.region}
-                Source: ${claims.tenantId ? 'Claims (Secure)' : 'Routing (Legacy)'}`);
+                Source: ${claims.tenantId ? 'Claims (Secure)' : 'Routing (Legacy - Unsafe for Rules)'}`);
             
             setUser(extendedUser);
           } catch (err) {
