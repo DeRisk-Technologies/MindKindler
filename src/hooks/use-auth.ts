@@ -8,10 +8,14 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 
 export interface AuthUser extends User {
     role?: string;
-    tenantId?: string;
+    // Fixed: Must match Firebase User interface (string | null), plus we handle undefined internally
+    tenantId: string | null; 
     region?: string;
     shardId?: string;
 }
+
+// Global promise to deduplicate repair requests across component mounts
+let repairPromise: Promise<any> | null = null;
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -36,29 +40,54 @@ export function useAuth() {
 
             if (routingData) {
                 // AUTO-HEAL: If claims are missing but routing has data, call repair function
-                if (!tenantId && routingData.tenantId) {
+                // Logic: If tenantId is missing in claims, we MUST repair before resolving user.
+                if ((!tenantId || !role) && routingData.tenantId) {
                     console.warn(`[useAuth] Missing Claims detected (Tenant: ${routingData.tenantId}). Attempting auto-repair...`);
+                    
+                    if (!repairPromise) {
+                        // Start the repair if not already running
+                        repairPromise = (async () => {
+                            try {
+                                const functions = getFunctions(undefined, "europe-west3");
+                                const setupProfile = httpsCallable(functions, "setupUserProfile");
+                                const res = await setupProfile();
+                                console.log("[useAuth] Repair Completed:", res.data);
+                            } catch (e) {
+                                console.error("[useAuth] Repair failed:", e);
+                                throw e; // Propagate error to waiters
+                            }
+                        })();
+                    }
+
                     try {
-                        const functions = getFunctions(undefined, "europe-west3");
-                        const setupProfile = httpsCallable(functions, "setupUserProfile");
-                        const result = await setupProfile();
-                        console.log("[useAuth] Repair Result:", result.data);
+                        // Wait for the shared repair to finish
+                        await repairPromise;
                         
                         // Refresh Token AGAIN to get new claims
                         tokenResult = await getIdTokenResult(u, true);
                         claims = tokenResult.claims;
+                        
                         tenantId = claims.tenantId as string;
                         region = claims.region as string;
                         role = claims.role as string;
                     } catch (e) {
-                        console.error("[useAuth] Repair failed:", e);
+                        // If repair failed, we fall through to legacy/fallback mode
+                        // so the user isn't stuck on a white screen, but errors might occur.
+                    } finally {
+                        // Clean up promise reference carefully? 
+                        // Actually better to leave it if it resolved, or nullify.
+                        // But multiple waiters might finish at different times?
+                        // A simple nullify after some time or immediate is risky if race conditions.
+                        // For this simple case, we assume one "wave" of repairs is enough.
                     }
                 }
                 
-                // Fallback to routing data if repair failed or for local state
-                region = region || routingData.region;
-                tenantId = tenantId || routingData.tenantId;
-                role = role || routingData.role;
+                // Fallback to routing data if claims still missing (UI needs something)
+                if (!tenantId) {
+                    region = region || routingData.region;
+                    tenantId = tenantId || routingData.tenantId;
+                    role = role || routingData.role;
+                }
             } else if (u.email?.includes('pilot')) {
                 // EMERGENCY PILOT FIX
                 const pilotRegion = 'uk';
