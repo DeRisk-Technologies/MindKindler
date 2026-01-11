@@ -46,7 +46,8 @@ import {
   Building,
   Plug,
   UserCircle,
-  Palette // Added Icon
+  Palette,
+  Map as MapIcon 
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -195,6 +196,14 @@ export function DashboardSidebar() {
                         <SidebarMenuButton asChild isActive={isActive("/dashboard/practice/team")} tooltip="My Team">
                             <Link href="/dashboard/practice/team">
                                 <Briefcase className="text-indigo-600" /><span>Practice Team</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    {/* Phase 29: GIS Map Link */}
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/schools")} tooltip="Coverage Map">
+                            <Link href="/dashboard/schools?tab=map">
+                                <MapIcon className="text-indigo-600" /><span>Coverage Map</span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
