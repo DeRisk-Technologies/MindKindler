@@ -3,7 +3,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { collection, query, orderBy, onSnapshot, DocumentData, doc, getDoc, getDocs, Firestore, where, limit } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, DocumentData, doc, getDoc, getDocs, Firestore, where, limit, QueryConstraint } from "firebase/firestore";
 import { db, getRegionalDb } from "@/lib/firebase"; 
 import { usePermissions } from "@/hooks/use-permissions"; 
 import { useAuth } from "@/hooks/use-auth";
@@ -49,9 +49,11 @@ export function useFirestoreCollection<T = DocumentData>(
     }
 
     try {
-      let q = query(collection(targetDb, collectionName), orderBy(sortField, direction));
-      
-      // Auto-Tenant Scope (Fix for Permission Denied)
+      // Build Constraints Array
+      const constraints: QueryConstraint[] = [];
+
+      // 1. Auto-Tenant Scope (Fix for Permission Denied)
+      // Must be applied BEFORE ordering for index efficiency/correctness
       const isGlobalCollection = ['organizations', 'tenants', 'user_routing', 'users', 'ai_provenance', 'ai_feedback'].includes(collectionName);
       const isSuperAdmin = user?.role === 'SuperAdmin';
       const hasTenant = user?.tenantId && user?.tenantId !== 'default';
@@ -59,13 +61,20 @@ export function useFirestoreCollection<T = DocumentData>(
       if (hasTenant && !isSuperAdmin && !isGlobalCollection) {
           // If options.filter already handles tenantId, skip to avoid conflict
           if (!options?.filter || options.filter.field !== 'tenantId') {
-               q = query(q, where('tenantId', '==', user.tenantId));
+               constraints.push(where('tenantId', '==', user.tenantId));
           }
       }
       
+      // 2. Custom Filter
       if (options?.filter) {
-        q = query(q, where(options.filter.field, options.filter.operator, options.filter.value));
+        constraints.push(where(options.filter.field, options.filter.operator, options.filter.value));
       }
+
+      // 3. Sorting
+      // Note: If filtering by tenantId, Firestore requires a composite index: (tenantId ASC, sortField DESC)
+      constraints.push(orderBy(sortField, direction));
+
+      const q = query(collection(targetDb, collectionName), ...constraints);
 
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const items = snapshot.docs.map((doc) => ({
@@ -76,10 +85,14 @@ export function useFirestoreCollection<T = DocumentData>(
         setLoading(false);
       }, (err) => {
         if (err.code === 'permission-denied') {
-             console.warn(`[Permission Denied] Reading ${collectionName} from ${effectiveShard}. This may be expected if user is not verified or query mismatch.`);
+             console.warn(`[Permission Denied] Reading ${collectionName} from ${effectiveShard}. User Tenant: ${user?.tenantId}`);
              setData([]); 
+        } else if (err.code === 'failed-precondition') {
+             // Often implies missing index
+             console.warn(`[Index Required] Querying ${collectionName} requires an index. Check console link.`);
+             console.error(err);
         } else {
-             console.error(`Firestore Error (${collectionName} on ${effectiveShard}):`, err);
+             console.error(`Firestore Error (${collectionName}):`, err);
              setError(err);
         }
         setLoading(false);
