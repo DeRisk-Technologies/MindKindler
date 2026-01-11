@@ -1,0 +1,86 @@
+[
+  {
+    "category": "SEMH",
+    "sub_category": "Anxiety",
+    "trigger_keywords": ["anxious", "scared", "withdrawal", "school refusal", "worry", "panic"],
+    "statutory_provision": "Teaching of strategies to help * cope with anxiety and/or distress.",
+    "suggested_intervention": "Social Stories or CBT techniques delivered by trained ELSA."
+  },
+  {
+    "category": "SEMH",
+    "sub_category": "Emotional Regulation",
+    "trigger_keywords": ["angry", "outburst", "frustrated", "meltdown", "emotional dysregulation"],
+    "statutory_provision": "Access to a key adult to support co-regulation during periods of heightened emotion.",
+    "suggested_intervention": "Zones of Regulation curriculum."
+  },
+  {
+    "category": "SEMH",
+    "sub_category": "Social Skills",
+    "trigger_keywords": ["peer conflict", "isolated", "friendship issues", "social understanding"],
+    "statutory_provision": "Small group work to develop social interaction skills.",
+    "suggested_intervention": "Circle of Friends or LEGO Therapy."
+  },
+  {
+    "category": "Sensory",
+    "sub_category": "Auditory Processing",
+    "trigger_keywords": ["loud noises", "hands over ears", "distracted by sound", "auditory sensitivity"],
+    "statutory_provision": "Access to a quiet space and/or ear defenders during periods of high auditory stimulation.",
+    "suggested_intervention": "Sensory Circuit breaks."
+  },
+  {
+    "category": "Sensory",
+    "sub_category": "Proprioception",
+    "trigger_keywords": ["bumping into things", "clumsy", "heavy handed", "seeks pressure"],
+    "statutory_provision": "Regular movement breaks incorporating heavy work activities.",
+    "suggested_intervention": "Occupational Therapy (OT) Sensory Diet."
+  },
+  {
+    "category": "Sensory",
+    "sub_category": "Visual Processing",
+    "trigger_keywords": ["visual clutter", "light sensitivity", "squinting", "tracking difficulty"],
+    "statutory_provision": "Consideration of visual environment, including decluttering and use of natural light where possible.",
+    "suggested_intervention": "Visual timetable and clear labeling."
+  },
+  {
+    "category": "C&I",
+    "sub_category": "Receptive Language",
+    "trigger_keywords": ["understanding instructions", "following directions", "vocabulary gap", "processing time"],
+    "statutory_provision": "Instructions to be broken down into small, manageable chunks with visual support.",
+    "suggested_intervention": "Elklan 'Language Builders' strategies."
+  },
+  {
+    "category": "C&I",
+    "sub_category": "Expressive Language",
+    "trigger_keywords": ["word finding", "sentence structure", "limited vocabulary", "unclear speech"],
+    "statutory_provision": "Opportunities for pre-teaching of key vocabulary related to the curriculum.",
+    "suggested_intervention": "Word Aware approach."
+  },
+  {
+    "category": "C&I",
+    "sub_category": "Social Communication",
+    "trigger_keywords": ["turn taking", "eye contact", "literal interpretation", "conversation skills"],
+    "statutory_provision": "Explicit teaching of social communication rules and non-verbal cues.",
+    "suggested_intervention": "Socially Speaking program."
+  },
+  {
+    "category": "Cognition",
+    "sub_category": "Working Memory",
+    "trigger_keywords": ["forgetting instructions", "losing items", "short attention span", "mental arithmetic"],
+    "statutory_provision": "Use of memory aids such as task checklists, mini-whiteboards, and voice recorders.",
+    "suggested_intervention": "Cogmed or Jungle Memory training."
+  },
+  {
+    "category": "Cognition",
+    "sub_category": "Processing Speed",
+    "trigger_keywords": ["slow to start", "needs more time", "writing speed", "processing delay"],
+    "statutory_provision": "Allowance of 25% extra time in assessments and reduced volume of written work.",
+    "suggested_intervention": "Typing skills development (Touch Typing)."
+  },
+  {
+    "category": "Cognition",
+    "sub_category": "Literacy Difficulties",
+    "trigger_keywords": ["reading delay", "spelling errors", "phonics gap", "dyslexia traits"],
+    "statutory_provision": "Structured, cumulative, multisensory literacy intervention.",
+    "suggested_intervention": "Read Write Inc. or potentially specialist Dyslexia support."
+  }
+]

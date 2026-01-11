@@ -1,0 +1,130 @@
+[
+  {
+    "id": "path_process",
+    "title": "P.A.T.H. (Planning Alternative Tomorrows with Hope)",
+    "description": "Visual planning for complex futures, focusing on long-term aspirations and backward mapping.",
+    "stages": [
+      {
+        "id": "north_star",
+        "label": "1. The North Star (Dream)",
+        "ai_prompt": "Ask the child/family: 'Imagine a future where everything has gone right. Who is with you? What are you doing? How does it feel?' Focus on vivid imagery."
+      },
+      {
+        "id": "goals",
+        "label": "2. Goals (Positive & Possible)",
+        "ai_prompt": "Identify concrete milestones for the next year. 'If the North Star is the destination, what does the halfway point look like?'"
+      },
+      {
+        "id": "now",
+        "label": "3. The Situation Now",
+        "ai_prompt": "Contrast the dream with today's reality. 'What is factual about today? What is already working? What is hard?'"
+      },
+      {
+        "id": "enroll",
+        "label": "4. Who to Enrol",
+        "ai_prompt": "Identify the team. 'Who needs to help to make this dream happen? Family, Professionals, Friends?'"
+      },
+      {
+        "id": "stronger",
+        "label": "5. Getting Stronger",
+        "ai_prompt": "Identify resilience factors. 'What skills or knowledge do we need to build to survive the journey?'"
+      },
+      {
+        "id": "first_steps",
+        "label": "6. First Steps",
+        "ai_prompt": "Define immediate actions for the next 24-48 hours. 'What is one small thing we can do tomorrow?'"
+      }
+    ]
+  },
+  {
+    "id": "maps_process",
+    "title": "M.A.P.S. (Making Action Plans)",
+    "description": "A collaborative process to build a shared vision for the student's inclusion.",
+    "stages": [
+      {
+        "id": "history",
+        "label": "1. History / The Story",
+        "ai_prompt": "Ask for the background. 'Tell me the story of [Name] so far. Key milestones, high points, and low points.'"
+      },
+      {
+        "id": "dream",
+        "label": "2. The Dream",
+        "ai_prompt": "Ask about aspirations. 'What is your greatest hope for [Name] in the future?'"
+      },
+      {
+        "id": "nightmare",
+        "label": "3. The Nightmare",
+        "ai_prompt": "Address fears directly. 'What is your worst fear for [Name] if things don't change?' (Crucial for identifying risks)"
+      },
+      {
+        "id": "who_is",
+        "label": "4. Who is [Name]?",
+        "ai_prompt": "Brainstorm descriptors. 'What words describe [Name]? Focus on gifts, strengths, and personality.'"
+      },
+      {
+        "id": "needs",
+        "label": "5. Needs",
+        "ai_prompt": "Identify what is required. 'What does [Name] need to avoid the nightmare and move towards the dream?'"
+      },
+      {
+        "id": "action_plan",
+        "label": "6. Action Plan",
+        "ai_prompt": " Agree on specifics. 'Who will do what, and by when?'"
+      }
+    ]
+  },
+  {
+    "id": "complex",
+    "title": "Complex Case (Hypothesis Testing)",
+    "description": "A scientific method for unpicking persistent barriers through hypothesis formulation.",
+    "stages": [
+      {
+        "id": "problem_clarification",
+        "label": "1. Problem Clarification",
+        "ai_prompt": "Ask specific questions to define the frequency, intensity, and duration of the concern. Move away from vague descriptions."
+      },
+      {
+        "id": "data_context",
+        "label": "2. Data & Context",
+        "ai_prompt": "Review the Subject 360 history. Ask: 'When does this behavior not happen?' (Exception hunting)."
+      },
+      {
+        "id": "hypothesis",
+        "label": "3. Hypothesis Generation",
+        "ai_prompt": "Formulate a working hypothesis. Is this 'Can't do' (Skill deficit) or 'Won't do' (Performance deficit)?"
+      },
+      {
+        "id": "intervention",
+        "label": "4. Intervention Design",
+        "ai_prompt": "Design a SMART intervention to test the hypothesis. Ensure it is time-bound."
+      }
+    ]
+  },
+  {
+    "id": "multi_agency",
+    "title": "Multi-Agency (TAC/TAS)",
+    "description": "Statutory Team Around the Child meeting structure for complex health & social needs.",
+    "stages": [
+      {
+        "id": "role_remit",
+        "label": "1. Role & Remit",
+        "ai_prompt": "Clarify who is present. Ask Health and Social Care colleagues for their statutory advice updates."
+      },
+      {
+        "id": "joint_needs",
+        "label": "2. Joint Needs Analysis",
+        "ai_prompt": "Triangulate the school's concern with the medical/social context. Identify cross-agency patterns."
+      },
+      {
+        "id": "outcome_agreement",
+        "label": "3. Outcome Agreement",
+        "ai_prompt": "Agree on 'Long Term Outcomes' (Section E of EHCP). Ensure they are specific and aspiring."
+      },
+      {
+        "id": "provision_assignment",
+        "label": "4. Provision Assignment",
+        "ai_prompt": "Who pays for what? Assign specific provisions to specific agencies (Health vs Education budget)."
+      }
+    ]
+  }
+]

@@ -45,6 +45,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { usePermissions } from "@/hooks/use-permissions"; 
 import { ComplianceWidget } from "@/components/dashboard/widgets/ComplianceWidget"; 
 import { MyCaseload } from "@/components/dashboard/widgets/MyCaseload"; 
+import { SupervisionQueue } from "@/components/dashboard/widgets/SupervisionQueue"; // Phase 24
 import { useToast } from "@/hooks/use-toast";
 import { httpsCallable } from "firebase/functions"; 
 
@@ -85,6 +86,7 @@ export default function DashboardPage() {
 
   const isSuperAdmin = hasRole(['SuperAdmin']);
   const isClinician = hasRole(['EPP', 'EducationalPsychologist', 'ClinicalPsychologist', 'TenantAdmin']);
+  const isSupervisor = hasRole(['SeniorEPP', 'LeadPsychologist', 'SuperAdmin', 'TenantAdmin']); // Phase 24 Logic
   const isGov = hasRole(['GovAnalyst', 'SuperAdmin']);
   
   const showClinical = can('view_psychometrics') || can('view_sensitive_notes');
@@ -229,102 +231,6 @@ export default function DashboardPage() {
 
       <DashboardAlerts />
 
-      {/* === WAITING TASKS (New) === */}
-      {isClinician && (
-          <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                  <CardHeader className="pb-3">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                          <Clock className="h-5 w-5 text-orange-500" /> Waiting Tasks
-                      </CardTitle>
-                      <CardDescription>Items requiring your attention</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                      {/* Mock Tasks for Pilot - In prod, fetch from 'tasks' collection */}
-                      <div className="flex items-center justify-between p-3 bg-white border rounded-lg shadow-sm">
-                          <div className="flex items-center gap-3">
-                              <FileText className="h-4 w-4 text-slate-400" />
-                              <div>
-                                  <div className="text-sm font-medium">Finalize EHCP Draft - Alex D.</div>
-                                  <div className="text-xs text-slate-500">Due: Today</div>
-                              </div>
-                          </div>
-                          <Button size="sm" variant="ghost" asChild><Link href="/dashboard/reports"><ArrowRight className="h-4 w-4"/></Link></Button>
-                      </div>
-                      <div className="flex items-center justify-between p-3 bg-white border rounded-lg shadow-sm">
-                          <div className="flex items-center gap-3">
-                              <ClipboardList className="h-4 w-4 text-slate-400" />
-                              <div>
-                                  <div className="text-sm font-medium">Review Assessment - Sarah J.</div>
-                                  <div className="text-xs text-slate-500">Submitted 2h ago</div>
-                              </div>
-                          </div>
-                          <Button size="sm" variant="ghost">Review</Button>
-                      </div>
-                  </CardContent>
-                  <CardFooter>
-                      <Button variant="link" className="text-xs p-0 h-auto">View all tasks</Button>
-                  </CardFooter>
-              </Card>
-
-              {/* Upcoming Consultations */}
-              <Card>
-                  <CardHeader className="pb-3">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                          <CalendarIcon className="h-5 w-5 text-indigo-500" /> Upcoming Sessions
-                      </CardTitle>
-                      <CardDescription>Your schedule for today</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                      <div className="flex items-center justify-between p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
-                          <div className="flex items-center gap-3">
-                              <div className="text-center min-w-[40px]">
-                                  <div className="text-xs font-bold text-indigo-700 uppercase">Today</div>
-                                  <div className="text-lg font-bold text-indigo-900">14:00</div>
-                              </div>
-                              <div className="border-l border-indigo-200 pl-3">
-                                  <div className="text-sm font-bold text-indigo-900">Consultation - Sally B.</div>
-                                  <div className="text-xs text-indigo-600">Video Call • Assessment</div>
-                              </div>
-                          </div>
-                          <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 h-8" asChild>
-                              <Link href="/dashboard/consultations"><Play className="h-3 w-3 mr-1"/> Join</Link>
-                          </Button>
-                      </div>
-                  </CardContent>
-              </Card>
-          </div>
-      )}
-
-      {/* === SUPER ADMIN PILOT TOOLS === */}
-      {isSuperAdmin && (
-          <div className="grid gap-6 md:grid-cols-3">
-              <Card className="border-l-4 border-l-cyan-600 md:col-span-3 bg-cyan-50/30">
-                  <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2">
-                          <Wrench className="h-5 w-5 text-cyan-700" />
-                          Pilot Management Console
-                      </CardTitle>
-                      <CardDescription>Tools for managing the UK/US Pilot rollout.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-wrap gap-4">
-                      <Button variant="outline" onClick={() => runSeed('create_regional_admins')} disabled={isSeeding}>
-                          <Users className="mr-2 h-4 w-4" /> Create Regional Admins
-                      </Button>
-                      <Button variant="outline" onClick={() => runSeed('seed_students', 'uk')} disabled={isSeeding}>
-                          <Database className="mr-2 h-4 w-4" /> Seed UK Data (5 Students)
-                      </Button>
-                       <Button variant="outline" onClick={() => runSeed('seed_students', 'us')} disabled={isSeeding}>
-                          <Database className="mr-2 h-4 w-4" /> Seed US Data (5 Students)
-                      </Button>
-                      <Button variant="destructive" onClick={runClear} disabled={isSeeding}>
-                          <Trash2 className="mr-2 h-4 w-4" /> Wipe Pilot Data (UK)
-                      </Button>
-                  </CardContent>
-              </Card>
-          </div>
-      )}
-
       {/* Role Specific Widgets */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-6">
           {showClinical && (
@@ -333,7 +239,14 @@ export default function DashboardPage() {
               </div>
           )}
 
-          {showCompliance && (
+          {/* Phase 24: Supervision Queue for Senior Staff */}
+          {isSupervisor && (
+              <div className="h-[250px]">
+                  <SupervisionQueue />
+              </div>
+          )}
+
+          {showCompliance && !isSupervisor && (
               <div className="h-[250px]">
                   <ComplianceWidget />
               </div>

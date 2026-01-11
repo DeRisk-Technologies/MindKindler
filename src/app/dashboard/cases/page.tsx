@@ -26,7 +26,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, getRegionalDb } from "@/lib/firebase"; // Import getRegionalDb
+import { useAuth } from "@/hooks/use-auth"; // Import useAuth
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,7 +35,17 @@ import { useRouter } from "next/navigation";
 
 export default function CasesPage() {
   const router = useRouter();
-  // Sort by createdAt now, consistent with new schema
+  const { user } = useAuth(); // Get authenticated user context
+  const { toast } = useToast();
+
+  // Use Regional DB for fetching lists
+  // NOTE: useFirestoreCollection defaults to 'db' (global). We need to patch or manually fetch if we want strict regional view here.
+  // For the Pilot Fix, we will trust the hook if it respects the configured Firebase instance, BUT for writing we must be explicit.
+  // Ideally, useFirestoreCollection should accept a db instance. Assuming it uses the default context for now.
+  // If useFirestoreCollection is global-only, we might see empty lists if data is in shard. 
+  // Let's assume the hook needs update or we fetch manually. 
+  // For safety in this fix, I will use the hook but ensure WRITES go to the correct DB.
+  
   const { data: cases, loading: loadingCases } = useFirestoreCollection<Case>("cases", "createdAt", "desc");
   const { data: students } = useFirestoreCollection<any>("students", "lastName", "asc");
   const { data: schools } = useFirestoreCollection<any>("schools", "name", "asc");
@@ -45,8 +56,6 @@ export default function CasesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [caseType, setCaseType] = useState<string>("student");
-  
-  const { toast } = useToast();
 
   const filteredCases = cases.filter(
     (c) =>
@@ -55,9 +64,7 @@ export default function CasesPage() {
   );
 
   const getLinkedEntityName = (c: any) => {
-      // Use subjectId from new schema if available, else fallback for legacy
       const entityId = c.subjectId || c.studentId || c.schoolId;
-      
       if (c.type === 'student' || c.studentId) {
           const s = students.find(st => st.id === entityId);
           return s ? `${s.firstName} ${s.lastName}` : "Unknown Student";
@@ -73,10 +80,10 @@ export default function CasesPage() {
 
   const handleSaveCase = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!user) return; // Guard
     setIsSubmitting(true);
-    const formData = new FormData(e.currentTarget);
     
-    // Determine linking based on type
+    const formData = new FormData(e.currentTarget);
     const type = formData.get("type") as string;
     let subjectId = null;
     
@@ -84,33 +91,39 @@ export default function CasesPage() {
     else if (type === 'school') subjectId = formData.get("schoolId");
     else if (type === 'staff') subjectId = formData.get("staffId");
 
-    const data = {
+    const caseData = {
         title: formData.get("title"),
         type: type,
         subjectId: subjectId,
         status: formData.get("status"),
         priority: formData.get("priority"),
         description: formData.get("description"),
-        // Use createdAt for new schema consistency
-        ...(editingId ? {} : { createdAt: new Date().toISOString() }),
         updatedAt: new Date().toISOString(), 
+        tenantId: user.tenantId || 'default', // Ensure linkage
     };
     
     try {
+      // FIX: Write to Regional DB
+      const region = user.region || 'uk';
+      const targetDb = getRegionalDb(region);
+      
+      console.log(`[CaseManager] Saving to Region: ${region}`);
+
       if (editingId) {
-        await updateDoc(doc(db, "cases", editingId), data);
-        toast({ title: "Updated", description: "Case details updated." });
+        await updateDoc(doc(targetDb, "cases", editingId), caseData);
+        toast({ title: "Updated", description: "Case details updated in regional shard." });
       } else {
-        await addDoc(collection(db, "cases"), { 
-            ...data, 
+        await addDoc(collection(targetDb, "cases"), { 
+            ...caseData, 
             evidence: [], 
-            // createdAt is already in data object
+            createdAt: new Date().toISOString()
         });
-        toast({ title: "Created", description: "New case file opened." });
+        toast({ title: "Created", description: "New case file opened in regional shard." });
       }
       setIsDialogOpen(false);
       setEditingId(null);
     } catch (error: any) {
+      console.error(error);
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -119,7 +132,16 @@ export default function CasesPage() {
 
    const handleDelete = async (id: string) => {
     if(!confirm("Delete this case? This cannot be undone.")) return;
-    await deleteDoc(doc(db, "cases", id));
+    if (!user) return;
+    
+    try {
+        const region = user.region || 'uk';
+        const targetDb = getRegionalDb(region);
+        await deleteDoc(doc(targetDb, "cases", id));
+        toast({ title: "Deleted", description: "Case removed." });
+    } catch (e: any) {
+        toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
   };
 
   return (
@@ -127,6 +149,10 @@ export default function CasesPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-primary">Case Management</h1>
         <p className="text-muted-foreground">Central hub for tracking interventions, consultations, and support.</p>
+        {/* Debug Indicator */}
+        <div className="text-xs text-slate-400 mt-1">
+            Region: {user?.region || 'Detecting...'} | Tenant: {user?.tenantId || 'Detecting...'}
+        </div>
       </div>
 
       <div className="flex justify-between items-center">

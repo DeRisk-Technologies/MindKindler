@@ -523,6 +523,14 @@ export interface ReportSection {
     internalOnly?: boolean;
 }
 
+// PHASE 24: Supervision Workflow
+export interface ReportHistoryEvent {
+    action: 'created' | 'edited' | 'submitted_review' | 'changes_requested' | 'approved' | 'signed';
+    userId: string;
+    timestamp: string;
+    note?: string;
+}
+
 export interface Report {
     id: string;
     tenantId: string;
@@ -532,8 +540,13 @@ export interface Report {
     type: 'consultation' | 'statutory' | 'ehcp_review';
     templateType?: string;
     
-    status: 'draft' | 'review' | 'signed' | 'archived';
+    // Updated Status Enum
+    status: 'draft' | 'pending_review' | 'changes_requested' | 'signed' | 'archived';
     version: number;
+    
+    // Supervision
+    supervisorId?: string;
+    history?: ReportHistoryEvent[];
     
     content: {
         sections: ReportSection[];
