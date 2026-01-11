@@ -76,9 +76,14 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
     
+    // Schools: Now Tenant Scoped to prevent EPPs seeing other practice's clients
     match /schools/{id} { 
-        allow read, write: if isAuthenticated();
-        match /staff/{staffId} { allow read, write: if isAuthenticated(); }
+        allow read, write: if isTenantScoped();
+        match /staff/{staffId} { allow read, write: if isTenantScoped(); }
+    }
+    
+    match /districts/{id} {
+        allow read, write: if isTenantScoped();
     }
     
     // --- 5. ENTERPRISE TENANTS (Nested) ---

@@ -76,6 +76,32 @@ async function handleSeeding(db: FirebaseFirestore.Firestore, tenantId: string) 
     const batch = db.batch();
     const prefix = tenantId; // Prefix IDs to prevent collisions in shared shards
 
+    // --- SCHOOLS (Phase 35 Fix: Tenant Scoped Schools) ---
+    const primarySchoolId = `${prefix}_school_pilot_primary`;
+    const highSchoolId = `${prefix}_school_pilot_high`;
+
+    batch.set(db.collection("schools").doc(primarySchoolId), {
+        id: primarySchoolId,
+        tenantId,
+        name: "Pilot Primary School",
+        address: { street: "123 Pilot Lane", coordinates: { lat: 51.505, lng: -0.09 } },
+        stats: { studentsOnRoll: 350, activeCases: 2 },
+        principalName: "Mrs. Principal",
+        senco: { name: "Mr. SENCO", email: "senco@pilotprimary.com" },
+        isSeed: true
+    });
+
+    batch.set(db.collection("schools").doc(highSchoolId), {
+        id: highSchoolId,
+        tenantId,
+        name: "Pilot High School",
+        address: { street: "456 Academy Road", coordinates: { lat: 51.51, lng: -0.1 } },
+        stats: { studentsOnRoll: 1200, activeCases: 1 },
+        principalName: "Dr. Headteacher",
+        senco: { name: "Ms. Inclusion", email: "senco@pilothigh.com" },
+        isSeed: true
+    });
+
     // --- STUDENT 1: CHARLIE COMPLEX ---
     for (let i = 0; i < 2; i++) {
         const id = `${prefix}_charlie_${i}`;
@@ -92,7 +118,7 @@ async function handleSeeding(db: FirebaseFirestore.Firestore, tenantId: string) 
                 gender: { value: "Male", metadata: {} }
             },
             education: {
-                currentSchoolId: { value: "Pilot Primary", metadata: {} },
+                currentSchoolId: { value: primarySchoolId, metadata: {} }, // Linked to seeded school
                 senStatus: { value: "E", metadata: {} }, 
                 yearGroup: { value: "Year 4", metadata: {} }
             },
@@ -122,11 +148,13 @@ async function handleSeeding(db: FirebaseFirestore.Firestore, tenantId: string) 
         batch.set(psychRef, {
             id: psychRef.id,
             studentId: id,
+            tenantId, // Ensure tenantId on sub-docs too
             templateId: "WISC-V",
             totalScore: 72,
             responses: { "VCI": 95, "WMI": 72, "PSI": 88 },
             completedAt: new Date().toISOString(),
-            status: "graded"
+            status: "graded",
+            isSeed: true
         });
     }
 
@@ -145,7 +173,7 @@ async function handleSeeding(db: FirebaseFirestore.Firestore, tenantId: string) 
                 dateOfBirth: { value: "2018-09-01", metadata: { verified: true } }
             },
             education: {
-                currentSchoolId: { value: "Pilot Primary", metadata: {} },
+                currentSchoolId: { value: primarySchoolId, metadata: {} },
                 senStatus: { value: "K", metadata: {} }
             },
             meta: { createdAt: new Date().toISOString(), trustScore: 100 }
@@ -165,7 +193,10 @@ async function handleSeeding(db: FirebaseFirestore.Firestore, tenantId: string) 
                 firstName: { value: "Riley", metadata: { verified: true } },
                 lastName: { value: `Review ${i+1}`, metadata: { verified: true } }
             },
-            education: { senStatus: { value: "E", metadata: {} } },
+            education: { 
+                currentSchoolId: { value: highSchoolId, metadata: {} },
+                senStatus: { value: "E", metadata: {} } 
+            },
             meta: { createdAt: new Date().toISOString(), trustScore: 100 }
         });
 
@@ -178,12 +209,13 @@ async function handleSeeding(db: FirebaseFirestore.Firestore, tenantId: string) 
             status: "pending_review",
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            content: { sections: [{ id: "s1", title: "Section A", content: "Draft content." }] }
+            content: { sections: [{ id: "s1", title: "Section A", content: "Draft content." }] },
+            isSeed: true
         });
     }
 
     await batch.commit();
-    return { success: true, message: "Pilot data seeded successfully." };
+    return { success: true, message: "Pilot data seeded successfully (Students + Schools)." };
 }
 
 async function handleClearing(db: FirebaseFirestore.Firestore, tenantId: string) {
@@ -191,7 +223,7 @@ async function handleClearing(db: FirebaseFirestore.Firestore, tenantId: string)
     let count = 0;
 
     // Collections to clear
-    const collections = ['students', 'cases', 'reports', 'consultation_sessions', 'assessment_results'];
+    const collections = ['students', 'cases', 'reports', 'consultation_sessions', 'assessment_results', 'schools'];
     
     for (const col of collections) {
         const snap = await db.collection(col)

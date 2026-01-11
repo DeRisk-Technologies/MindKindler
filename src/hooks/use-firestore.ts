@@ -4,11 +4,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { collection, query, orderBy, onSnapshot, DocumentData, doc, getDoc, getDocs, Firestore, where, limit } from "firebase/firestore";
-import { db, getRegionalDb } from "@/lib/firebase"; // Import regional loader
-import { usePermissions } from "@/hooks/use-permissions"; // Context-Aware Sharding
+import { db, getRegionalDb } from "@/lib/firebase"; 
+import { usePermissions } from "@/hooks/use-permissions"; 
+import { useAuth } from "@/hooks/use-auth";
 
 interface FirestoreCollectionOptions {
-  targetShard?: string; // Explicitly override shard (e.g. for Admin viewing other regions)
+  targetShard?: string; 
   filter?: { field: string; operator: any; value: any };
 }
 
@@ -23,40 +24,25 @@ export function useFirestoreCollection<T = DocumentData>(
   const [error, setError] = useState<Error | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
   
-  // Phase 20: Shard Injection
-  // We get the current user's shard context. 
-  // If options.targetShard is provided, we use that instead.
   const { shardId: userShardId, loading: permissionsLoading } = usePermissions();
+  const { user } = useAuth(); // Needed for auto-tenant scoping
 
   const refresh = useCallback(() => {
     setRefreshCount(prev => prev + 1);
   }, []);
 
   useEffect(() => {
-    // If we are waiting for permissions AND no explicit shard is provided, wait.
-    // If explicit shard is provided, we can proceed.
     if (!options?.targetShard && permissionsLoading) return;
 
     setLoading(true);
     
-    // Determine Target DB
-    // Priority: 
-    // 1. Explicit options.targetShard (e.g. Admin selects 'uk')
-    // 2. User's assigned shard (e.g. Regional Admin locked to 'uk')
-    // 3. Default DB
-    
     let targetDb: Firestore = db;
     let effectiveShard = options?.targetShard || userShardId || 'default';
-
-    // If appointments is global or sharded, we need to be careful.
-    // Appointments often cross-reference so currently we might default to main DB if not fully sharded.
-    // BUT for now, let's respect the shard logic.
 
     if (effectiveShard && effectiveShard !== 'default') {
         try {
             const regionCode = effectiveShard.replace('mindkindler-', '');
             targetDb = getRegionalDb(regionCode);
-            // console.log(`[useFirestoreCollection] Switched to Shard: ${effectiveShard} (Region: ${regionCode})`);
         } catch (e) {
             console.warn(`[useFirestoreCollection] Failed to load shard ${effectiveShard}, falling back to default.`);
         }
@@ -64,6 +50,18 @@ export function useFirestoreCollection<T = DocumentData>(
 
     try {
       let q = query(collection(targetDb, collectionName), orderBy(sortField, direction));
+      
+      // Auto-Tenant Scope (Fix for Permission Denied)
+      const isGlobalCollection = ['organizations', 'tenants', 'user_routing', 'users', 'ai_provenance', 'ai_feedback'].includes(collectionName);
+      const isSuperAdmin = user?.role === 'SuperAdmin';
+      const hasTenant = user?.tenantId && user?.tenantId !== 'default';
+
+      if (hasTenant && !isSuperAdmin && !isGlobalCollection) {
+          // If options.filter already handles tenantId, skip to avoid conflict
+          if (!options?.filter || options.filter.field !== 'tenantId') {
+               q = query(q, where('tenantId', '==', user.tenantId));
+          }
+      }
       
       if (options?.filter) {
         q = query(q, where(options.filter.field, options.filter.operator, options.filter.value));
@@ -77,10 +75,9 @@ export function useFirestoreCollection<T = DocumentData>(
         setData(items);
         setLoading(false);
       }, (err) => {
-        // Suppress specific permissions error for non-critical widgets
         if (err.code === 'permission-denied') {
-             console.warn(`[Permission Denied] Reading ${collectionName} from ${effectiveShard}. This may be expected if user is not verified.`);
-             setData([]); // clear data gracefully
+             console.warn(`[Permission Denied] Reading ${collectionName} from ${effectiveShard}. This may be expected if user is not verified or query mismatch.`);
+             setData([]); 
         } else {
              console.error(`Firestore Error (${collectionName} on ${effectiveShard}):`, err);
              setError(err);
@@ -93,7 +90,7 @@ export function useFirestoreCollection<T = DocumentData>(
       setError(err);
       setLoading(false);
     }
-  }, [collectionName, sortField, direction, refreshCount, userShardId, permissionsLoading, options?.targetShard, options?.filter]);
+  }, [collectionName, sortField, direction, refreshCount, userShardId, permissionsLoading, options?.targetShard, options?.filter, user]);
 
   return { data, loading, error, refresh };
 }
@@ -149,7 +146,6 @@ export function useFirestoreDocument<T = DocumentData>(
 }
 
 export function useFirestore() {
-    // This helper is imperative (async). 
     const getDocument = async (collectionName: string, id: string, shard?: string) => {
         try {
             let targetDb = db;
@@ -174,8 +170,6 @@ export function useFirestore() {
 }
 
 export async function getCase(id: string) {
-    // Legacy helper - assumes default DB for cases unless updated.
-    // TODO: Update to support sharded cases.
     try {
         const docRef = doc(db, "cases", id);
         const docSnap = await getDoc(docRef);
