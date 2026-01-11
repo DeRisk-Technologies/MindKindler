@@ -20,63 +20,56 @@ export function useAuth() {
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (u) {
           try {
-            // 1. Try ID Token Claims (Fastest)
-            const token = await getIdTokenResult(u, true); // Force refresh
-            let role = token.claims.role as string;
-            let tenantId = token.claims.tenantId as string;
-            let region = token.claims.region as string;
+            // 1. Force Refresh Token to get latest Custom Claims
+            const tokenResult = await getIdTokenResult(u, true);
+            const claims = tokenResult.claims;
 
-            // 2. Fetch User Routing (CRITICAL for Sharding)
-            // We check 'user_routing' FIRST as it's the source of truth for region/shard
+            let role = claims.role as string;
+            let tenantId = claims.tenantId as string;
+            let region = claims.region as string;
+
+            // 2. Resolve User Routing (The Source of Truth)
             const routingRef = doc(db, 'user_routing', u.uid);
             let routingDoc = await getDoc(routingRef);
             let routingData = routingDoc.exists() ? routingDoc.data() : null;
 
             if (routingData) {
+                // If claims are missing but routing has data, we prioritize routing for UI 
+                // BUT we know Security Rules will fail until claims sync.
+                if (!tenantId && routingData.tenantId) {
+                    console.warn(`[useAuth] Tenant mismatch! Claims: ${tenantId}, Routing: ${routingData.tenantId}. Sync required.`);
+                }
+                
                 region = region || routingData.region;
                 tenantId = tenantId || routingData.tenantId;
-                role = role === 'parent' || !role ? routingData.role : role;
-            } else if (u.email?.includes('pilot')) {
-                // EMERGENCY PILOT FIX: If routing missing for Pilot user, recreate it
-                const pilotRegion = 'uk';
-                const pilotRole = 'EPP';
-                const pilotTenant = 'default';
-                
-                await setDoc(routingRef, {
-                    uid: u.uid,
-                    region: pilotRegion,
-                    shardId: `mindkindler-${pilotRegion}`,
-                    role: pilotRole,
-                    tenantId: pilotTenant,
-                    email: u.email
-                });
-                
-                region = pilotRegion;
-                tenantId = pilotTenant;
-                role = pilotRole;
-                console.log("[useAuth] Recreated missing routing for Pilot User");
+                role = role || routingData.role;
             }
 
-            // 3. Fallback to Default Firestore Profile
-            const userRef = doc(db, 'users', u.uid);
-            const userDoc = await getDoc(userRef);
-            
-            if (userDoc.exists()) {
-                const firestoreData = userDoc.data();
-                if (!role || role === 'parent') role = firestoreData.role; 
-            } else if (role === 'EPP') {
-                // Ensure profile exists in default DB for simple auth checks
-                await setDoc(userRef, { role, email: u.email, tenantId }, { merge: true });
+            // 3. Fallback to default DB Profile
+            if (!role || !tenantId) {
+                const userRef = doc(db, 'users', u.uid);
+                const userDoc = await getDoc(userRef);
+                if (userDoc.exists()) {
+                    const profileData = userDoc.data();
+                    role = role || profileData.role;
+                    tenantId = tenantId || profileData.tenantId;
+                }
             }
 
             // 4. Construct Extended User
             const extendedUser = u as AuthUser;
-            extendedUser.role = role || 'parent'; // Default safe
+            extendedUser.role = role || 'parent';
             extendedUser.tenantId = tenantId || 'default';
-            extendedUser.region = region || 'uk'; // Default to UK for pilot safety
+            extendedUser.region = region || 'uk'; 
             extendedUser.shardId = `mindkindler-${extendedUser.region}`;
             
-            console.log(`[useAuth] Resolved: ${u.email} | Role: ${role} | Region: ${region} | Tenant: ${tenantId}`);
+            console.log(`[useAuth] Active Identity: 
+                Email: ${u.email}
+                Role: ${extendedUser.role} 
+                Tenant: ${extendedUser.tenantId} 
+                Region: ${extendedUser.region}
+                Source: ${claims.tenantId ? 'Claims (Secure)' : 'Routing (Legacy)'}`);
+            
             setUser(extendedUser);
           } catch (err) {
             console.error("[useAuth] Error fetching user details:", err);

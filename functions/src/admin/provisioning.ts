@@ -77,12 +77,13 @@ async function handleSeeding(db: FirebaseFirestore.Firestore, tenantId: string) 
     const prefix = tenantId; // Prefix IDs to prevent collisions in shared shards
 
     // --- SCHOOLS (Phase 35 Fix: Tenant Scoped Schools) ---
+    // EPPs only see schools they manage (their clients).
     const primarySchoolId = `${prefix}_school_pilot_primary`;
     const highSchoolId = `${prefix}_school_pilot_high`;
 
     batch.set(db.collection("schools").doc(primarySchoolId), {
         id: primarySchoolId,
-        tenantId,
+        tenantId, // CRITICAL: Makes this school visible ONLY to this EPP
         name: "Pilot Primary School",
         address: { street: "123 Pilot Lane", coordinates: { lat: 51.505, lng: -0.09 } },
         stats: { studentsOnRoll: 350, activeCases: 2 },
@@ -93,7 +94,7 @@ async function handleSeeding(db: FirebaseFirestore.Firestore, tenantId: string) 
 
     batch.set(db.collection("schools").doc(highSchoolId), {
         id: highSchoolId,
-        tenantId,
+        tenantId, // CRITICAL
         name: "Pilot High School",
         address: { street: "456 Academy Road", coordinates: { lat: 51.51, lng: -0.1 } },
         stats: { studentsOnRoll: 1200, activeCases: 1 },

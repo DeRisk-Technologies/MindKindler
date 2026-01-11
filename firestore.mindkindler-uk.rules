@@ -76,7 +76,8 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
     
-    // Schools: Now Tenant Scoped to prevent EPPs seeing other practice's clients
+    // Schools: STRICT Tenant Scoped (Reverted from Registry Mode)
+    // EPPs only see schools they manage or created.
     match /schools/{id} { 
         allow read, write: if isTenantScoped();
         match /staff/{staffId} { allow read, write: if isTenantScoped(); }
@@ -100,7 +101,7 @@ service cloud.firestore {
     
     match /knowledgeDocuments/{docId} { 
       allow read: if isAuthenticated(); 
-      allow write: if isAuthenticated(); // FIX: Allow EPPs to upload/edit
+      allow write: if isAuthenticated(); 
     }
     
     match /uploaded_documents/{docId} { allow read, write: if isTenantScoped(); }
