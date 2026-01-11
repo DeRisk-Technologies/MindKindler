@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "pilot:reset": "cd functions && npm run shell -- <<< 'seedDemoData({region: \"uk\", tenantId: \"default\"})'",
+    "pilot:reset": "npx tsx src/scripts/seed-pilot.ts",
     "pilot:clear": "cd functions && npm run shell -- <<< 'clearDemoData({region: \"uk\", tenantId: \"default\"})'",
     "pilot:start": "concurrently \"firebase emulators:start\" \"npm run dev\""
   },
