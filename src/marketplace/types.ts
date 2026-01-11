@@ -82,15 +82,21 @@ export interface CountryPackConfig {
     complianceWorkflows: ComplianceWorkflow[];
     psychometricConfig: PsychometricConfig;
     statutoryReports: StatutoryReportTemplate[];
-    interventionLogic?: InterventionLogic[]; // New capability
+    interventionLogic?: InterventionLogic[]; 
     consultationTemplates?: ConsultationTemplate[];
+    digitalForms?: any[]; // Added in Phase 29
+    // Metadata for Update Checking
+    provisionBankRef?: string;
 }
 
 export interface MarketplaceManifest {
     id: string;
     name: string;
     description: string;
-    version: string;
+    version: string; // e.g. "1.0.0"
+    releaseDate?: string; // e.g. "2024-01-01"
+    changelog?: string; // e.g. "Added 2026 Attendance Codes"
+    
     regionTags: string[];
     actions: InstallAction[];
     capabilities?: CountryPackConfig;

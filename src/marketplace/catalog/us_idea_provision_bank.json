@@ -1,0 +1,58 @@
+[
+  {
+    "category": "Specific Learning Disability (SLD)",
+    "sub_category": "Reading/Dyslexia",
+    "trigger_keywords": ["decoding difficulty", "phonological processing", "reading fluency", "slow reading rate"],
+    "statutory_provision": "Provision of specialized, multisensory reading instruction (Orton-Gillingham approach).",
+    "suggested_intervention": "Wilson Reading System or Barton Reading & Spelling."
+  },
+  {
+    "category": "Specific Learning Disability (SLD)",
+    "sub_category": "Math/Dyscalculia",
+    "trigger_keywords": ["number sense", "math fact retrieval", "calculation errors", "poor estimation"],
+    "statutory_provision": "Use of manipulatives and visual representations for abstract concepts.",
+    "suggested_intervention": "TouchMath or concrete-representational-abstract (CRA) instruction."
+  },
+  {
+    "category": "Other Health Impairment (OHI)",
+    "sub_category": "ADHD/Attention",
+    "trigger_keywords": ["distractible", "impulsive", "off-task", "fidgeting", "focus issues"],
+    "statutory_provision": "Preferential seating away from distractions and near the point of instruction.",
+    "suggested_intervention": "Check-in/Check-out (CICO) system."
+  },
+  {
+    "category": "Other Health Impairment (OHI)",
+    "sub_category": "Executive Functioning",
+    "trigger_keywords": ["disorganized", "forgetful", "loses materials", "poor time management"],
+    "statutory_provision": "Provision of graphic organizers and broken-down assignment directions.",
+    "suggested_intervention": "Executive Function coaching (e.g., SOAR Study Skills)."
+  },
+  {
+    "category": "Autism Spectrum Disorder (ASD)",
+    "sub_category": "Social Communication",
+    "trigger_keywords": ["social reciprocity", "literal thinking", "eye contact", "peer interactions"],
+    "statutory_provision": "Explicit social skills instruction in a small group setting.",
+    "suggested_intervention": "Social Thinking curriculum."
+  },
+  {
+    "category": "Autism Spectrum Disorder (ASD)",
+    "sub_category": "Sensory Processing",
+    "trigger_keywords": ["sensory overload", "noise sensitivity", "tactile defensive", "stimming"],
+    "statutory_provision": "Access to a sensory break area and use of sensory tools (e.g., headphones, fidgets).",
+    "suggested_intervention": "Occupational Therapy consultation for sensory diet."
+  },
+  {
+    "category": "Emotional Disturbance (ED)",
+    "sub_category": "Anxiety/Withdrawal",
+    "trigger_keywords": ["school refusal", "anxious", "panic attacks", "somatic complaints"],
+    "statutory_provision": "Access to school counselor and a 'safe person' check-in.",
+    "suggested_intervention": "CBT-based counseling interventions."
+  },
+  {
+    "category": "Emotional Disturbance (ED)",
+    "sub_category": "Behavioral Dysregulation",
+    "trigger_keywords": ["aggression", "non-compliance", "disruptive", "outbursts"],
+    "statutory_provision": "Implementation of a Functional Behavioral Assessment (FBA) and Behavior Intervention Plan (BIP).",
+    "suggested_intervention": "Positive Behavioral Interventions and Supports (PBIS) Tier 2."
+  }
+]

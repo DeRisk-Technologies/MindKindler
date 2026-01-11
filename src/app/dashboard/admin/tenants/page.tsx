@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Plus, Globe, MoreVertical, Loader2, Pencil, GitBranch, ArrowUp, Link as LinkIcon, X } from 'lucide-react';
+import { Building2, Plus, Globe, MoreVertical, Loader2, Pencil, GitBranch, ArrowUp, Link as LinkIcon, X, Database } from 'lucide-react';
 import Link from 'next/link';
 import { Organization } from '@/types/enterprise';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 
 export default function TenantManagementPage() {
     const { toast } = useToast();
@@ -33,6 +35,9 @@ export default function TenantManagementPage() {
     const [newParentId, setNewParentId] = useState<string>("");
 
     const [isSaving, setIsSaving] = useState(false);
+    
+    // Provisioning State
+    const [provisioningId, setProvisioningId] = useState<string | null>(null);
 
     async function fetchTenants() {
         setLoading(true);
@@ -71,12 +76,10 @@ export default function TenantManagementPage() {
             setEditingChildren(kids);
 
             // 3. Load Potential Parents for Re-assignment
-            // Logic: Must be same region, simpler hierarchy logic
             const potentials = await orgService.getPotentialParents(editingTenant.type);
-            // Filter out self and circular refs
             const safePotentials = potentials.filter(p => 
                 p.id !== editingTenant.id && 
-                p.region === editingTenant.region // Enforce same region strictness
+                p.region === editingTenant.region 
             );
             setAvailableParents(safePotentials);
         }
@@ -87,12 +90,11 @@ export default function TenantManagementPage() {
         if (!editingTenant) return;
         setIsSaving(true);
         try {
-            // Check if parent changed
             const finalParentId = newParentId === "none" ? null : newParentId;
             
             await orgService.updateOrganization(editingTenant.id, {
                 ...editingTenant,
-                parentId: finalParentId as string // Cast for type compatibility
+                parentId: finalParentId as string 
             });
             
             toast({ title: "Updated", description: "Organization details and hierarchy saved." });
@@ -103,6 +105,28 @@ export default function TenantManagementPage() {
             toast({ title: "Error", description: e.message, variant: "destructive" });
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleProvisionData = async (tenantId: string) => {
+        if (!confirm(`Are you sure you want to INJECT Pilot Data into tenant ${tenantId}? This is for demos only.`)) return;
+        
+        setProvisioningId(tenantId);
+        try {
+            // Using the unified provisioner
+            const provisionFn = httpsCallable(functions, 'provisionTenantData');
+            
+            await provisionFn({ 
+                targetTenantId: tenantId, 
+                action: 'seed_pilot_uk' 
+            });
+            
+            toast({ title: "Provisioned", description: `Pilot data injected into ${tenantId}.` });
+        } catch (e: any) {
+            console.error(e);
+            toast({ title: "Provisioning Error", description: e.message, variant: "destructive" });
+        } finally {
+            setProvisioningId(null);
         }
     };
 
@@ -159,12 +183,15 @@ export default function TenantManagementPage() {
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon">
-                                                        <MoreVertical className="h-4 w-4"/>
+                                                        {provisioningId === tenant.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <MoreVertical className="h-4 w-4"/>}
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem asChild>
                                                         <Link href={`/dashboard/govintel/hierarchy/${tenant.id}`}>View Dashboard</Link>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleProvisionData(tenant.id)} disabled={!!provisioningId}>
+                                                        <Database className="mr-2 h-4 w-4"/> Provision Pilot Data
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem className="text-red-600">Suspend Access</DropdownMenuItem>
                                                 </DropdownMenuContent>

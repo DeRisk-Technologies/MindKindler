@@ -5,7 +5,7 @@ import React, { use, useEffect, useState } from 'react';
 import { ReportEditor } from '@/components/reporting/ReportEditor';
 import { useAuth } from '@/hooks/use-auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { getRegionalDb, db as globalDb } from '@/lib/firebase';
+import { getRegionalDb } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,14 +22,8 @@ export default function ReportEditorPage({ params }: { params: Promise<{ id: str
 
         async function loadReport() {
             try {
-                // 1. Resolve Region
-                let region = user?.region;
-                if (!region || region === 'default') {
-                    const rRef = doc(globalDb, 'user_routing', user?.uid || 'unknown');
-                    const rSnap = await getDoc(rRef);
-                    region = rSnap.exists() ? rSnap.data().region : 'uk';
-                }
-
+                // Region is already resolved by useAuth, but we need the instance to fetch data
+                const region = user?.region || 'uk';
                 const db = getRegionalDb(region);
                 const reportRef = doc(db, 'reports', id);
                 const reportSnap = await getDoc(reportRef);
@@ -59,6 +53,8 @@ export default function ReportEditorPage({ params }: { params: Promise<{ id: str
             studentId={report.studentId}
             initialContent={report.content}
             userId={user?.uid || 'unknown'}
+            userRole={user?.role}
+            region={user?.region || 'UK'}
         />
     );
 }

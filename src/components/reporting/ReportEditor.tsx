@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Report } from '@/types/schema';
 import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; 
 import { SubmitForReviewModal } from './modals/SubmitForReviewModal'; 
-import { ExportOptionsModal } from './modals/ExportOptionsModal'; // Phase 24 Task 3
+import { ExportOptionsModal } from './modals/ExportOptionsModal';
 
 // Mock Supervisors (In real app, fetch from Staff Service)
 const MOCK_SUPERVISORS = [
@@ -28,10 +28,11 @@ interface ReportEditorProps {
     studentId: string; 
     initialContent?: any;
     userId: string; 
-    userRole?: string; 
+    userRole?: string;
+    region?: string; // New Prop
 }
 
-export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId, userRole = 'EPP' }: ReportEditorProps) {
+export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId, userRole = 'EPP', region = 'UK' }: ReportEditorProps) {
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -41,7 +42,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     
     // Modals
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-    const [isExportModalOpen, setIsExportModalOpen] = useState(false); // Phase 24
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false); 
 
     const isTrainee = userRole === 'Trainee' || userRole === 'Assistant'; 
 
@@ -69,7 +70,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                     html += `<h2>${s.title}</h2><p>${s.content}</p>`;
                 });
             }
-            if (editor.isEmpty) { 
+            if (editor.isEmpty && html) { 
                  editor.commands.setContent(html);
             }
         }
@@ -98,7 +99,8 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                 studentId,
                 notes: 'Student struggles with attention.',
                 history: 'Diagnosed ADHD in 2020.',
-                glossary: { 'Student': 'Learner' }
+                glossary: { 'Student': 'Learner' },
+                region // Pass region to AI context
             };
 
             const result = await ReportService.requestAiDraft(tenantId, reportId, context);
@@ -217,7 +219,6 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                             </Button>
                         )}
                         
-                        {/* Phase 24: Connected Export Action */}
                         <Button size="sm" variant="secondary" onClick={() => setIsExportModalOpen(true)}>
                             <Share2 className="mr-2 h-4 w-4" /> Export
                         </Button>
@@ -233,8 +234,8 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             </div>
 
             {/* Sidebars */}
-            {activeSidebar === 'citations' && <CitationSidebar onInsert={insertText} />}
-            {activeSidebar === 'provisions' && <ProvisionPicker onInsert={insertText} />}
+            {activeSidebar === 'citations' && <CitationSidebar onInsert={insertText} studentId={studentId} region={region} />}
+            {activeSidebar === 'provisions' && <ProvisionPicker onInsert={insertText} region={region} />}
         </div>
     );
 }

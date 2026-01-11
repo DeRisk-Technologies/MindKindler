@@ -7,6 +7,7 @@ import { saveAiProvenance } from "./utils/provenance";
 import { z } from "zod";
 import { buildSystemPrompt } from "./utils/prompt-builder";
 import { getGenkitInstance } from "./utils/model-selector"; 
+import { logAuditEvent } from "../services/audit"; // Phase 34: Audit Integration
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -55,11 +56,17 @@ export const handler = async (request: CallableRequest<any>) => {
 
     const startTime = Date.now();
     let studentData: any = studentContext; 
+    let regionalDb: FirebaseFirestore.Firestore;
+
+    try {
+        regionalDb = getFirestore(admin.app(), dbId);
+    } catch (e) {
+        regionalDb = admin.firestore(); // Fallback
+    }
 
     // --- 1. DATA RESOLUTION (With Fallback) ---
     if (!studentData) {
         try {
-            const regionalDb = getFirestore(admin.app(), dbId);
             const docSnap = await regionalDb.collection('students').doc(studentId).get();
             if (docSnap.exists) {
                 const fetchedData = docSnap.data();
@@ -75,6 +82,41 @@ export const handler = async (request: CallableRequest<any>) => {
         }
     }
 
+    // --- 1.5 FETCH CONTRIBUTIONS (Phase 33: Multi-Source Intelligence) ---
+    let schoolViews = "";
+    let parentViews = "";
+
+    try {
+        // Fetch assessments/forms linked to this student
+        const contribSnap = await regionalDb.collection('assessment_results')
+            .where('studentId', '==', studentId)
+            // .where('status', '==', 'completed') // Optional: only finalized forms
+            .limit(20) 
+            .get();
+
+        contribSnap.forEach(doc => {
+            const data = doc.data();
+            const responses = data.responses; 
+            const template = data.templateId; // e.g. 'uk_school_contribution'
+
+            // Convert responses to AI-readable string
+            let content = "";
+            if (Array.isArray(responses)) {
+                content = responses.map(r => `${r.questionId}: ${r.answer}`).join(', ');
+            } else {
+                content = JSON.stringify(responses);
+            }
+
+            if (['uk_school_contribution', 'nhs_neuro_questionnaire'].includes(template)) {
+                schoolViews += `\n[Form: ${template}]: ${content}`;
+            } else if (['uk_one_page_profile'].includes(template)) {
+                parentViews += `\n[Form: ${template}]: ${content}`;
+            }
+        });
+    } catch (e) {
+        console.warn("[GenerateReport] Failed to fetch contributions:", e);
+    }
+
     // --- 2. AI CONFIGURATION ---
     await getGenkitInstance('consultationReport'); 
 
@@ -86,23 +128,31 @@ export const handler = async (request: CallableRequest<any>) => {
     const firstName = studentData.identity?.firstName?.value || "Student";
     const lastName = studentData.identity?.lastName?.value || "";
 
-    // Extract Detailed Context from Session
-    let contextBlock = "";
+    // Extract Detailed Context
+    let contextBlock = `
+    ### MULTI-SOURCE INTELLIGENCE (Phase 33)
+    
+    SCHOOL DATA (Teacher Views / SENCO Forms):
+    ${schoolViews || "No school forms submitted."}
+
+    PARENT DATA (Home Views / One Page Profile):
+    ${parentViews || "No parent forms submitted."}
+    `;
+
     if (sessionContext) {
         const outcome = sessionContext.outcome || {};
         
-        // Comprehensive inputs
         const transcript = outcome.finalTranscript || sessionContext.transcript || "None";
         const opinions = outcome.clinicalOpinions ? JSON.stringify(outcome.clinicalOpinions) : "None";
         const manualNotes = outcome.manualClinicalNotes ? JSON.stringify(outcome.manualClinicalNotes) : "None";
         const plan = outcome.interventionPlan ? JSON.stringify(outcome.interventionPlan) : "None";
         const mode = sessionContext.mode || "Standard";
 
-        contextBlock = `
+        contextBlock += `
         ### CONSULTATION CONTEXT
         - Mode: ${mode}
         
-        ### EVIDENCE
+        ### SESSION EVIDENCE
         1. TRANSCRIPT SUMMARY: "${transcript.slice(0, 4000)}..."
         2. CONFIRMED CLINICAL OPINIONS: ${opinions}
         3. MANUAL EPP NOTES: ${manualNotes}
@@ -118,17 +168,23 @@ export const handler = async (request: CallableRequest<any>) => {
     Task: Draft a ${docType} (Template: ${safeTemplateId}) for student "${firstName} ${lastName}".
     
     INSTRUCTIONS:
-    1. SYNTHESIZE the Student Profile with the Consultation Evidence.
-    2. REFERENCE specific clinical opinions (both AI-detected and Manual Notes) to justify sections.
-    3. INCORPORATE the Intervention Plan into the recommendations section.
-    4. ADOPT the tone appropriate for the Consultation Mode (e.g., Person-Centered vs Complex).
+    1. SYNTHESIZE the Student Profile with the Multi-Source Intelligence and Consultation Evidence.
+    2. TRIANGULATE findings: Does the School Data match the Parent Data? Does the Transcript support the Forms?
+    3. REFERENCE specific sources (e.g. "Teacher reports that...", "During consultation...").
+    4. INCORPORATE the Intervention Plan into the recommendations section.
     
     CRITICAL CONSTRAINTS:
     ${constraints.map(c => `- ${c}`).join('\n')}
     
     Output Format: strictly valid JSON matching { sections: [{ id, title, content }] }.`;
 
-    const systemPrompt = buildSystemPrompt(baseInstruction, { locale: 'en-GB', languageLabel: 'English (UK)', glossary: {} });
+    // Pass reportType context to prompt builder
+    const systemPrompt = buildSystemPrompt(baseInstruction, { 
+        locale: 'en-GB', 
+        languageLabel: 'English (UK)', 
+        glossary: {},
+        reportType: isReferral ? 'referral' : 'statutory' 
+    });
 
     const dataBlock = `
     ### STUDENT PROFILE
@@ -148,15 +204,15 @@ export const handler = async (request: CallableRequest<any>) => {
             sections: [
                 { 
                     id: "section_a", 
-                    title: isReferral ? "Reason for Referral" : "Section A: Views of Child", 
-                    content: sessionContext 
-                        ? `During the ${sessionContext.mode || 'standard'} consultation, ${firstName} shared their views. Key themes included: ${contextBlock.includes('transcript') ? "discussions recorded in transcript" : "perspectives noted"}.`
-                        : "The child's views were gathered through standard assessment."
+                    title: isReferral ? "Reason for Referral" : "Section A: Views of Child & Parent", 
+                    content: parentViews 
+                        ? `Parental views were captured via the One Page Profile. Key themes include: ${parentViews.slice(0, 100)}... Additionally, during consultation, ${firstName} expressed...`
+                        : `During the ${sessionContext?.mode || 'standard'} consultation, ${firstName} shared their views.`
                 },
                 { 
                     id: "section_b", 
                     title: isReferral ? "Clinical Observations" : "Section B: Special Educational Needs", 
-                    content: `Based on assessment and ${sessionContext?.outcome?.clinicalOpinions?.length || 0} confirmed clinical observations, ${firstName} presents needs in the following areas. Manual notes indicate: ${sessionContext?.outcome?.manualClinicalNotes?.join(', ') || "No additional notes"}.` 
+                    content: `Triangulating data from school forms and clinical observation: \n\nSchool Report: ${schoolViews ? "Indicates specific needs in attainment." : "Pending."} \n\nClinical Opinion: Based on assessment, ${firstName} presents needs in the following areas.` 
                 },
                 { 
                     id: "section_f", 
@@ -171,12 +227,22 @@ export const handler = async (request: CallableRequest<any>) => {
         result = { text: mockResponse, parsed: JSON.parse(mockResponse) };
         ClinicalReportOutputSchema.parse(result.parsed);
 
+        // --- PHASE 34: AUDIT LOG ---
+        await logAuditEvent({
+            tenantId,
+            action: 'GENERATE_REPORT',
+            actorId: userId,
+            resourceType: 'student', // Log against student as report ID isn't persisted yet
+            resourceId: studentId,
+            metadata: { templateId, docType }
+        });
+
     } catch (err: any) {
         console.error("AI Generation Error", err);
         throw new HttpsError('internal', "AI Generation Failed: " + err.message);
     }
 
-    // --- 5. AUDIT ---
+    // --- 5. AI PROVENANCE (Technical Audit) ---
     await saveAiProvenance({
         tenantId: tenantId || 'global',
         studentId: studentId,

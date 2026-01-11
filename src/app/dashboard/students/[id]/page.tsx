@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState, use, useEffect } from 'react';
+import React, { useState, use, useEffect, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/use-permissions';
 import { PsychometricProfileChart } from '@/components/analytics/PsychometricProfileChart';
@@ -10,8 +10,10 @@ import { SmartInterventionMapper } from '@/components/interventions/SmartInterve
 import { LongitudinalProgressChart } from '@/components/analytics/LongitudinalProgressChart';
 import { Student360Main } from '@/components/student360/Student360Main';
 import { Shield, Loader2 } from 'lucide-react';
-import { useFirestoreDocument } from '@/hooks/use-firestore'; // Use client-side hook
+import { useFirestoreDocument } from '@/hooks/use-firestore'; 
 import { StudentRecord } from "@/types/schema";
+import { AuditService } from '@/services/audit/audit-logger';
+import { useAuth } from '@/hooks/use-auth';
 
 // Mock Data for Assessment/Progress (Demo Purposes)
 const MOCK_SCORES = [
@@ -34,15 +36,31 @@ const MOCK_INTERVENTIONS = [
 
 export default function StudentProfilePage({ params }: { params: Promise<{ id: string }> }) {
     const { can } = usePermissions();
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState("identity");
+    const auditLogged = useRef(false);
 
     // UNWRAP PARAMS (Next.js 15 Fix)
     const { id } = use(params);
 
-    // V2 FIX: Use direct Firestore Access instead of broken Cloud Function
-    // This uses the hook which is "Shard-Aware" via context, bypassing the "Not Found" error 
-    // from the single-region Cloud Function.
     const { data: student, loading } = useFirestoreDocument<StudentRecord>('students', id);
+
+    // Phase 34: Clinical Audit
+    useEffect(() => {
+        if (student && user && !auditLogged.current) {
+            AuditService.log(student.tenantId, {
+                action: 'VIEW_SENSITIVE_RECORD',
+                actorId: user.uid,
+                resourceType: 'student',
+                resourceId: student.id,
+                metadata: { 
+                    timestamp: new Date().toISOString(),
+                    accessLevel: user.role 
+                }
+            });
+            auditLogged.current = true;
+        }
+    }, [student, user]);
 
     if (loading) {
         return (

@@ -1,6 +1,6 @@
 // src/services/messaging/chat-service.ts
 
-import { db } from "@/lib/firebase";
+import { getRegionalDb } from "@/lib/firebase";
 import { 
     collection, 
     addDoc, 
@@ -10,7 +10,8 @@ import {
     onSnapshot, 
     doc,
     updateDoc,
-    getDocs // Added import
+    Firestore,
+    getDocs
 } from "firebase/firestore";
 import { ChatChannel, ChatMessage, GuardianEvent } from "@/types/schema";
 import { evaluateEvent } from "@/ai/guardian/engine";
@@ -18,18 +19,23 @@ import { evaluateEvent } from "@/ai/guardian/engine";
 export class ChatService {
     private tenantId: string;
     private userId: string;
+    private db: Firestore;
 
-    constructor(tenantId: string, userId: string) {
+    constructor(tenantId: string, userId: string, shardId: string) {
         this.tenantId = tenantId;
         this.userId = userId;
+        // Connect to the Regional Data Plane (PII Safe)
+        const region = shardId.replace('mindkindler-', '');
+        this.db = getRegionalDb(region);
     }
 
     /**
      * List chats for the current user.
+     * Scoped to the Tenant within the Regional Shard.
      */
     subscribeToChats(callback: (chats: ChatChannel[]) => void) {
         const q = query(
-            collection(db, `tenants/${this.tenantId}/chats`),
+            collection(this.db, `tenants/${this.tenantId}/chats`),
             where("participantIds", "array-contains", this.userId),
             orderBy("updatedAt", "desc")
         );
@@ -45,7 +51,7 @@ export class ChatService {
      */
     subscribeToMessages(chatId: string, callback: (messages: ChatMessage[]) => void) {
         const q = query(
-            collection(db, `tenants/${this.tenantId}/chats/${chatId}/messages`),
+            collection(this.db, `tenants/${this.tenantId}/chats/${chatId}/messages`),
             orderBy("createdAt", "asc")
         );
 
@@ -86,7 +92,7 @@ export class ChatService {
             };
         }
 
-        // 3. Send Message
+        // 3. Send Message (to Regional Shard)
         const messageData: Partial<ChatMessage> = {
             chatId,
             senderId: this.userId,
@@ -97,7 +103,7 @@ export class ChatService {
             createdAt: new Date().toISOString()
         };
 
-        const chatRef = doc(db, `tenants/${this.tenantId}/chats/${chatId}`);
+        const chatRef = doc(this.db, `tenants/${this.tenantId}/chats/${chatId}`);
         const messagesRef = collection(chatRef, "messages");
 
         await addDoc(messagesRef, messageData);
@@ -119,10 +125,20 @@ export class ChatService {
      * Create a new 1:1 or Group Chat.
      */
     async createChat(participantIds: string[], type: 'direct' | 'group', name?: string): Promise<string> {
-        // Simple check for existing Direct Chat (Optimization: In production, use a deterministic ID like `direct_uid1_uid2` to prevent dupes)
+        // Simple check for existing Direct Chat within this Tenant/Region
         if (type === 'direct' && participantIds.length === 2) {
-            // For now, we proceed to create (or the UI can check). 
-            // Implementing a robust "find existing" query requires composite indexes or client-side logic.
+             const q = query(
+                collection(this.db, `tenants/${this.tenantId}/chats`),
+                where("type", "==", "direct"),
+                where("participantIds", "array-contains", this.userId)
+            );
+            const snapshot = await getDocs(q);
+            // Client-side filter for exact match of the other participant
+            const existing = snapshot.docs.find(d => {
+                const data = d.data() as ChatChannel;
+                return data.participantIds.every(id => participantIds.includes(id));
+            });
+            if (existing) return existing.id;
         }
 
         const chatData: Partial<ChatChannel> = {
@@ -134,7 +150,7 @@ export class ChatService {
             updatedAt: new Date().toISOString()
         };
 
-        const ref = await addDoc(collection(db, `tenants/${this.tenantId}/chats`), chatData);
+        const ref = await addDoc(collection(this.db, `tenants/${this.tenantId}/chats`), chatData);
         return ref.id;
     }
 }

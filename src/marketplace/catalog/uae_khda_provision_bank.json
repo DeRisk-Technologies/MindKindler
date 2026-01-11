@@ -1,0 +1,44 @@
+[
+  {
+    "category": "Specific Learning Disorders",
+    "sub_category": "Dyslexia",
+    "trigger_keywords": ["reading accuracy", "spelling difficulties", "phonemic awareness"],
+    "statutory_provision": "Individualized Education Plan (IEP) with accommodations for extra time during assessments.",
+    "suggested_intervention": "Specialist literacy support (Tier 2/3) aligned with KHDA inspection framework."
+  },
+  {
+    "category": "Communication Disorders",
+    "sub_category": "Language Delay",
+    "trigger_keywords": ["vocabulary development", "expressive language", "understanding instructions"],
+    "statutory_provision": "Support from a Learning Support Assistant (LSA) to scaffold language in the classroom.",
+    "suggested_intervention": "Speech and Language Therapy (SALT) integration in class."
+  },
+  {
+    "category": "Autism Spectrum",
+    "sub_category": "Social Interaction",
+    "trigger_keywords": ["social cues", "routine rigidity", "peer engagement"],
+    "statutory_provision": "Curriculum modification to include social skills development as a core component.",
+    "suggested_intervention": "Applied Behavior Analysis (ABA) or TEACCH principles."
+  },
+  {
+    "category": "Sensory Impairments",
+    "sub_category": "Visual Impairment",
+    "trigger_keywords": ["low vision", "access to print", "visual fatigue"],
+    "statutory_provision": "Provision of enlarged print materials and assistive technology (e.g., screen readers).",
+    "suggested_intervention": "Vision support specialist consultation."
+  },
+  {
+    "category": "Gifted and Talented",
+    "sub_category": "Advanced Cognitive Ability",
+    "trigger_keywords": ["rapid learning", "high IQ", "advanced vocabulary", "boredom"],
+    "statutory_provision": "Advanced Learning Plan (ALP) offering curriculum enrichment and extension.",
+    "suggested_intervention": "Project-based learning and mentorship opportunities."
+  },
+  {
+    "category": "Physical Disability",
+    "sub_category": "Mobility",
+    "trigger_keywords": ["accessibility", "motor skills", "physical access"],
+    "statutory_provision": "Accessible physical environment (ramps, lifts) and modified PE curriculum.",
+    "suggested_intervention": "Physiotherapy integration."
+  }
+]

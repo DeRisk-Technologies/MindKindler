@@ -122,6 +122,45 @@ export interface ConsentRecord {
     notes?: string;
 }
 
+// --- Historical Context Engine (Phase 29) ---
+
+export type AcademicSubject = 'Math' | 'English' | 'Science' | 'History' | 'Geography' | 'Art' | 'PE' | 'Music' | 'Other';
+export type GradeType = 'Term' | 'Exam' | 'Predicted' | 'Standardized';
+
+export interface HistoricalAcademicRecord {
+    id: string;
+    studentId: string;
+    academicYear: string;
+    term: string;
+    subject: AcademicSubject;
+    grade: string | number;
+    maxGrade?: number;
+    type: GradeType;
+    source: string;
+    date: string;
+    metadata: ProvenanceMetadata;
+}
+
+export interface HistoricalAttendanceSummary {
+    id: string;
+    studentId: string;
+    academicYear: string;
+    totalDays: number;
+    daysPresent: number;
+    daysAbsent: number;
+    daysLate: number;
+    unauthorizedAbsences: number;
+    attendancePercentage: number;
+    source: string;
+    metadata: ProvenanceMetadata;
+}
+
+export interface StudentHistory {
+    academic: HistoricalAcademicRecord[];
+    attendance: HistoricalAttendanceSummary[];
+    behavior: DisciplineIncident[]; 
+}
+
 export interface StudentRecord {
     id: string;
     tenantId: string;
@@ -165,6 +204,9 @@ export interface StudentRecord {
     };
 
     discipline?: DisciplineIncident[];
+
+    // The Time Machine: Historical Context
+    timeline?: StudentHistory;
 
     // Extension field for Country OS Modular Architecture
     extensions?: Record<string, any>; 
@@ -335,9 +377,8 @@ export interface ConsultationSession {
     live_captions: boolean;
   };
   participant_device_id?: string;
-  // UPDATED: Added synthesized and completed statuses
   status?: 'scheduled' | 'in_progress' | 'completed' | 'synthesized' | 'cancelled';
-  type?: string; // Added type property
+  type?: string; 
   reportId?: string;
   caseId?: string;
 }
@@ -395,18 +436,18 @@ export interface Case {
 // NEW: Task Management for Assistants
 export interface CaseTask {
   id?: string;
-  tenantId: string; // Tenant Context
-  caseId?: string;  // Linked to a clinical case?
-  studentId?: string; // Linked to a student?
+  tenantId: string; 
+  caseId?: string;  
+  studentId?: string; 
   
   title: string;
   description?: string;
-  type: 'data_entry' | 'interview' | 'research' | 'observation' | 'report_drafting' | 'general'; // Added general
+  type: 'data_entry' | 'interview' | 'research' | 'observation' | 'report_drafting' | 'general'; 
   priority: 'low' | 'medium' | 'high' | 'critical';
   status: 'pending' | 'in_progress' | 'review' | 'completed' | 'late';
   
-  assignedTo: string; // User ID (Assistant)
-  assignedBy: string; // User ID (EPP)
+  assignedTo: string; 
+  assignedBy: string; 
   dueAt: string;
   
   attachments?: {
@@ -415,8 +456,8 @@ export interface CaseTask {
   }[];
   
   escalationPolicy?: {
-      escalateAt: string; // if not done by this time
-      escalateTo: string; // User ID (EPP)
+      escalateAt: string; 
+      escalateTo: string; 
   };
   
   createdAt: string;

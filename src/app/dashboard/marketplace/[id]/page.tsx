@@ -3,16 +3,16 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, Loader2, CheckCircle2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download, Loader2, CheckCircle2, RefreshCw, Sparkles, AlertTriangle } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { installPack } from "@/marketplace/installer";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth"; // Auth Context
-import { db } from "@/lib/firebase"; // Firebase
+import { useAuth } from "@/hooks/use-auth";
+import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-// Mock Loader (In real app, fetch from API or dynamic import based on ID)
+// Mock Loader
 import ukPack from "@/marketplace/catalog/uk_la_pack.json";
 import usPack from "@/marketplace/catalog/us_district_pack.json";
 import ngPack from "@/marketplace/catalog/nigeria_foundation_pack.json";
@@ -31,8 +31,8 @@ export default function PackDetailPage() {
     const { id } = useParams() as { id: string };
     const router = useRouter();
     const { toast } = useToast();
-    const { user } = useAuth(); // Fixed: Get user object
-    const tenantId = user?.tenantId; // Fixed: Extract tenantId from user
+    const { user } = useAuth();
+    const tenantId = user?.tenantId;
     
     const [installing, setInstalling] = useState(false);
     const [isAlreadyInstalled, setIsAlreadyInstalled] = useState(false); 
@@ -43,25 +43,15 @@ export default function PackDetailPage() {
     // Check Installation Status on Load
     useEffect(() => {
         const checkStatus = async () => {
-            if (!pack) return; // Wait for pack to be resolved
-            // NOTE: Even if tenantId is missing (loading), we might want to wait. 
-            // But if user is SuperAdmin viewing global packs, maybe logic differs? 
-            // For now, assume Tenant Context is key.
-            
-            if (!tenantId) {
-                // If no tenantId is available yet, we can't check installation. 
-                // Wait for auth to resolve.
-                return;
-            }
+            if (!pack || !tenantId) return;
 
             try {
-                // Check 'tenants/{id}/settings/installed_packs'
                 const ref = doc(db, `tenants/${tenantId}/settings/installed_packs`);
                 const snap = await getDoc(ref);
                 
                 if (snap.exists()) {
                     const data = snap.data();
-                    const packData = data[pack.id]; // Access by pack ID (e.g. 'uk_la_pack')
+                    const packData = data[pack.id];
                     
                     if (packData && packData.status === 'active') {
                         setIsAlreadyInstalled(true);
@@ -81,36 +71,21 @@ export default function PackDetailPage() {
     const handleInstall = async () => {
         setInstalling(true);
         try {
-            // We pass the tenantId explicitly from context
             const result = await installPack(pack, tenantId || "default");
             
             if (result.success) {
                 toast({ 
                     title: isAlreadyInstalled ? "Pack Updated" : "Installation Complete", 
-                    description: `${pack.name} (v${pack.version}) capabilities deployed successfully.` 
+                    description: `${pack.name} (v${pack.version}) is now active.` 
                 });
-                
-                // If it's the UK pack, specifically mention the new Consultation templates
-                if (pack.id === 'uk_la_pack') {
-                     toast({ 
-                        title: "New Features Active", 
-                        description: "Consultation Templates (Complex, Person-Centered) are now available in the clinical workspace.",
-                        duration: 5000
-                    });
-                }
-                
-                // Refresh state
                 setIsAlreadyInstalled(true);
                 setInstalledVersion(pack.version);
-                
-                // Optional: Redirect
-                // router.push('/dashboard/marketplace/installed');
             } else {
                  throw new Error(result.errors ? result.errors[0] : "Unknown error");
             }
         } catch (e: any) {
             toast({ 
-                title: "Installation Failed", 
+                title: "Operation Failed", 
                 description: e.message,
                 variant: "destructive" 
             });
@@ -118,6 +93,9 @@ export default function PackDetailPage() {
             setInstalling(false);
         }
     };
+
+    // Helper Logic
+    const isUpdateAvailable = installedVersion && isVersionNewer(pack.version, installedVersion);
 
     return (
         <div className="p-8 max-w-4xl mx-auto space-y-8">
@@ -128,9 +106,14 @@ export default function PackDetailPage() {
                     <div className="flex gap-2 mt-2">
                         {pack.regionTags.map((t: string) => <Badge key={t} variant="outline">{t}</Badge>)}
                         <Badge variant="secondary">v{pack.version}</Badge>
-                        {isAlreadyInstalled && (
+                        {isAlreadyInstalled && !isUpdateAvailable && (
                             <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                                Installed {installedVersion && `(v${installedVersion})`}
+                                Installed (v{installedVersion})
+                            </Badge>
+                        )}
+                        {isUpdateAvailable && (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                                Update Available (v{installedVersion} → v{pack.version})
                             </Badge>
                         )}
                     </div>
@@ -166,49 +149,87 @@ export default function PackDetailPage() {
                                         </div>
                                     </li>
                                 ))}
+                                {pack.capabilities?.digitalForms?.map((df: any, i: number) => (
+                                     <li key={`df-${i}`} className="flex gap-4 border-l-2 pl-4 border-emerald-200">
+                                        <div className="text-sm">
+                                            <div className="font-semibold text-emerald-700">{df.title}</div>
+                                            <div className="text-xs text-muted-foreground">Digital Assessment Form</div>
+                                        </div>
+                                    </li>
+                                ))}
                             </ul>
                         </CardContent>
                     </Card>
                 </div>
 
                 <div>
-                    <Card>
+                    <Card className="sticky top-8">
                         <CardHeader><CardTitle>Manage Pack</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="text-sm text-muted-foreground">
-                                <strong>Version:</strong> {pack.version}<br/>
-                                <strong>Modules:</strong> {
-                                    (pack.capabilities?.complianceWorkflows?.length || 0) + 
-                                    (pack.capabilities?.consultationTemplates?.length || 0)
-                                }
-                            </div>
                             
-                            <Button className="w-full" onClick={handleInstall} disabled={installing}>
+                            {/* Update Logic UI */}
+                            <Button 
+                                className={isUpdateAvailable ? "w-full bg-amber-600 hover:bg-amber-700" : "w-full"}
+                                variant={!isAlreadyInstalled || isUpdateAvailable ? "default" : "outline"}
+                                disabled={installing || (isAlreadyInstalled && !isUpdateAvailable)}
+                                onClick={handleInstall}
+                            >
                                 {installing ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin"/> 
-                                ) : isAlreadyInstalled ? (
+                                ) : isUpdateAvailable ? (
                                     <RefreshCw className="mr-2 h-4 w-4"/>
+                                ) : isAlreadyInstalled ? (
+                                    <CheckCircle2 className="mr-2 h-4 w-4"/>
                                 ) : (
                                     <Download className="mr-2 h-4 w-4"/>
                                 )}
                                 
-                                {installing 
-                                    ? "Deploying..." 
-                                    : isAlreadyInstalled 
-                                        ? "Update / Reinstall" 
-                                        : "Install Pack"
-                                }
+                                {installing ? "Processing..." 
+                                    : isUpdateAvailable ? `Update to v${pack.version}` 
+                                    : isAlreadyInstalled ? "Installed" 
+                                    : "Install Pack"}
                             </Button>
-                            
-                            {isAlreadyInstalled && (
-                                <p className="text-xs text-slate-400 text-center">
-                                    Reinstalling will update configuration but preserve your data.
-                                </p>
+
+                            {/* Changelog Alert */}
+                            {isUpdateAvailable && pack.changelog && (
+                                <div className="bg-amber-50 p-3 rounded-md border border-amber-200 text-xs text-amber-900">
+                                    <div className="font-semibold flex items-center gap-1 mb-1">
+                                        <Sparkles className="h-3 w-3" /> New in v{pack.version}
+                                    </div>
+                                    {pack.changelog}
+                                </div>
                             )}
+                            
+                            <div className="text-xs text-slate-400 mt-4">
+                                <p>Release Date: {pack.releaseDate || 'N/A'}</p>
+                                {isAlreadyInstalled && !isUpdateAvailable && (
+                                    <p className="mt-1 text-green-600 flex items-center gap-1">
+                                        <CheckCircle2 className="h-3 w-3" /> Up to date
+                                    </p>
+                                )}
+                            </div>
+
                         </CardContent>
                     </Card>
                 </div>
             </div>
         </div>
     );
+}
+
+// Helper: Semantic Versioning Check
+function isVersionNewer(latest: string, current: string): boolean {
+    if (!current) return true;
+    if (latest === current) return false;
+
+    const v1 = latest.split('.').map(Number);
+    const v2 = current.split('.').map(Number);
+    
+    for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
+        const num1 = v1[i] || 0;
+        const num2 = v2[i] || 0;
+        if (num1 > num2) return true;
+        if (num1 < num2) return false;
+    }
+    return false;
 }
