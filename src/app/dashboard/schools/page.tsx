@@ -17,7 +17,7 @@ import {
   CardTitle,
   CardDescription
 } from "@/components/ui/card";
-import { Loader2, Plus, School as SchoolIcon, Search, UploadCloud, Pencil, Trash2, Map } from "lucide-react";
+import { Loader2, Plus, School as SchoolIcon, Search, Pencil, Trash2, Map } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -25,62 +25,26 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// Phase 29 Imports
+import { SchoolsMap } from "@/components/maps/SchoolsMap"; 
+import { SchoolForm } from "@/components/schools/SchoolForm"; 
+
 export default function SchoolsPage() {
-  const { data: schools, loading: loadingSchools } = useFirestoreCollection<any>("schools", "name", "asc");
+  const { data: schools, loading: loadingSchools, refresh: refreshSchools } = useFirestoreCollection<any>("schools", "name", "asc");
   const { data: districts, loading: loadingDistricts } = useFirestoreCollection<any>("districts", "name", "asc");
   
   const [searchTerm, setSearchTerm] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSchoolDialogOpen, setIsSchoolDialogOpen] = useState(false);
+  const [editingSchool, setEditingSchool] = useState<any>(null);
   
   // District state
   const [isDistrictDialogOpen, setIsDistrictDialogOpen] = useState(false);
   const [editingDistrictId, setEditingDistrictId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { toast } = useToast();
-
-  // --- SCHOOLS LOGIC ---
-  const handleSaveSchool = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    const formData = new FormData(e.currentTarget);
-    const data = {
-        name: formData.get("name"),
-        address: formData.get("address"),
-        districtId: formData.get("districtId"),
-        principalName: formData.get("principalName"),
-        contactEmail: formData.get("contactEmail"),
-        contactPhone: formData.get("contactPhone"),
-        type: formData.get("type"),
-        updatedAt: serverTimestamp(),
-    };
-    
-    try {
-       if (editingId) {
-         await updateDoc(doc(db, "schools", editingId), data);
-         toast({ title: "Updated", description: "School record updated." });
-      } else {
-         await addDoc(collection(db, "schools"), { ...data, createdAt: serverTimestamp() });
-         toast({ title: "Enrolled", description: "New school added." });
-      }
-      setIsDialogOpen(false);
-      setEditingId(null);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDeleteSchool = async (id: string) => {
-      if(!confirm("Are you sure?")) return;
-      await deleteDoc(doc(db, "schools", id));
-  };
 
    const getDistrictName = (id: string) => {
       return districts.find(d => d.id === id)?.name || id;
@@ -90,6 +54,12 @@ export default function SchoolsPage() {
      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
      getDistrictName(s.districtId).toLowerCase().includes(searchTerm.toLowerCase())
    );
+
+   const handleDeleteSchool = async (id: string) => {
+      if(!confirm("Are you sure?")) return;
+      await deleteDoc(doc(db, "schools", id));
+      refreshSchools(); // Ensure UI updates
+  };
 
    // --- DISTRICTS LOGIC ---
    const handleSaveDistrict = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -136,6 +106,7 @@ export default function SchoolsPage() {
       <Tabs defaultValue="schools" className="space-y-4">
         <TabsList>
           <TabsTrigger value="schools">Schools Registry</TabsTrigger>
+          <TabsTrigger value="map">GIS Map View</TabsTrigger> {/* New Map Tab */}
           <TabsTrigger value="districts">Districts Management</TabsTrigger>
         </TabsList>
 
@@ -150,63 +121,29 @@ export default function SchoolsPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) setEditingId(null); }}>
+                
+                {/* Phase 29: Rich School Form Dialog */}
+                <Dialog open={isSchoolDialogOpen} onOpenChange={(open) => { setIsSchoolDialogOpen(open); if(!open) setEditingSchool(null); }}>
                   <DialogTrigger asChild>
                     <Button>
                       <Plus className="mr-2 h-4 w-4" /> Enroll School
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
+                  <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>{editingId ? "Edit School" : "Enroll New School"}</DialogTitle>
-                      <DialogDescription>Add comprehensive details for the institution.</DialogDescription>
+                      <DialogTitle>{editingSchool ? "Edit School Profile" : "Enroll New School"}</DialogTitle>
+                      <DialogDescription>Manage comprehensive details, SENCO contact, and GIS location.</DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={handleSaveSchool} className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2 col-span-2">
-                        <Label htmlFor="name">School Name</Label>
-                        <Input id="name" name="name" required defaultValue={editingId ? schools.find(s => s.id === editingId)?.name : ""} />
-                      </div>
-                      <div className="space-y-2 col-span-2">
-                        <Label htmlFor="address">Full Address</Label>
-                        <Textarea id="address" name="address" required defaultValue={editingId ? schools.find(s => s.id === editingId)?.address : ""} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="districtId">Educational District</Label>
-                        <Select name="districtId" required defaultValue={editingId ? schools.find(s => s.id === editingId)?.districtId : ""}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select District" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {districts.map(d => (
-                                <SelectItem key={d.id} value={d.id}>{d.name} ({d.ward})</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="type">School Type</Label>
-                        <Input id="type" name="type" placeholder="Public, Private" required defaultValue={editingId ? schools.find(s => s.id === editingId)?.type : ""} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="principalName">Principal Name</Label>
-                        <Input id="principalName" name="principalName" required defaultValue={editingId ? schools.find(s => s.id === editingId)?.principalName : ""} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="contactPhone">Contact Phone</Label>
-                        <Input id="contactPhone" name="contactPhone" required defaultValue={editingId ? schools.find(s => s.id === editingId)?.contactPhone : ""} />
-                      </div>
-                      <div className="space-y-2 col-span-2">
-                        <Label htmlFor="contactEmail">Official Email</Label>
-                        <Input id="contactEmail" name="contactEmail" type="email" required defaultValue={editingId ? schools.find(s => s.id === editingId)?.contactEmail : ""} />
-                      </div>
+                    
+                    <SchoolForm 
+                        initialData={editingSchool} 
+                        onSave={() => { 
+                            setIsSchoolDialogOpen(false); 
+                            setEditingSchool(null); 
+                            refreshSchools(); // Refresh list after save
+                        }} 
+                    />
 
-                      <DialogFooter className="col-span-2 mt-4">
-                        <Button type="submit" disabled={isSubmitting} className="w-full">
-                          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          Save School
-                        </Button>
-                      </DialogFooter>
-                    </form>
                   </DialogContent>
                 </Dialog>
             </div>
@@ -224,7 +161,7 @@ export default function SchoolsPage() {
                         <TableHead>School Name</TableHead>
                         <TableHead>District</TableHead>
                         <TableHead>Principal</TableHead>
-                        <TableHead>Contact</TableHead>
+                        <TableHead>SENCO</TableHead> {/* Updated Column */}
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -236,11 +173,11 @@ export default function SchoolsPage() {
                               {s.name}
                             </TableCell>
                             <TableCell>{getDistrictName(s.districtId)}</TableCell>
-                            <TableCell>{s.principalName}</TableCell>
-                            <TableCell>{s.contactEmail}</TableCell>
+                            <TableCell>{s.principalName || 'N/A'}</TableCell>
+                            <TableCell>{s.senco?.name || 'N/A'}</TableCell> {/* Display SENCO */}
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
-                                  <Button variant="ghost" size="icon" onClick={() => { setEditingId(s.id); setIsDialogOpen(true); }}>
+                                  <Button variant="ghost" size="icon" onClick={() => { setEditingSchool(s); setIsSchoolDialogOpen(true); }}>
                                       <Pencil className="h-4 w-4" />
                                   </Button>
                                   <Button variant="ghost" size="icon" onClick={() => handleDeleteSchool(s.id)}>
@@ -258,7 +195,21 @@ export default function SchoolsPage() {
             </Card>
         </TabsContent>
 
+        {/* Phase 29: Map Tab */}
+        <TabsContent value="map">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Geographic Overview</CardTitle>
+                    <CardDescription>Visualizing {filteredSchools.length} schools across the region.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <SchoolsMap schools={filteredSchools} />
+                </CardContent>
+            </Card>
+        </TabsContent>
+
         <TabsContent value="districts" className="space-y-4">
+           {/* Existing District Logic (Unchanged) */}
            <div className="flex justify-end">
               <Dialog open={isDistrictDialogOpen} onOpenChange={(open) => { setIsDistrictDialogOpen(open); if(!open) setEditingDistrictId(null); }}>
                 <DialogTrigger asChild>
