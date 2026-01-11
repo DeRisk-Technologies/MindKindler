@@ -523,7 +523,6 @@ export interface ReportSection {
     internalOnly?: boolean;
 }
 
-// PHASE 24: Supervision Workflow
 export interface ReportHistoryEvent {
     action: 'created' | 'edited' | 'submitted_review' | 'changes_requested' | 'approved' | 'signed';
     userId: string;
@@ -540,13 +539,8 @@ export interface Report {
     type: 'consultation' | 'statutory' | 'ehcp_review';
     templateType?: string;
     
-    // Updated Status Enum
-    status: 'draft' | 'pending_review' | 'changes_requested' | 'signed' | 'archived';
+    status: 'draft' | 'review' | 'signed' | 'archived' | 'pending_review' | 'changes_requested'; // Updated
     version: number;
-    
-    // Supervision
-    supervisorId?: string;
-    history?: ReportHistoryEvent[];
     
     content: {
         sections: ReportSection[];
@@ -564,6 +558,9 @@ export interface Report {
     locked?: boolean;
 
     aiProvenanceId?: string;
+    
+    supervisorId?: string; // Supervision
+    history?: ReportHistoryEvent[]; // Supervision History
 }
 
 export interface ReportVersion {
@@ -815,6 +812,7 @@ export interface KnowledgeDocument {
     id: string;
     type: 'rulebook' | 'report' | 'evidence';
     title: string;
+    description?: string; // ADDED
     ownerId: string;
     tenantId?: string; // If null, global/system doc
     visibility: 'private' | 'team' | 'public';
@@ -831,6 +829,13 @@ export interface KnowledgeDocument {
         verified?: boolean;
         caseTags?: string[];
     };
+
+    notes?: { // ADDED
+        id: string;
+        content: string;
+        authorId: string;
+        createdAt: string;
+    }[];
     
     createdAt: string;
 }
