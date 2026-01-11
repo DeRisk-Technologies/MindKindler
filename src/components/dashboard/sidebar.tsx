@@ -47,7 +47,9 @@ import {
   Plug,
   UserCircle,
   Palette,
-  Map as MapIcon 
+  Map as MapIcon,
+  Activity,
+  BarChart3
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -199,7 +201,6 @@ export function DashboardSidebar() {
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
-                    {/* Phase 29: GIS Map Link */}
                     <SidebarMenuItem>
                         <SidebarMenuButton asChild isActive={isActive("/dashboard/schools")} tooltip="Coverage Map">
                             <Link href="/dashboard/schools?tab=map">
@@ -422,6 +423,16 @@ export function DashboardSidebar() {
                             </CollapsibleTrigger>
                             <CollapsibleContent>
                                 <SidebarMenuSub>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/pilot-metrics")}>
+                                            <Link href="/dashboard/admin/pilot-metrics"><BarChart3 className="h-4 w-4 mr-2"/><span>Pilot Telemetry</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/diagnostics")}>
+                                            <Link href="/dashboard/admin/diagnostics"><Activity className="h-4 w-4 mr-2"/><span>System Diagnostics</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
                                     <SidebarMenuSubItem>
                                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/tenants")}>
                                             <Link href="/dashboard/admin/tenants"><List className="h-4 w-4 mr-2"/><span>All Tenants</span></Link>

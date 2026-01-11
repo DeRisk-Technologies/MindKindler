@@ -26,10 +26,16 @@ import { useToast } from "@/hooks/use-toast";
 import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import dynamic from 'next/dynamic';
 
 // Phase 29 Imports
-import { SchoolsMap } from "@/components/maps/SchoolsMap"; 
 import { SchoolForm } from "@/components/schools/SchoolForm"; 
+
+// Dynamic Import for Map (Fixes 'window is not defined')
+const SchoolsMap = dynamic(() => import('@/components/maps/SchoolsMap').then(mod => mod.SchoolsMap), {
+  ssr: false,
+  loading: () => <div className="h-[400px] w-full flex items-center justify-center bg-slate-100 rounded-lg animate-pulse text-muted-foreground">Loading GIS Map...</div>
+});
 
 export default function SchoolsPage() {
   const { data: schools, loading: loadingSchools, refresh: refreshSchools } = useFirestoreCollection<any>("schools", "name", "asc");
