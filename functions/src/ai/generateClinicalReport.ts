@@ -16,7 +16,7 @@ const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
 const location = 'europe-west3';
 const vertex_ai = new VertexAI({ project: project, location: location });
 
-// Use Explicit Version to avoid 404 in some regions
+// Use User-Specified Model Version (2.5 Flash)
 const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 const EditorSectionSchema = z.object({
@@ -169,7 +169,7 @@ export const handler = async (request: CallableRequest<any>) => {
         `;
     }
 
-    const safeTemplateId = (templateId || "").toString();
+    const safeTemplateId = (templateId || "generic").toString();
     const isReferral = safeTemplateId.toLowerCase().includes('referral');
     const docType = isReferral ? "Referral Letter/Clinical Note" : "Formal Statutory Report";
 
@@ -208,7 +208,7 @@ export const handler = async (request: CallableRequest<any>) => {
     // --- 4. GENERATION (REAL AI) ---
     let result;
     try {
-        console.log(`[GenerateReport] Calling Vertex AI (gemini-2.5-pro)...`);
+        console.log(`[GenerateReport] Calling Vertex AI (gemini-2.5-flash)...`);
         const response = await generativeModel.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }]
         });
@@ -239,14 +239,17 @@ export const handler = async (request: CallableRequest<any>) => {
             console.warn("Schema Validation Failed", e);
         }
 
-        // --- PHASE 34: AUDIT LOG ---
+        // --- PHASE 34: AUDIT LOG (Fixed Undefined Error) ---
         await logAuditEvent({
             tenantId,
             action: 'GENERATE_REPORT',
             actorId: userId,
             resourceType: 'student', 
             resourceId: studentId,
-            metadata: { templateId, docType }
+            metadata: { 
+                templateId: safeTemplateId || 'unknown', // Ensure string
+                docType: docType || 'unknown' 
+            }
         });
 
     } catch (err: any) {
@@ -261,7 +264,7 @@ export const handler = async (request: CallableRequest<any>) => {
             studentId: studentId,
             flowName: 'generateClinicalReport',
             prompt: fullPrompt,
-            model: 'gemini-2.5-flash-001',
+            model: 'gemini-2.5-flash',
             responseText: result.text,
             parsedOutput: result.parsed,
             latencyMs: Date.now() - startTime,
