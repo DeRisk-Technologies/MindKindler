@@ -8,6 +8,7 @@ import { z } from "zod";
 import { buildSystemPrompt } from "./utils/prompt-builder";
 import { VertexAI } from '@google-cloud/vertexai';
 import { logAuditEvent } from "../services/audit";
+import { formatConsultationHistory } from "./utils/consultation-formatter";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -16,7 +17,7 @@ const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
 const location = 'europe-west3';
 const vertex_ai = new VertexAI({ project: project, location: location });
 
-// Use User-Specified Model Version (2.5 Flash)
+// Use Explicit Version as requested (2.5 Flash)
 const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 const EditorSectionSchema = z.object({
@@ -75,49 +76,57 @@ export const handler = async (request: CallableRequest<any>) => {
         regionalDb = admin.firestore(); 
     }
 
-    // --- 1. DATA RESOLUTION (With Fallback) ---
-    if (!studentData) {
-        try {
+    // --- 1. FETCH DATA (Student & Consultations) ---
+    let formattedEvidence = "No consultation history available.";
+    
+    try {
+        if (!studentData) {
             console.log(`[GenerateReport] Fetching student data from ${dbId}...`);
             const docSnap = await regionalDb.collection('students').doc(studentId).get();
             if (docSnap.exists) {
-                const fetchedData = docSnap.data();
-                studentData = fetchedData;
-                console.log(`[GenerateReport] Fetched Student: ${fetchedData?.identity?.firstName?.value}`);
+                studentData = docSnap.data();
             } else {
-                console.warn(`[GenerateReport] Student doc ${studentId} not found in ${dbId}.`);
                 studentData = { identity: { firstName: { value: "Student" } } };
             }
-        } catch (e: any) {
-            console.error(`[GenerateReport] Fetch error:`, e);
-            studentData = { identity: { firstName: { value: "Student" } } };
         }
+
+        // FETCH CONSULTATION HISTORY (The "Data Injection" Fix)
+        console.log(`[GenerateReport] Fetching consultation_sessions for student ${studentId}...`);
+        const consultsSnap = await regionalDb.collection('consultation_sessions')
+            .where('studentId', '==', studentId)
+            // .where('status', 'in', ['completed', 'synthesized']) // Optional
+            .limit(5)
+            .get();
+
+        const consultationData = consultsSnap.docs.map(doc => doc.data());
+        console.log(`[GenerateReport] Found ${consultationData.length} sessions.`);
+        
+        if (consultationData.length > 0) {
+            formattedEvidence = formatConsultationHistory(consultationData);
+        } else if (sessionContext) {
+            // Fallback to the single session passed in request if DB fetch empty
+            formattedEvidence = formatConsultationHistory([sessionContext]);
+        }
+
+    } catch (e: any) {
+        console.error(`[GenerateReport] Data Fetch Error:`, e);
     }
 
-    // --- 1.5 FETCH CONTRIBUTIONS (Phase 33: Multi-Source Intelligence) ---
+    // --- 2. FETCH SCHOOL/PARENT FORMS (Assessment Results) ---
     let schoolViews = "";
     let parentViews = "";
 
     try {
-        console.log(`[GenerateReport] Fetching assessment_results for context...`);
         const contribSnap = await regionalDb.collection('assessment_results')
             .where('studentId', '==', studentId)
-            .limit(20) 
+            .limit(10) 
             .get();
-
-        console.log(`[GenerateReport] Found ${contribSnap.size} contributions.`);
 
         contribSnap.forEach(doc => {
             const data = doc.data();
             const responses = data.responses; 
             const template = data.templateId; 
-
-            let content = "";
-            if (Array.isArray(responses)) {
-                content = responses.map(r => `${r.questionId}: ${r.answer}`).join(', ');
-            } else {
-                content = JSON.stringify(responses);
-            }
+            const content = JSON.stringify(responses);
 
             if (['uk_school_contribution', 'nhs_neuro_questionnaire'].includes(template)) {
                 schoolViews += `\n[Form: ${template}]: ${content}`;
@@ -126,86 +135,49 @@ export const handler = async (request: CallableRequest<any>) => {
             }
         });
     } catch (e) {
-        console.warn("[GenerateReport] Failed to fetch contributions:", e);
+        console.warn("[GenerateReport] Failed to fetch forms:", e);
     }
 
-    // --- 3. CONSTRUCT ENHANCED PROMPT ---
+    // --- 3. CONSTRUCT PROMPT ---
     const constraints = contextPackId === 'uk_la_pack' 
         ? ["No Medical Diagnosis (Statutory)", "Use Tentative Language (appears, seems)", "Evidence-Based Claims Only"]
         : [];
 
-    const firstName = studentData.identity?.firstName?.value || "Student";
-    const lastName = studentData.identity?.lastName?.value || "";
-
-    // Extract Detailed Context
-    let contextBlock = `
-    ### MULTI-SOURCE INTELLIGENCE (Phase 33)
-    
-    SCHOOL DATA (Teacher Views / SENCO Forms):
-    ${schoolViews || "No school forms submitted."}
-
-    PARENT DATA (Home Views / One Page Profile):
-    ${parentViews || "No parent forms submitted."}
-    `;
-
-    if (sessionContext) {
-        const outcome = sessionContext.outcome || {};
-        
-        const transcript = outcome.finalTranscript || sessionContext.transcript || "None";
-        const opinions = outcome.clinicalOpinions ? JSON.stringify(outcome.clinicalOpinions) : "None";
-        const manualNotes = outcome.manualClinicalNotes ? JSON.stringify(outcome.manualClinicalNotes) : "None";
-        const plan = outcome.interventionPlan ? JSON.stringify(outcome.interventionPlan) : "None";
-        const mode = sessionContext.mode || "Standard";
-
-        contextBlock += `
-        ### CONSULTATION CONTEXT
-        - Mode: ${mode}
-        
-        ### SESSION EVIDENCE
-        1. TRANSCRIPT SUMMARY: "${transcript.slice(0, 4000)}..."
-        2. CONFIRMED CLINICAL OPINIONS: ${opinions}
-        3. MANUAL EPP NOTES: ${manualNotes}
-        4. FINAL INTERVENTION PLAN: ${plan}
-        `;
-    }
-
-    const safeTemplateId = (templateId || "generic").toString();
+    const firstName = studentData?.identity?.firstName?.value || "Student";
+    const lastName = studentData?.identity?.lastName?.value || "";
+    const safeTemplateId = (templateId || "generic_report").toString();
     const isReferral = safeTemplateId.toLowerCase().includes('referral');
-    const docType = isReferral ? "Referral Letter/Clinical Note" : "Formal Statutory Report";
+    const docType = isReferral ? "Referral Letter" : "Statutory Report";
 
-    const baseInstruction = `You are an expert Educational Psychologist acting as a ${userRole} in ${region.toUpperCase()}.
-    Task: Draft a ${docType} (Template: ${safeTemplateId}) for student "${firstName} ${lastName}".
+    const baseInstruction = `You are an expert Educational Psychologist acting as a ${userRole} in the UK.
+    Task: Write a ${docType} for ${firstName} ${lastName}.
     
-    INSTRUCTIONS:
-    1. SYNTHESIZE the Student Profile with the Multi-Source Intelligence and Consultation Evidence.
-    2. TRIANGULATE findings: Does the School Data match the Parent Data? Does the Transcript support the Forms?
-    3. REFERENCE specific sources (e.g. "Teacher reports that...", "During consultation...").
-    4. INCORPORATE the Intervention Plan into the recommendations section.
-    
-    CRITICAL CONSTRAINTS:
-    ${constraints.map(c => `- ${c}`).join('\n')}
-    
-    Output Format: strictly valid JSON matching { sections: [{ id, title, content }] }.`;
+    ### EVIDENCE SOURCE 1: CONSULTATION TRANSCRIPTS & INSIGHTS
+    ${formattedEvidence}
+
+    ### EVIDENCE SOURCE 2: FORMS
+    School Views: ${schoolViews || "None"}
+    Parent Views: ${parentViews || "None"}
+
+    ### INSTRUCTIONS:
+    1. Section A (Views): Quote the "STUDENT VOICE" from consultations directly.
+    2. Section B (Needs): Use the "THEMES" (Clinical Insights) to identify needs.
+    3. Section F (Provision): Use "AGREED INTERVENTIONS" to populate recommendations.
+    4. RISK: If student mentioned self-harm (see quotes), flag it immediately.
+
+    Constraints: ${constraints.join(', ')}
+    Output: JSON { sections: [{ id, title, content }] }`;
 
     const systemPrompt = buildSystemPrompt(baseInstruction, { 
         locale: 'en-GB', 
-        languageLabel: 'English (UK)', 
-        glossary: {},
+        languageLabel: 'English (UK)', // FIXED: Added required prop
         reportType: isReferral ? 'referral' : 'statutory' 
     });
 
-    const dataBlock = `
-    ### STUDENT PROFILE
-    Name: ${firstName} ${lastName}
-    Profile: ${JSON.stringify(studentData).slice(0, 1500)}
-
-    ${contextBlock}
-    `;
-
-    const fullPrompt = `${systemPrompt}\n\n${dataBlock}\n\nGenerate the JSON report structure now based on the provided EVIDENCE.`;
+    const fullPrompt = `${systemPrompt}\n\nSTUDENT BIO: ${JSON.stringify(studentData?.identity)}`;
     console.log(`[GenerateReport] Prompt prepared. Length: ${fullPrompt.length}`);
 
-    // --- 4. GENERATION (REAL AI) ---
+    // --- 4. GENERATION ---
     let result;
     try {
         console.log(`[GenerateReport] Calling Vertex AI (gemini-2.5-flash)...`);
@@ -215,8 +187,6 @@ export const handler = async (request: CallableRequest<any>) => {
         
         const candidate = response.response.candidates?.[0];
         let text = candidate?.content?.parts?.[0]?.text || "";
-        
-        // Sanitize JSON
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         
         console.log(`[GenerateReport] AI Response received. Length: ${text.length}`);
@@ -224,22 +194,15 @@ export const handler = async (request: CallableRequest<any>) => {
         let parsed;
         try {
             parsed = JSON.parse(text);
+            // FIXED: Use the Schema
+            ClinicalReportOutputSchema.parse(parsed);
         } catch (e) {
-            console.error("JSON Parse Failed", text);
-            // Fallback to text in a single section if JSON breaks
-            parsed = { sections: [{ id: "raw", title: "Generated Draft", content: text }] };
+            console.warn("JSON Parse or Schema Validation Failed, falling back to raw text.", e);
+            parsed = { sections: [{ id: "raw", title: "Draft", content: text }] };
         }
         
-        result = { text: text, parsed: parsed };
-        
-        // Validate Schema (Optional - Log warning if fails but return result)
-        try {
-            ClinicalReportOutputSchema.parse(result.parsed);
-        } catch (e) {
-            console.warn("Schema Validation Failed", e);
-        }
+        result = { text, parsed };
 
-        // --- PHASE 34: AUDIT LOG (Fixed Undefined Error) ---
         await logAuditEvent({
             tenantId,
             action: 'GENERATE_REPORT',
@@ -247,8 +210,8 @@ export const handler = async (request: CallableRequest<any>) => {
             resourceType: 'student', 
             resourceId: studentId,
             metadata: { 
-                templateId: safeTemplateId || 'unknown', // Ensure string
-                docType: docType || 'unknown' 
+                templateId: safeTemplateId, 
+                docType: docType
             }
         });
 
@@ -257,7 +220,6 @@ export const handler = async (request: CallableRequest<any>) => {
         throw new HttpsError('internal', "AI Generation Failed: " + err.message);
     }
 
-    // --- 5. AI PROVENANCE ---
     try {
         await saveAiProvenance({
             tenantId: tenantId || 'global',
@@ -270,9 +232,7 @@ export const handler = async (request: CallableRequest<any>) => {
             latencyMs: Date.now() - startTime,
             createdBy: userId
         });
-    } catch (e) {
-        console.warn("Provenance Save Failed", e);
-    }
+    } catch (e) {}
 
     return result.parsed;
 };
