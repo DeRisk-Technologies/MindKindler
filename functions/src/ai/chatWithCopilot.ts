@@ -11,7 +11,7 @@ import { VertexAI } from '@google-cloud/vertexai';
 const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
 const location = 'europe-west3';
 const vertex_ai = new VertexAI({ project: project, location: location });
-const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-1.5-flash-001' });
+const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 interface ChatRequest {
     sessionId?: string;

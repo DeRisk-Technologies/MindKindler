@@ -5,14 +5,14 @@ import { ai } from './genkit';
 export const AVAILABLE_MODELS = [
     { value: 'googleai/gemini-2.0-flash', label: 'Gemini 2.0 Flash', tags: ['Fast', 'Next-Gen'], tier: 'basic' },
     { value: 'googleai/gemini-2.0-flash-lite-preview-02-05', label: 'Gemini 2.0 Lite', tags: ['Ultra Fast'], tier: 'basic' },
-    { value: 'googleai/gemini-1.5-pro', label: 'Gemini 1.5 Pro', tags: ['Deep Reasoning'], tier: 'standard' },
+    { value: 'googleai/gemini-2.0-pro', label: 'Gemini 2.5 Pro', tags: ['Deep Reasoning'], tier: 'standard' },
 ];
 
 export const FEATURE_MODEL_DEFAULTS: Record<string, string> = {
     consultationInsights: 'googleai/gemini-2.0-flash',
     consultationReport: 'googleai/gemini-2.0-flash', // SWAPPED to 2.0 Flash for Pilot Speed
-    assessmentGrading: 'googleai/gemini-1.5-pro',
-    govIntel: 'googleai/gemini-1.5-pro',
+    assessmentGrading: 'googleai/gemini-2.0-pro',
+    govIntel: 'googleai/gemini-2.5-pro',
     documentExtraction: 'googleai/gemini-2.0-flash', 
     general: 'googleai/gemini-2.0-flash'
 };
@@ -31,12 +31,12 @@ export const FEATURE_METADATA: Record<string, { label: string, description: stri
     assessmentGrading: {
         label: "Assessment Grading",
         description: "Evaluates open-text student responses against rubrics.",
-        recommended: 'googleai/gemini-1.5-pro'
+        recommended: 'googleai/gemini-2.0-pro'
     },
     govIntel: {
         label: "GovIntel Policy",
         description: "Synthesizes regional data into policy memos.",
-        recommended: 'googleai/gemini-1.5-pro' 
+        recommended: 'googleai/gemini-2.5-pro' 
     },
     documentExtraction: {
         label: "Document Extraction",

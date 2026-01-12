@@ -7,7 +7,7 @@ import { z } from "zod";
 
 const ai = genkit({
     plugins: [googleAI()],
-    model: "googleai/gemini-1.5-pro",
+    model: "googleai/gemini-2.5-pro",
 });
 
 const RecommendationSchema = z.object({

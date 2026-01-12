@@ -13,14 +13,14 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
 // Hardcoded defaults match src/ai/config.ts
-// UPDATED: Using 'gemini-1.5-flash' as safe default for all regions (Pilot Stability)
+// UPDATED: Using explicit version 'gemini-2.0-flash' to avoid 404 on aliases in some regions
 const DEFAULTS: Record<string, string> = {
-    consultationInsights: 'googleai/gemini-1.5-flash',
-    consultationReport: 'googleai/gemini-1.5-flash',
-    assessmentGrading: 'googleai/gemini-1.5-flash',
-    govIntel: 'googleai/gemini-1.5-flash', 
-    documentExtraction: 'googleai/gemini-1.5-flash',
-    general: 'googleai/gemini-1.5-flash'
+    consultationInsights: 'googleai/gemini-2.5-flash',
+    consultationReport: 'googleai/gemini-2.5-flash',
+    assessmentGrading: 'googleai/gemini-2.0-flash',
+    govIntel: 'googleai/gemini-2.0-flash', 
+    documentExtraction: 'googleai/gemini-2.0-flash',
+    general: 'googleai/gemini-2.0-flash'
 };
 
 export async function getModelForFeature(featureKey: string): Promise<string> {

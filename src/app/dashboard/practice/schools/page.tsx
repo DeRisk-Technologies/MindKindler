@@ -7,13 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Building, MapPin, Phone, Mail, Loader2, Landmark, Pencil, Trash2 } from 'lucide-react';
-// import { useFirestoreCollection } from '@/hooks/use-firestore'; // Replaced with manual fetch for query control
 import { useAuth } from '@/hooks/use-auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
-import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { db, getRegionalDb } from '@/lib/firebase';
 import { usePermissions } from '@/hooks/use-permissions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,7 +36,7 @@ export default function MySchoolsPage() {
     const [editingLeaId, setEditingLeaId] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // FETCH DATA (Manual to handle managedByTenantId query pattern)
+    // FETCH DATA
     useEffect(() => {
         if (!user?.tenantId) return;
 
@@ -45,12 +44,9 @@ export default function MySchoolsPage() {
         const targetDb = shardId ? getRegionalDb(shardId.replace('mindkindler-', '')) : db;
 
         // Fetch LEAs
-        // We query by 'managedByTenantId' OR 'tenantId' to cover both legacy/seeded and new data
-        // However, Firestore OR requires composite indexes. Let's try 'managedByTenantId' primarily as user indicated.
         const qLeas = query(
             collection(targetDb, 'leas'), 
             where('managedByTenantId', '==', effectiveTenantId)
-            // Note: If you want to support 'tenantId' too, we'd need a separate query or an OR query (Client-side merge)
         );
 
         const unsubLeas = onSnapshot(qLeas, (snap) => {
@@ -59,8 +55,6 @@ export default function MySchoolsPage() {
             setLoadingLeas(false);
         }, (err) => {
             console.error("LEA Fetch Error", err);
-            // Fallback: Try fetching by 'tenantId' if first fails or yields empty? 
-            // For now, let's assume managedByTenantId is the key as per user report.
             setLoadingLeas(false);
         });
 
@@ -111,8 +105,8 @@ export default function MySchoolsPage() {
             } else {
                 await addDoc(collection(targetDb, 'leas'), {
                     ...data,
-                    managedByTenantId: effectiveTenantId, // Consistency with query
-                    tenantId: effectiveTenantId,          // Forward compatibility
+                    managedByTenantId: effectiveTenantId, 
+                    tenantId: effectiveTenantId,          
                     createdAt: serverTimestamp()
                 });
                 toast({ title: "Created", description: "LEA added." });
@@ -137,7 +131,7 @@ export default function MySchoolsPage() {
         const data = {
             name: formData.get('name'),
             leaId: formData.get('leaId') || null, 
-            address: formData.get('address'),
+            address: formData.get('address'), // Note: Stored as string from Input, but legacy might be Object
             contactEmail: formData.get('email'),
             contactPhone: formData.get('phone'),
             principalName: formData.get('principalName'),
@@ -157,8 +151,8 @@ export default function MySchoolsPage() {
             } else {
                 await addDoc(collection(targetDb, 'schools'), {
                     ...data,
-                    managedByTenantId: effectiveTenantId, // Consistency with query
-                    tenantId: effectiveTenantId,          // Forward compatibility
+                    managedByTenantId: effectiveTenantId,
+                    tenantId: effectiveTenantId,          
                     createdAt: serverTimestamp()
                 });
                 toast({ title: "Created", description: "School added." });
@@ -175,6 +169,18 @@ export default function MySchoolsPage() {
 
     const handleEditLea = (lea: any) => { setEditingLeaId(lea.id); setIsLeaDialogOpen(true); };
     const handleEditSchool = (school: any) => { setEditingSchoolId(school.id); setIsSchoolDialogOpen(true); };
+    
+    // Safely handle Address which can be String or Object
+    const formatAddress = (addr: any) => {
+        if (!addr) return "N/A";
+        if (typeof addr === 'object') {
+            // Handle Firestore Map
+            const parts = [addr.street, addr.city, addr.postcode].filter(Boolean);
+            return parts.length > 0 ? parts.join(', ') : "Invalid Address Format";
+        }
+        return addr; // String
+    };
+
     const getLea = (id: string | null) => leas.find(l => l.id === id);
     const getSchool = (id: string | null) => schools.find(s => s.id === id);
 
@@ -236,7 +242,7 @@ export default function MySchoolsPage() {
                                 </Select>
                             </div>
                         </div>
-                        <div className="space-y-2"><Label>Address</Label><Input name="address" defaultValue={editingSchoolId ? getSchool(editingSchoolId)?.address : ""} /></div>
+                        <div className="space-y-2"><Label>Address</Label><Input name="address" defaultValue={typeof getSchool(editingSchoolId)?.address === 'string' ? getSchool(editingSchoolId)?.address : ''} placeholder="Street Address" /></div>
                         <div className="grid grid-cols-3 gap-4">
                              <div className="space-y-2"><Label>Principal</Label><Input name="principalName" defaultValue={editingSchoolId ? getSchool(editingSchoolId)?.principalName : ""} /></div>
                             <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" defaultValue={editingSchoolId ? getSchool(editingSchoolId)?.contactEmail : ""} /></div>
@@ -275,7 +281,7 @@ export default function MySchoolsPage() {
                                     <TableCell className="font-medium flex items-center gap-2"><Building className="h-4 w-4 text-slate-500" />{school.name}</TableCell>
                                      <TableCell><span className="capitalize text-xs bg-slate-100 px-2 py-1 rounded">{school.schoolType || "N/A"}</span></TableCell>
                                      <TableCell>{leas.find((l:any) => l.id === school.leaId)?.name || "-"}</TableCell>
-                                    <TableCell><div className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" /> {school.address || "N/A"}</div></TableCell>
+                                    <TableCell><div className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" /> {formatAddress(school.address)}</div></TableCell>
                                     <TableCell><div className="flex flex-col text-xs">{school.contactEmail && <span className="flex items-center gap-1"><Mail className="h-3 w-3"/> {school.contactEmail}</span>}{school.contactPhone && <span className="flex items-center gap-1"><Phone className="h-3 w-3"/> {school.contactPhone}</span>}</div></TableCell>
                                     <TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => handleEditSchool(school)}><Pencil className="h-4 w-4" /></Button></TableCell>
                                 </TableRow>

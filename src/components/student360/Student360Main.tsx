@@ -12,6 +12,7 @@ import { AlertCard } from './AlertCard';
 import { WiscVEntryForm } from '@/components/assessments/forms/WiscVEntryForm'; 
 import { QuickActionsBar } from './QuickActionsBar'; 
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
 
 interface Student360Props {
     student: any;
@@ -23,17 +24,14 @@ interface Student360Props {
 export function Student360Main({ student, assessments = [], interventions = [], alerts = [] }: Student360Props) {
     const [activeTab, setActiveTab] = useState("overview");
     const router = useRouter();
+    const { toast } = useToast();
 
-    // Guard Clause: Prevent Crash if Student Data is Incomplete
+    // Guard Clause
     if (!student || !student.identity) {
         return (
             <div className="p-6 space-y-4">
                 <div className="h-8 w-1/3 bg-slate-200 rounded animate-pulse" />
                 <div className="h-4 w-1/4 bg-slate-100 rounded animate-pulse" />
-                <div className="grid grid-cols-2 gap-4 mt-8">
-                     <div className="h-64 bg-slate-50 rounded animate-pulse" />
-                     <div className="h-64 bg-slate-50 rounded animate-pulse" />
-                </div>
             </div>
         );
     }
@@ -43,11 +41,16 @@ export function Student360Main({ student, assessments = [], interventions = [], 
     const yearGroup = student.education?.yearGroup?.value || 'N/A';
     const schoolName = student.education?.currentSchoolId?.value || 'No School Linked';
 
-    // Restored Quick Actions Handlers
+    // Handlers
     const handleStartSession = () => router.push(`/dashboard/consultations/new?studentId=${student.id}`);
     const handleLogNote = () => console.log("Log Note Triggered"); 
     const handleUpload = () => setActiveTab("documents"); 
     const handleMessage = () => console.log("Message Parent");
+
+    // Alert Handlers
+    const handleSnooze = (id: string) => toast({ title: "Snoozed", description: "Alert snoozed for 24h." });
+    const handleCreateCase = (id: string) => router.push(`/dashboard/cases/new?studentId=${student.id}&alertId=${id}`);
+    const handleOpenConsultation = (id: string) => router.push(`/dashboard/consultations/new?studentId=${student.id}&contextId=${id}`);
 
     return (
         <div className="space-y-6">
@@ -58,13 +61,21 @@ export function Student360Main({ student, assessments = [], interventions = [], 
                     <h2 className="text-2xl font-bold text-slate-900">{firstName} {lastName}</h2>
                     <p className="text-slate-500">Year {yearGroup} • {schoolName}</p>
                 </div>
-                {/* Alerts Banner */}
+                {/* Alerts Banner - Fixed Props */}
                 <div className="flex gap-2">
-                    {alerts.map(a => <AlertCard key={a.id} alert={a} />)}
+                    {alerts.map(a => (
+                        <AlertCard 
+                            key={a.id} 
+                            alert={a} 
+                            onSnooze={handleSnooze}
+                            onCreateCase={handleCreateCase}
+                            onOpenConsultation={handleOpenConsultation}
+                        />
+                    ))}
                 </div>
             </div>
 
-            {/* Restored Quick Actions Bar */}
+            {/* Quick Actions */}
             <QuickActionsBar 
                 onStartSession={handleStartSession}
                 onLogNote={handleLogNote}
@@ -80,7 +91,6 @@ export function Student360Main({ student, assessments = [], interventions = [], 
                     <TabsTrigger value="documents">Documents</TabsTrigger>
                 </TabsList>
 
-                {/* Tab 1: Overview */}
                 <TabsContent value="overview">
                     <div className="grid grid-cols-2 gap-4">
                        <Card>
@@ -90,27 +100,19 @@ export function Student360Main({ student, assessments = [], interventions = [], 
                        <Card>
                            <CardHeader><CardTitle>Key Contacts</CardTitle></CardHeader>
                            <CardContent>
-                               {/* Parent / Staff List */}
                                <div className="text-sm text-slate-500">Parents: {student.family?.parents?.map((p: any) => p.firstName).join(', ')}</div>
                            </CardContent>
                        </Card>
                     </div>
                 </TabsContent>
 
-                {/* Tab 2: Clinical Data */}
                 <TabsContent value="clinical" className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        
-                        {/* 1. The Psychometric Chart */}
                         <div className="space-y-4">
                             <PsychometricProfileChart data={assessments} />
                         </div>
-
-                        {/* 2. Manual Entry Form */}
                         <div className="space-y-4">
                             <WiscVEntryForm studentId={student.id} />
-                            
-                            {/* History List */}
                             <Card>
                                 <CardHeader className="py-3"><CardTitle className="text-sm">Assessment History</CardTitle></CardHeader>
                                 <CardContent className="p-0">
@@ -127,21 +129,17 @@ export function Student360Main({ student, assessments = [], interventions = [], 
                     </div>
                 </TabsContent>
 
-                {/* Tab 3: Academic / LMS */}
                 <TabsContent value="academic">
                     <Card>
                         <CardHeader><CardTitle>LMS Sync Data</CardTitle></CardHeader>
                         <CardContent>
-                            <p className="text-slate-500 text-sm">
-                                Data from SIMS/Arbor/PowerSchool would appear here (Grades, Attendance).
-                                <br/> *Connector logic handles ingestion into `external_academic_records` collection.*
-                            </p>
+                            <p className="text-slate-500 text-sm">Data from SIMS/Arbor/PowerSchool.</p>
                         </CardContent>
                     </Card>
                 </TabsContent>
 
-                {/* Tab 4: Documents */}
                 <TabsContent value="documents">
+                    {/* Fixed Prop: passing studentId allowed now */}
                     <EvidencePanel studentId={student.id} />
                 </TabsContent>
             </Tabs>

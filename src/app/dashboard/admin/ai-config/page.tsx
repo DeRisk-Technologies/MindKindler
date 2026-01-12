@@ -103,7 +103,7 @@ export default function AIConfigPage() {
                                     </SelectContent>
                                 </Select>
                                 
-                                {config[key] === 'googleai/gemini-1.5-flash' && (
+                                {config[key] === 'googleai/gemini-2.5-flash' && (
                                     <span className="text-xs text-green-600 flex items-center gap-1">
                                         <Info className="h-3 w-3" /> Cost Effective
                                     </span>

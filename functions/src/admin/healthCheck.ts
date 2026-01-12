@@ -48,7 +48,7 @@ export const checkSystemHealthHandler = async (request: CallableRequest) => {
         const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
         const location = 'europe-west3';
         const vertex_ai = new VertexAI({ project: project, location: location });
-        const model = vertex_ai.getGenerativeModel({ model: 'gemini-1.5-flash-001' });
+        const model = vertex_ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
         
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: "ping" }] }]

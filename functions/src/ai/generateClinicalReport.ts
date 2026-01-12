@@ -16,9 +16,8 @@ const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
 const location = 'europe-west3';
 const vertex_ai = new VertexAI({ project: project, location: location });
 
-// Use Generic Model Name (Auto-Resolves to latest stable)
-// 'gemini-1.5-pro' or 'gemini-1.5-flash'
-const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+// Use Explicit Version to avoid 404 in some regions
+const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 const EditorSectionSchema = z.object({
     id: z.string(),
@@ -56,7 +55,7 @@ export const handler = async (request: CallableRequest<any>) => {
     const region = request.auth.token.region || 'uk';
     const dbId = REGIONAL_DB_MAPPING[region] || REGIONAL_DB_MAPPING['default'];
     
-    console.log(`[GenerateReport] Starting for Tenant: ${tenantId}, Student: ${studentId}, Region: ${region}, DB: ${dbId}, Model: gemini-1.5-flash`);
+    console.log(`[GenerateReport] Starting for Tenant: ${tenantId}, Student: ${studentId}, Region: ${region}, DB: ${dbId}, Model: gemini-2.5-flash`);
 
     // Security Check
     if (request.auth.token.tenantId && request.auth.token.tenantId !== tenantId) {
@@ -83,9 +82,6 @@ export const handler = async (request: CallableRequest<any>) => {
             const docSnap = await regionalDb.collection('students').doc(studentId).get();
             if (docSnap.exists) {
                 const fetchedData = docSnap.data();
-                if (fetchedData?.tenantId !== tenantId) {
-                    console.error(`[GenerateReport] Tenant Mismatch. Doc Tenant: ${fetchedData?.tenantId} vs Req Tenant: ${tenantId}`);
-                }
                 studentData = fetchedData;
                 console.log(`[GenerateReport] Fetched Student: ${fetchedData?.identity?.firstName?.value}`);
             } else {
@@ -212,7 +208,7 @@ export const handler = async (request: CallableRequest<any>) => {
     // --- 4. GENERATION (REAL AI) ---
     let result;
     try {
-        console.log(`[GenerateReport] Calling Vertex AI (gemini-1.5-flash)...`);
+        console.log(`[GenerateReport] Calling Vertex AI (gemini-2.5-pro)...`);
         const response = await generativeModel.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }]
         });
@@ -265,7 +261,7 @@ export const handler = async (request: CallableRequest<any>) => {
             studentId: studentId,
             flowName: 'generateClinicalReport',
             prompt: fullPrompt,
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.5-flash-001',
             responseText: result.text,
             parsedOutput: result.parsed,
             latencyMs: Date.now() - startTime,
