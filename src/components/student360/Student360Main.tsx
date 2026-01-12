@@ -9,8 +9,8 @@ import { EvidencePanel } from './EvidencePanel';
 import { PsychometricProfileChart } from '@/components/analytics/PsychometricProfileChart';
 import { LongitudinalProgressChart } from '@/components/analytics/LongitudinalProgressChart';
 import { AlertCard } from './AlertCard';
-import { WiscVEntryForm } from '@/components/assessments/forms/WiscVEntryForm'; // Phase 28
-import { QuickActionsBar } from './QuickActionsBar'; // Restoring QuickActions
+import { WiscVEntryForm } from '@/components/assessments/forms/WiscVEntryForm'; 
+import { QuickActionsBar } from './QuickActionsBar'; 
 import { useRouter } from 'next/navigation';
 
 interface Student360Props {
@@ -24,10 +24,29 @@ export function Student360Main({ student, assessments = [], interventions = [], 
     const [activeTab, setActiveTab] = useState("overview");
     const router = useRouter();
 
+    // Guard Clause: Prevent Crash if Student Data is Incomplete
+    if (!student || !student.identity) {
+        return (
+            <div className="p-6 space-y-4">
+                <div className="h-8 w-1/3 bg-slate-200 rounded animate-pulse" />
+                <div className="h-4 w-1/4 bg-slate-100 rounded animate-pulse" />
+                <div className="grid grid-cols-2 gap-4 mt-8">
+                     <div className="h-64 bg-slate-50 rounded animate-pulse" />
+                     <div className="h-64 bg-slate-50 rounded animate-pulse" />
+                </div>
+            </div>
+        );
+    }
+
+    const firstName = student.identity?.firstName?.value || 'Unknown';
+    const lastName = student.identity?.lastName?.value || '';
+    const yearGroup = student.education?.yearGroup?.value || 'N/A';
+    const schoolName = student.education?.currentSchoolId?.value || 'No School Linked';
+
     // Restored Quick Actions Handlers
     const handleStartSession = () => router.push(`/dashboard/consultations/new?studentId=${student.id}`);
-    const handleLogNote = () => console.log("Log Note Triggered"); // Placeholder for future modal
-    const handleUpload = () => setActiveTab("documents"); // Jump to tab
+    const handleLogNote = () => console.log("Log Note Triggered"); 
+    const handleUpload = () => setActiveTab("documents"); 
     const handleMessage = () => console.log("Message Parent");
 
     return (
@@ -36,8 +55,8 @@ export function Student360Main({ student, assessments = [], interventions = [], 
             {/* Header / Summary */}
             <div className="flex justify-between items-start">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-900">{student.identity.firstName.value} {student.identity.lastName.value}</h2>
-                    <p className="text-slate-500">Year {student.education.yearGroup?.value} • {student.education.currentSchoolId?.value}</p>
+                    <h2 className="text-2xl font-bold text-slate-900">{firstName} {lastName}</h2>
+                    <p className="text-slate-500">Year {yearGroup} • {schoolName}</p>
                 </div>
                 {/* Alerts Banner */}
                 <div className="flex gap-2">
@@ -61,7 +80,7 @@ export function Student360Main({ student, assessments = [], interventions = [], 
                     <TabsTrigger value="documents">Documents</TabsTrigger>
                 </TabsList>
 
-                {/* Tab 1: Overview (Existing) */}
+                {/* Tab 1: Overview */}
                 <TabsContent value="overview">
                     <div className="grid grid-cols-2 gap-4">
                        <Card>
@@ -78,16 +97,16 @@ export function Student360Main({ student, assessments = [], interventions = [], 
                     </div>
                 </TabsContent>
 
-                {/* Tab 2: Clinical Data (Enhanced) */}
+                {/* Tab 2: Clinical Data */}
                 <TabsContent value="clinical" className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         
-                        {/* 1. The Psychometric Chart (Visual) */}
+                        {/* 1. The Psychometric Chart */}
                         <div className="space-y-4">
                             <PsychometricProfileChart data={assessments} />
                         </div>
 
-                        {/* 2. Manual Entry Form (The Missing Link) */}
+                        {/* 2. Manual Entry Form */}
                         <div className="space-y-4">
                             <WiscVEntryForm studentId={student.id} />
                             
@@ -108,7 +127,7 @@ export function Student360Main({ student, assessments = [], interventions = [], 
                     </div>
                 </TabsContent>
 
-                {/* Tab 3: Academic / LMS (Placeholder for Connector Data) */}
+                {/* Tab 3: Academic / LMS */}
                 <TabsContent value="academic">
                     <Card>
                         <CardHeader><CardTitle>LMS Sync Data</CardTitle></CardHeader>

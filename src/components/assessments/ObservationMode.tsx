@@ -5,32 +5,40 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Play, Pause, Save, RotateCcw, Maximize2, Minimize2 } from 'lucide-react';
+import { Play, Pause, Save, RotateCcw, Maximize2, Minimize2, Plus, X, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { getRegionalDb } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '@/hooks/use-auth';
 
-interface BehaviorCounter {
-    id: string;
-    label: string;
-    color: string;
-    count: number;
+interface ObservationModeProps {
+    studentId?: string; // Optional context linking
+    studentName?: string;
 }
 
-const INITIAL_COUNTERS = [
-    { id: 'focus', label: 'On Task', color: 'bg-green-500 hover:bg-green-600' },
-    { id: 'disrupt', label: 'Verbal Outburst', color: 'bg-red-500 hover:bg-red-600' },
-    { id: 'motor', label: 'Motor Restlessness', color: 'bg-amber-500 hover:bg-amber-600' },
-    { id: 'social', label: 'Peer Interaction', color: 'bg-blue-500 hover:bg-blue-600' }
+// Mimics LiveCockpit Styling
+const INITIAL_TILES = [
+    { id: 'focus', label: 'On Task' },
+    { id: 'disrupt', label: 'Verbal Outburst' },
+    { id: 'motor', label: 'Motor Restlessness' },
+    { id: 'social', label: 'Peer Interaction' }
 ];
 
-export function ObservationMode() {
+export function ObservationMode({ studentId, studentName }: ObservationModeProps) {
     const { toast } = useToast();
+    const { user } = useAuth();
     const [isActive, setIsActive] = useState(false);
     const [elapsed, setElapsed] = useState(0);
-    const [counters, setCounters] = useState<BehaviorCounter[]>(
-        INITIAL_COUNTERS.map(c => ({ ...c, count: 0 }))
-    );
+    const [customTiles, setCustomTiles] = useState<string[]>(INITIAL_TILES.map(t => t.label));
+    const [newTileName, setNewTileName] = useState("");
+    const [isAddingTile, setIsAddingTile] = useState(false);
+    
+    // Log of events (Timestamped) instead of just counters
+    const [events, setEvents] = useState<{ label: string, time: number }[]>([]);
+    
     const [fullScreen, setFullScreen] = useState(false);
 
     // Timer Logic
@@ -48,80 +56,195 @@ export function ObservationMode() {
         return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
-    const handleTap = (id: string) => {
+    const addTile = () => {
+        if (newTileName.trim()) {
+            setCustomTiles([...customTiles, newTileName]);
+            setNewTileName("");
+            setIsAddingTile(false);
+        }
+    };
+
+    const handleTap = (label: string) => {
         if (!isActive) return;
-        // Haptic feedback for mobile devices
+        // Haptic feedback
         if (navigator.vibrate) navigator.vibrate(50);
         
-        setCounters(prev => prev.map(c => 
-            c.id === id ? { ...c, count: c.count + 1 } : c
-        ));
+        // Log Event
+        setEvents(prev => [...prev, { label, time: elapsed }]);
+        
+        // Optimistic Toast (Short)
+        toast({ title: "Logged", description: label, duration: 1000 });
     };
 
     const handleSave = async () => {
+        if (events.length === 0) return;
         setIsActive(false);
-        // In prod: save to firestore 'observations' subcollection
-        console.log("Saving Observation Session:", { elapsed, counters });
-        
-        toast({
-            title: "Observation Saved",
-            description: `Session duration: ${formatTime(elapsed)}. Data synced to Student Profile.`
-        });
+
+        // Save to Firestore
+        try {
+            if (studentId && user) {
+                const region = user.region || 'uk';
+                const db = getRegionalDb(region);
+                
+                // Save as a structured observation report or raw events
+                // We'll save to 'cases' or 'observations' subcollection
+                // For now, let's create a 'case' note or 'observation_session'
+                // Assuming 'observations' collection exists or subcollection
+                // We'll use a root collection 'observations' linked to student
+                
+                await addDoc(collection(db, 'observations'), {
+                    tenantId: user.tenantId,
+                    studentId,
+                    observerId: user.uid,
+                    date: new Date().toISOString(),
+                    durationSeconds: elapsed,
+                    events: events,
+                    summary: countFrequencies(events),
+                    type: 'mobile_observation'
+                });
+                
+                toast({
+                    title: "Observation Saved",
+                    description: `Synced to ${studentName || 'Student Profile'}.`
+                });
+            } else {
+                 console.log("Offline/Demo Save:", { elapsed, events });
+                 toast({ title: "Demo Save", description: "See console for data." });
+            }
+        } catch (e) {
+            console.error("Save Failed", e);
+            toast({ title: "Save Failed", variant: "destructive" });
+        }
     };
+
+    const countFrequencies = (evs: any[]) => {
+        const counts: Record<string, number> = {};
+        evs.forEach(e => counts[e.label] = (counts[e.label] || 0) + 1);
+        return counts;
+    };
+
+    const counts = countFrequencies(events);
 
     return (
         <div className={cn(
-            "flex flex-col gap-4 p-4 transition-all duration-300",
-            fullScreen ? "fixed inset-0 z-50 bg-background h-screen w-screen" : "w-full"
+            "flex flex-col h-full bg-slate-50 transition-all duration-300",
+            fullScreen ? "fixed inset-0 z-50 h-screen w-screen" : "w-full min-h-[500px]"
         )}>
             {/* Header / Controls */}
-            <div className="flex items-center justify-between bg-slate-100 p-4 rounded-lg shadow-sm">
-                <div className="flex items-center gap-4">
-                    <div className="text-3xl font-mono font-bold text-slate-800 w-24">
-                        {formatTime(elapsed)}
-                    </div>
-                    {!isActive ? (
-                        <Button onClick={() => setIsActive(true)} size="lg" className="bg-green-600">
-                            <Play className="mr-2 h-5 w-5" /> Start
-                        </Button>
-                    ) : (
-                        <Button onClick={() => setIsActive(false)} size="lg" variant="secondary">
-                            <Pause className="mr-2 h-5 w-5" /> Pause
-                        </Button>
-                    )}
+            <div className="flex-none bg-white p-4 border-b shadow-sm flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                     <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
+                        <Activity className="h-5 w-5" />
+                     </div>
+                     <div>
+                         <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+                             {studentName ? `Observing: ${studentName}` : 'Observation Mode'}
+                         </h2>
+                         <div className="text-2xl font-mono font-bold text-slate-900 leading-none mt-1">
+                             {formatTime(elapsed)}
+                         </div>
+                     </div>
                 </div>
                 
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                     {!isActive ? (
+                        <Button onClick={() => setIsActive(true)} size="sm" className="bg-green-600 hover:bg-green-700 shadow-sm">
+                            <Play className="mr-2 h-4 w-4" /> Start
+                        </Button>
+                    ) : (
+                        <Button onClick={() => setIsActive(false)} size="sm" variant="secondary" className="animate-pulse">
+                            <Pause className="mr-2 h-4 w-4" /> Pause
+                        </Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => setFullScreen(!fullScreen)}>
-                        {fullScreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-                    </Button>
-                    <Button variant="default" onClick={handleSave} disabled={elapsed === 0}>
-                        <Save className="mr-2 h-4 w-4" /> Save
+                        {fullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                     </Button>
                 </div>
             </div>
 
-            {/* Tap Grid - Optimized for Touch */}
-            <div className="grid grid-cols-2 gap-4 flex-grow h-full">
-                {counters.map(counter => (
-                    <Card 
-                        key={counter.id}
-                        onClick={() => handleTap(counter.id)}
-                        className={cn(
-                            "flex flex-col items-center justify-center cursor-pointer transition-transform active:scale-95 select-none text-white shadow-md border-none",
-                            counter.color,
-                            !isActive && "opacity-50 grayscale cursor-not-allowed"
-                        )}
+            {/* Dynamic Grid (Matches LiveCockpit) */}
+            <div className="flex-grow p-4 overflow-y-auto">
+                 <div className="flex justify-between items-center mb-4">
+                    <span className="text-xs font-bold text-slate-500 uppercase">Behaviors</span>
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 w-6 p-0 hover:bg-slate-200 rounded-full"
+                        onClick={() => setIsAddingTile(!isAddingTile)}
                     >
-                        <span className="text-6xl font-bold drop-shadow-md">{counter.count}</span>
-                        <span className="text-xl font-medium mt-2 uppercase tracking-wide">{counter.label}</span>
-                    </Card>
-                ))}
+                        {isAddingTile ? <X className="w-4 h-4 text-slate-500"/> : <Plus className="w-4 h-4 text-indigo-600"/>}
+                    </Button>
+                </div>
+
+                {/* Add Tile Input */}
+                {isAddingTile && (
+                    <div className="mb-4 flex gap-2 animate-in slide-in-from-top-2">
+                        <Input 
+                            className="h-9 text-sm" 
+                            placeholder="Label (e.g. 'Stimming')" 
+                            value={newTileName}
+                            onChange={(e) => setNewTileName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addTile()}
+                            autoFocus
+                        />
+                        <Button size="sm" className="bg-indigo-600" onClick={addTile}>Add</Button>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                    {customTiles.map((tile, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => handleTap(tile)}
+                            disabled={!isActive}
+                            className={cn(
+                                "relative group flex flex-col items-center justify-center p-6 bg-white border border-slate-200 rounded-2xl shadow-sm transition-all active:scale-95",
+                                isActive ? "hover:border-indigo-400 hover:shadow-md hover:bg-indigo-50/50" : "opacity-60 grayscale cursor-not-allowed"
+                            )}
+                        >
+                            <div className={cn(
+                                "h-3 w-3 rounded-full mb-3 transition-colors",
+                                isActive ? "bg-slate-300 group-hover:bg-indigo-500" : "bg-slate-200"
+                            )} />
+                            <span className="text-sm font-bold text-slate-700 text-center leading-tight group-hover:text-indigo-900">
+                                {tile}
+                            </span>
+                            
+                            {/* Counter Badge */}
+                            {counts[tile] > 0 && (
+                                <Badge className="absolute top-2 right-2 bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200">
+                                    {counts[tile]}
+                                </Badge>
+                            )}
+
+                            {/* Delete Hover (Only if active and count is 0 to prevent accidental data loss? Or just allow) */}
+                            {isActive && (
+                                <div 
+                                    className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCustomTiles(prev => prev.filter((_, i) => i !== idx));
+                                    }}
+                                >
+                                    <X className="w-3 h-3 text-red-400" />
+                                </div>
+                            )}
+                        </button>
+                    ))}
+                </div>
             </div>
 
-            {/* Hint */}
-            <div className="text-center text-xs text-muted-foreground">
-                Observation Mode • Tap tiles to increment count • Auto-syncs to cloud
+            {/* Footer / Save */}
+            <div className="p-4 border-t bg-white">
+                <Button 
+                    variant="default" 
+                    className="w-full h-12 text-lg bg-indigo-600 hover:bg-indigo-700 shadow-md"
+                    onClick={handleSave} 
+                    disabled={events.length === 0}
+                >
+                    <Save className="mr-2 h-5 w-5" /> 
+                    Save Session ({events.length} Events)
+                </Button>
             </div>
         </div>
     );
