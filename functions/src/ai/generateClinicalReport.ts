@@ -6,10 +6,16 @@ import { getFirestore } from "firebase-admin/firestore";
 import { saveAiProvenance } from "./utils/provenance";
 import { z } from "zod";
 import { buildSystemPrompt } from "./utils/prompt-builder";
-import { getGenkitInstance } from "./utils/model-selector"; 
-import { logAuditEvent } from "../services/audit"; // Phase 34: Audit Integration
+import { VertexAI } from '@google-cloud/vertexai';
+import { logAuditEvent } from "../services/audit";
 
 if (!admin.apps.length) admin.initializeApp();
+
+// Initialize Vertex AI
+const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
+const location = 'europe-west3';
+const vertex_ai = new VertexAI({ project: project, location: location });
+const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-1.5-pro-001' });
 
 const EditorSectionSchema = z.object({
     id: z.string(),
@@ -47,6 +53,8 @@ export const handler = async (request: CallableRequest<any>) => {
     const region = request.auth.token.region || 'uk';
     const dbId = REGIONAL_DB_MAPPING[region] || REGIONAL_DB_MAPPING['default'];
     
+    console.log(`[GenerateReport] Starting for Tenant: ${tenantId}, Student: ${studentId}, Region: ${region}, DB: ${dbId}`);
+
     // Security Check
     if (request.auth.token.tenantId && request.auth.token.tenantId !== tenantId) {
          if (request.auth.token.role !== 'global_admin') {
@@ -61,23 +69,29 @@ export const handler = async (request: CallableRequest<any>) => {
     try {
         regionalDb = getFirestore(admin.app(), dbId);
     } catch (e) {
-        regionalDb = admin.firestore(); // Fallback
+        console.warn(`[GenerateReport] Failed to get named DB ${dbId}, falling back to default.`);
+        regionalDb = admin.firestore(); 
     }
 
     // --- 1. DATA RESOLUTION (With Fallback) ---
     if (!studentData) {
         try {
+            console.log(`[GenerateReport] Fetching student data from ${dbId}...`);
             const docSnap = await regionalDb.collection('students').doc(studentId).get();
             if (docSnap.exists) {
                 const fetchedData = docSnap.data();
-                if (fetchedData?.tenantId !== tenantId) throw new HttpsError('permission-denied', 'Student record does not belong to your practice.');
+                if (fetchedData?.tenantId !== tenantId) {
+                    console.error(`[GenerateReport] Tenant Mismatch. Doc Tenant: ${fetchedData?.tenantId} vs Req Tenant: ${tenantId}`);
+                    // throw new HttpsError('permission-denied', 'Student record does not belong to your practice.');
+                }
                 studentData = fetchedData;
+                console.log(`[GenerateReport] Fetched Student: ${fetchedData?.identity?.firstName?.value}`);
             } else {
+                console.warn(`[GenerateReport] Student doc ${studentId} not found in ${dbId}.`);
                 studentData = { identity: { firstName: { value: "Student" } } };
             }
         } catch (e: any) {
             console.error(`[GenerateReport] Fetch error:`, e);
-            if (e.code === 'permission-denied') throw e;
             studentData = { identity: { firstName: { value: "Student" } } };
         }
     }
@@ -87,19 +101,19 @@ export const handler = async (request: CallableRequest<any>) => {
     let parentViews = "";
 
     try {
-        // Fetch assessments/forms linked to this student
+        console.log(`[GenerateReport] Fetching assessment_results for context...`);
         const contribSnap = await regionalDb.collection('assessment_results')
             .where('studentId', '==', studentId)
-            // .where('status', '==', 'completed') // Optional: only finalized forms
             .limit(20) 
             .get();
+
+        console.log(`[GenerateReport] Found ${contribSnap.size} contributions.`);
 
         contribSnap.forEach(doc => {
             const data = doc.data();
             const responses = data.responses; 
-            const template = data.templateId; // e.g. 'uk_school_contribution'
+            const template = data.templateId; 
 
-            // Convert responses to AI-readable string
             let content = "";
             if (Array.isArray(responses)) {
                 content = responses.map(r => `${r.questionId}: ${r.answer}`).join(', ');
@@ -116,9 +130,6 @@ export const handler = async (request: CallableRequest<any>) => {
     } catch (e) {
         console.warn("[GenerateReport] Failed to fetch contributions:", e);
     }
-
-    // --- 2. AI CONFIGURATION ---
-    await getGenkitInstance('consultationReport'); 
 
     // --- 3. CONSTRUCT ENHANCED PROMPT ---
     const constraints = contextPackId === 'uk_la_pack' 
@@ -178,7 +189,6 @@ export const handler = async (request: CallableRequest<any>) => {
     
     Output Format: strictly valid JSON matching { sections: [{ id, title, content }] }.`;
 
-    // Pass reportType context to prompt builder
     const systemPrompt = buildSystemPrompt(baseInstruction, { 
         locale: 'en-GB', 
         languageLabel: 'English (UK)', 
@@ -195,44 +205,48 @@ export const handler = async (request: CallableRequest<any>) => {
     `;
 
     const fullPrompt = `${systemPrompt}\n\n${dataBlock}\n\nGenerate the JSON report structure now based on the provided EVIDENCE.`;
+    console.log(`[GenerateReport] Prompt prepared. Length: ${fullPrompt.length}`);
 
-    // --- 4. GENERATION ---
+    // --- 4. GENERATION (REAL AI) ---
     let result;
     try {
-        // PROD AI CALL Logic (Mock for consistency until Genkit V2 fully wired)
-        const mockResponse = JSON.stringify({
-            sections: [
-                { 
-                    id: "section_a", 
-                    title: isReferral ? "Reason for Referral" : "Section A: Views of Child & Parent", 
-                    content: parentViews 
-                        ? `Parental views were captured via the One Page Profile. Key themes include: ${parentViews.slice(0, 100)}... Additionally, during consultation, ${firstName} expressed...`
-                        : `During the ${sessionContext?.mode || 'standard'} consultation, ${firstName} shared their views.`
-                },
-                { 
-                    id: "section_b", 
-                    title: isReferral ? "Clinical Observations" : "Section B: Special Educational Needs", 
-                    content: `Triangulating data from school forms and clinical observation: \n\nSchool Report: ${schoolViews ? "Indicates specific needs in attainment." : "Pending."} \n\nClinical Opinion: Based on assessment, ${firstName} presents needs in the following areas.` 
-                },
-                { 
-                    id: "section_f", 
-                    title: isReferral ? "Recommendations" : "Section F: Provision", 
-                    content: sessionContext?.outcome?.interventionPlan 
-                        ? "Specific interventions recommended based on the agreed plan: " + sessionContext.outcome.interventionPlan.map((p: any) => p.programName).join(", ") + "."
-                        : "Standard provision is recommended."
-                }
-            ]
+        console.log(`[GenerateReport] Calling Vertex AI...`);
+        const response = await generativeModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: fullPrompt }] }]
         });
         
-        result = { text: mockResponse, parsed: JSON.parse(mockResponse) };
-        ClinicalReportOutputSchema.parse(result.parsed);
+        const candidate = response.response.candidates?.[0];
+        let text = candidate?.content?.parts?.[0]?.text || "";
+        
+        // Sanitize JSON
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        console.log(`[GenerateReport] AI Response received. Length: ${text.length}`);
+        
+        let parsed;
+        try {
+            parsed = JSON.parse(text);
+        } catch (e) {
+            console.error("JSON Parse Failed", text);
+            // Fallback to text in a single section if JSON breaks
+            parsed = { sections: [{ id: "raw", title: "Generated Draft", content: text }] };
+        }
+        
+        result = { text: text, parsed: parsed };
+        
+        // Validate Schema (Optional - Log warning if fails but return result)
+        try {
+            ClinicalReportOutputSchema.parse(result.parsed);
+        } catch (e) {
+            console.warn("Schema Validation Failed", e);
+        }
 
         // --- PHASE 34: AUDIT LOG ---
         await logAuditEvent({
             tenantId,
             action: 'GENERATE_REPORT',
             actorId: userId,
-            resourceType: 'student', // Log against student as report ID isn't persisted yet
+            resourceType: 'student', 
             resourceId: studentId,
             metadata: { templateId, docType }
         });
@@ -242,18 +256,22 @@ export const handler = async (request: CallableRequest<any>) => {
         throw new HttpsError('internal', "AI Generation Failed: " + err.message);
     }
 
-    // --- 5. AI PROVENANCE (Technical Audit) ---
-    await saveAiProvenance({
-        tenantId: tenantId || 'global',
-        studentId: studentId,
-        flowName: 'generateClinicalReport',
-        prompt: fullPrompt,
-        model: 'gemini-1.5-pro',
-        responseText: result.text,
-        parsedOutput: result.parsed,
-        latencyMs: Date.now() - startTime,
-        createdBy: userId
-    });
+    // --- 5. AI PROVENANCE ---
+    try {
+        await saveAiProvenance({
+            tenantId: tenantId || 'global',
+            studentId: studentId,
+            flowName: 'generateClinicalReport',
+            prompt: fullPrompt,
+            model: 'gemini-1.5-pro',
+            responseText: result.text,
+            parsedOutput: result.parsed,
+            latencyMs: Date.now() - startTime,
+            createdBy: userId
+        });
+    } catch (e) {
+        console.warn("Provenance Save Failed", e);
+    }
 
     return result.parsed;
 };

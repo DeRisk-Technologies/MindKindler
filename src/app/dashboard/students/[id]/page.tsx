@@ -99,8 +99,8 @@ export default function StudentProfilePage({ params }: { params: Promise<{ id: s
                 </TabsList>
 
                 <TabsContent value="identity" className="mt-0">
-                    {/* Pass the loaded student object directly to avoid re-fetching */}
-                    <Student360Main studentId={id} initialData={student} />
+                    {/* Pass the loaded student object correctly */}
+                    <Student360Main student={student} />
                 </TabsContent>
 
                 <TabsContent value="assessment" className="mt-0 space-y-8">
@@ -108,7 +108,8 @@ export default function StudentProfilePage({ params }: { params: Promise<{ id: s
                         <>
                             <div className="grid gap-6">
                                 <PsychometricProfileChart data={MOCK_SCORES} />
-                                <SmartInterventionMapper scores={MOCK_SCORES} />
+                                {/* Phase 35: Link Interventions to Student */}
+                                <SmartInterventionMapper scores={MOCK_SCORES} studentId={id} />
                             </div>
                         </>
                     ) : (

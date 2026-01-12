@@ -76,6 +76,12 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
         toast({ title: "Logged", description: label, duration: 1000 });
     };
 
+    const countFrequencies = (evs: any[]) => {
+        const counts: Record<string, number> = {};
+        evs.forEach(e => counts[e.label] = (counts[e.label] || 0) + 1);
+        return counts;
+    };
+
     const handleSave = async () => {
         if (events.length === 0) return;
         setIsActive(false);
@@ -100,13 +106,17 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
                     durationSeconds: elapsed,
                     events: events,
                     summary: countFrequencies(events),
-                    type: 'mobile_observation'
+                    type: 'mobile_observation',
+                    createdAt: serverTimestamp()
                 });
                 
                 toast({
                     title: "Observation Saved",
                     description: `Synced to ${studentName || 'Student Profile'}.`
                 });
+                // Reset
+                setEvents([]);
+                setElapsed(0);
             } else {
                  console.log("Offline/Demo Save:", { elapsed, events });
                  toast({ title: "Demo Save", description: "See console for data." });
@@ -115,12 +125,6 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
             console.error("Save Failed", e);
             toast({ title: "Save Failed", variant: "destructive" });
         }
-    };
-
-    const countFrequencies = (evs: any[]) => {
-        const counts: Record<string, number> = {};
-        evs.forEach(e => counts[e.label] = (counts[e.label] || 0) + 1);
-        return counts;
     };
 
     const counts = countFrequencies(events);

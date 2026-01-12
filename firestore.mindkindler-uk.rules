@@ -55,6 +55,8 @@ service cloud.firestore {
     match /consultation_sessions/{document=**} { allow read, write: if isTenantScoped(); }
     match /assessment_results/{id} { allow read, write: if isTenantScoped(); }
     match /assessment_assignments/{id} { allow read, write: if isTenantScoped(); }
+    // New Observation Mode Collection
+    match /observations/{id} { allow read, write: if isTenantScoped(); }
 
     match /assessment_templates/{id} { 
       allow read, write: if isAuthenticated(); 
