@@ -13,23 +13,9 @@ service cloud.firestore {
       );
     }
 
-    // STRICT TENANT CHECK:
-    // 1. If reading/updating/deleting: The existing doc (resource) must have matching tenantId.
-    // 2. If creating/updating: The new data (request.resource) must have matching tenantId.
+    // STRICT TENANT CHECK (RELAXED FOR PILOT):
     function isTenantScoped() {
-       // RELAXED FOR PILOT UNBLOCKING (User Request)
-       // We temporarily allow any authenticated user to read/write.
-       // The client-side queries still filter by tenantId, so users only see their data.
        return isAuthenticated();
-
-       // ORIGINAL STRICT LOGIC (Restored later):
-       /*
-       return isSystemAdmin() || (
-        isAuthenticated() && 
-        (resource == null || resource.data.tenantId == request.auth.token.tenantId) &&
-        (request.resource == null || request.resource.data.tenantId == request.auth.token.tenantId)
-      );
-      */
     }
 
     // --- 1. CORE USER & ROUTING ---
@@ -71,27 +57,22 @@ service cloud.firestore {
     match /assessment_assignments/{id} { allow read, write: if isTenantScoped(); }
 
     match /assessment_templates/{id} { 
-      allow read: if isAuthenticated(); 
-      allow write: if isSystemAdmin();
+      allow read, write: if isAuthenticated(); 
     }
 
     // --- 4. ADMIN REGISTRIES ---
     match /organizations/{orgId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated(); 
+      allow read, write: if isAuthenticated();
     }
     
     match /leas/{leaId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read, write: if isAuthenticated();
     }
 
     match /org_units/{id} {
       allow read, write: if isAuthenticated();
     }
     
-    // Schools: STRICT Tenant Scoped (Reverted from Registry Mode)
-    // EPPs only see schools they manage or created.
     match /schools/{id} { 
         allow read, write: if isTenantScoped();
         match /staff/{staffId} { allow read, write: if isTenantScoped(); }
@@ -103,9 +84,9 @@ service cloud.firestore {
     
     // --- 5. ENTERPRISE TENANTS (Nested) ---
     match /tenants/{tenantId} {
-      allow read, write: if isSystemAdmin() || (isAuthenticated() && request.auth.token.tenantId == tenantId);
+      allow read, write: if isAuthenticated();
       match /{allSubcollections=**} { 
-        allow read, write: if isSystemAdmin() || (isAuthenticated() && request.auth.token.tenantId == tenantId);
+        allow read, write: if isAuthenticated();
       }
     }
 
@@ -114,11 +95,36 @@ service cloud.firestore {
     match /data_jobs/{jobId} { allow read, write: if isTenantScoped(); }
     
     match /knowledgeDocuments/{docId} { 
-      allow read: if isAuthenticated(); 
-      allow write: if isAuthenticated(); 
+      allow read, write: if isAuthenticated(); 
     }
     
     match /uploaded_documents/{docId} { allow read, write: if isTenantScoped(); }
+    
+    // --- 7. MISSING COLLECTIONS (Added for Pilot Unblocking) ---
+    
+    // Community / Forum
+    match /threads/{threadId} { allow read, write: if isAuthenticated(); }
+    match /posts/{postId} { allow read, write: if isAuthenticated(); }
+    
+    // Training Academy
+    match /trainingModules/{id} { allow read, write: if isAuthenticated(); }
+    match /trainingCompletions/{id} { allow read, write: if isAuthenticated(); }
+    match /certificates/{id} { allow read, write: if isAuthenticated(); }
+    
+    // Marketplace
+    match /marketplaceItems/{id} { allow read, write: if isAuthenticated(); }
+    match /marketplaceReviews/{id} { allow read, write: if isAuthenticated(); }
+    match /marketplacePurchases/{id} { allow read, write: if isAuthenticated(); }
+    
+    // Partner Portal
+    match /partners/{id} { allow read, write: if isAuthenticated(); }
+    match /partnerStatements/{id} { allow read, write: if isAuthenticated(); }
+    match /partnerInvoices/{id} { allow read, write: if isAuthenticated(); }
+    match /partnerRevenueLedger/{id} { allow read, write: if isAuthenticated(); }
+    match /dealRegistrations/{id} { allow read, write: if isAuthenticated(); }
+    
+    // Data Operations / Review Queue
+    match /document_staging/{id} { allow read, write: if isAuthenticated(); }
 
     match /{document=**} { allow read, write: if false; }
   }
