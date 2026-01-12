@@ -13,13 +13,14 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
 // Hardcoded defaults match src/ai/config.ts
+// UPDATED: Using 'gemini-1.5-flash' as safe default for all regions (Pilot Stability)
 const DEFAULTS: Record<string, string> = {
-    consultationInsights: 'googleai/gemini-1.5-pro',
-    consultationReport: 'googleai/gemini-1.5-pro',
-    assessmentGrading: 'googleai/gemini-1.5-pro',
-    govIntel: 'googleai/gemini-1.5-pro', // 2.5 is not yet GA in all regions, safe default
+    consultationInsights: 'googleai/gemini-1.5-flash',
+    consultationReport: 'googleai/gemini-1.5-flash',
+    assessmentGrading: 'googleai/gemini-1.5-flash',
+    govIntel: 'googleai/gemini-1.5-flash', 
     documentExtraction: 'googleai/gemini-1.5-flash',
-    general: 'googleai/gemini-1.5-pro'
+    general: 'googleai/gemini-1.5-flash'
 };
 
 export async function getModelForFeature(featureKey: string): Promise<string> {
@@ -42,14 +43,16 @@ export async function getModelForFeature(featureKey: string): Promise<string> {
     }
 
     const selected = cachedConfig?.[featureKey] || DEFAULTS[featureKey] || DEFAULTS.general;
-    // console.log(`Feature [${featureKey}] using model [${selected}]`);
     return selected;
 }
 
 export async function getGenkitInstance(featureKey: string) {
     const modelName = await getModelForFeature(featureKey);
+    // Map googleai/ prefix to clean model name if needed, or pass as is
+    const cleanModelName = modelName.replace('googleai/', '');
+    
     return genkit({
         plugins: [googleAI()],
-        model: modelName
+        model: cleanModelName
     });
 }
