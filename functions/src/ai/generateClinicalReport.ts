@@ -17,8 +17,11 @@ const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
 const location = 'europe-west3';
 const vertex_ai = new VertexAI({ project: project, location: location });
 
-// Use Explicit Version as requested (2.5 Flash)
-const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+// Use Explicit Version (2.5 Flash) with JSON Enforcement
+const generativeModel = vertex_ai.getGenerativeModel({ 
+    model: 'gemini-2.5-flash',
+    generationConfig: { responseMimeType: "application/json" } 
+});
 
 const EditorSectionSchema = z.object({
     id: z.string(),
@@ -90,12 +93,12 @@ export const handler = async (request: CallableRequest<any>) => {
             }
         }
 
-        // FETCH CONSULTATION HISTORY (The "Data Injection" Fix)
+        // FETCH CONSULTATION HISTORY
         console.log(`[GenerateReport] Fetching consultation_sessions for student ${studentId}...`);
         const consultsSnap = await regionalDb.collection('consultation_sessions')
             .where('studentId', '==', studentId)
-            // .where('status', 'in', ['completed', 'synthesized']) // Optional
-            .limit(5)
+            .orderBy('createdAt', 'desc') // Ensure latest first
+            .limit(1) // UPDATED: Only latest session as requested to reduce complexity
             .get();
 
         const consultationData = consultsSnap.docs.map(doc => doc.data());
@@ -104,7 +107,6 @@ export const handler = async (request: CallableRequest<any>) => {
         if (consultationData.length > 0) {
             formattedEvidence = formatConsultationHistory(consultationData);
         } else if (sessionContext) {
-            // Fallback to the single session passed in request if DB fetch empty
             formattedEvidence = formatConsultationHistory([sessionContext]);
         }
 
@@ -170,14 +172,14 @@ export const handler = async (request: CallableRequest<any>) => {
 
     const systemPrompt = buildSystemPrompt(baseInstruction, { 
         locale: 'en-GB', 
-        languageLabel: 'English (UK)', // FIXED: Added required prop
+        languageLabel: 'English (UK)', 
         reportType: isReferral ? 'referral' : 'statutory' 
     });
 
     const fullPrompt = `${systemPrompt}\n\nSTUDENT BIO: ${JSON.stringify(studentData?.identity)}`;
     console.log(`[GenerateReport] Prompt prepared. Length: ${fullPrompt.length}`);
 
-    // --- 4. GENERATION ---
+    // --- 4. GENERATION (REAL AI) ---
     let result;
     try {
         console.log(`[GenerateReport] Calling Vertex AI (gemini-2.5-flash)...`);
@@ -187,6 +189,8 @@ export const handler = async (request: CallableRequest<any>) => {
         
         const candidate = response.response.candidates?.[0];
         let text = candidate?.content?.parts?.[0]?.text || "";
+        
+        // Sanitize JSON
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         
         console.log(`[GenerateReport] AI Response received. Length: ${text.length}`);
@@ -194,7 +198,7 @@ export const handler = async (request: CallableRequest<any>) => {
         let parsed;
         try {
             parsed = JSON.parse(text);
-            // FIXED: Use the Schema
+            // Schema check
             ClinicalReportOutputSchema.parse(parsed);
         } catch (e) {
             console.warn("JSON Parse or Schema Validation Failed, falling back to raw text.", e);
@@ -232,7 +236,9 @@ export const handler = async (request: CallableRequest<any>) => {
             latencyMs: Date.now() - startTime,
             createdBy: userId
         });
-    } catch (e) {}
+    } catch (e) {
+        console.warn("Provenance Save Failed", e);
+    }
 
     return result.parsed;
 };
