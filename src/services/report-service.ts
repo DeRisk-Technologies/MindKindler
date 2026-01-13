@@ -41,8 +41,13 @@ export const ReportService = {
   },
 
   async saveDraft(tenantId: string, reportId: string, content: any, region: string = 'uk'): Promise<void> {
-    const targetDb = getDb(region);
+    // Force lowercase for region to ensure consistency
+    const r = region.toLowerCase();
+    const targetDb = getDb(r);
     const ref = doc(targetDb, COLLECTION, reportId);
+    
+    console.log(`[ReportService] Saving draft to DB. Region: ${r}, ID: ${reportId}`);
+
     // Use setDoc with merge to ensure doc exists
     await setDoc(ref, {
       content,
@@ -67,7 +72,11 @@ export const ReportService = {
     };
 
     // Use region from context or default to 'uk'
-    const region = context.region || 'uk';
+    // Ensure we handle case insensitivity
+    const region = (context.region || 'uk').toLowerCase();
+    
+    console.log(`[ReportService] Received AI Draft. Saving to Region: ${region}`);
+    
     await this.saveDraft(tenantId, reportId, structuredContent, region);
     return structuredContent;
   },

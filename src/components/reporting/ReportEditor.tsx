@@ -6,12 +6,11 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Save, Sparkles, FileText, Share2, History, SidebarOpen, CheckCircle } from 'lucide-react';
+import { Loader2, Save, Sparkles, FileText, Share2, SidebarOpen, CheckCircle } from 'lucide-react';
 import { CitationSidebar } from './CitationSidebar';
 import { ProvisionPicker } from './ProvisionPicker';
 import { ReportService } from '@/services/report-service';
 import { useToast } from '@/hooks/use-toast';
-import { Report } from '@/types/schema';
 import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; 
 import { SubmitForReviewModal } from './modals/SubmitForReviewModal'; 
 import { ExportOptionsModal } from './modals/ExportOptionsModal';
@@ -32,7 +31,7 @@ interface ReportEditorProps {
     region?: string; // New Prop
 }
 
-export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId, userRole = 'EPP', region = 'UK' }: ReportEditorProps) {
+export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId, userRole = 'EPP', region = 'uk' }: ReportEditorProps) {
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -81,10 +80,12 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         setIsSaving(true);
         try {
             const json = editor.getJSON();
-            await ReportService.saveDraft(tenantId, reportId, json);
+            // Pass the region explicitly to ensure it goes to the correct DB
+            await ReportService.saveDraft(tenantId, reportId, json, region);
             setLastSaved(new Date());
             toast({ title: 'Saved', description: 'Draft updated.' });
         } catch (e) {
+            console.error(e);
             toast({ title: 'Error', description: 'Failed to save.', variant: 'destructive' });
         } finally {
             setIsSaving(false);
@@ -106,9 +107,14 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             const result = await ReportService.requestAiDraft(tenantId, reportId, context);
             
             let html = '';
-            result.sections.forEach((s: any) => {
-                html += `<h2>${s.title}</h2><p>${s.content}</p>`;
-            });
+            if (result.sections) {
+                result.sections.forEach((s: any) => {
+                    html += `<h2>${s.title}</h2><p>${s.content}</p>`;
+                });
+            } else {
+                // Fallback if structure is different
+                 html = `<p>${JSON.stringify(result)}</p>`;
+            }
             editor.commands.setContent(html);
             
             toast({ title: 'Draft Generated', description: 'AI content inserted.' });
@@ -131,6 +137,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             title: "Submitted for Supervision", 
             description: `Sent to ${MOCK_SUPERVISORS.find(s => s.id === supervisorId)?.name}` 
         });
+        setIsReviewModalOpen(false);
     };
 
     if (!editor) return null;

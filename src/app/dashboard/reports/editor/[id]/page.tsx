@@ -23,7 +23,8 @@ export default function ReportEditorPage({ params }: { params: Promise<{ id: str
         async function loadReport() {
             try {
                 // Region is already resolved by useAuth, but we need the instance to fetch data
-                const region = user?.region || 'uk';
+                // Ensure lowercase default to match REGIONAL_DB_MAPPING
+                const region = (user?.region || 'uk').toLowerCase();
                 const db = getRegionalDb(region);
                 const reportRef = doc(db, 'reports', id);
                 const reportSnap = await getDoc(reportRef);
@@ -54,7 +55,7 @@ export default function ReportEditorPage({ params }: { params: Promise<{ id: str
             initialContent={report.content}
             userId={user?.uid || 'unknown'}
             userRole={user?.role}
-            region={user?.region || 'UK'}
+            region={(user?.region || 'uk').toLowerCase()}
         />
     );
 }
