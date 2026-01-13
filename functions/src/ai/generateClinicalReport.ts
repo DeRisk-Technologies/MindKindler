@@ -98,7 +98,7 @@ export const handler = async (request: CallableRequest<any>) => {
         const consultsSnap = await regionalDb.collection('consultation_sessions')
             .where('studentId', '==', studentId)
             .orderBy('createdAt', 'desc') // Ensure latest first
-            .limit(1) // UPDATED: Only latest session as requested to reduce complexity
+            .limit(3) // Increased from 1 to 3 to get more context
             .get();
 
         const consultationData = consultsSnap.docs.map(doc => doc.data());
@@ -114,9 +114,10 @@ export const handler = async (request: CallableRequest<any>) => {
         console.error(`[GenerateReport] Data Fetch Error:`, e);
     }
 
-    // --- 2. FETCH SCHOOL/PARENT FORMS (Assessment Results) ---
+    // --- 2. FETCH SCHOOL/PARENT FORMS & ASSESSMENTS (Assessment Results) ---
     let schoolViews = "";
     let parentViews = "";
+    let assessmentData = "";
 
     try {
         const contribSnap = await regionalDb.collection('assessment_results')
@@ -126,14 +127,24 @@ export const handler = async (request: CallableRequest<any>) => {
 
         contribSnap.forEach(doc => {
             const data = doc.data();
-            const responses = data.responses; 
-            const template = data.templateId; 
-            const content = JSON.stringify(responses);
+            const template = data.templateId || data.type; 
+            
+            // Format Content: If responses is object, jsonify it.
+            let content = "";
+            if (data.responses) {
+                 content = JSON.stringify(data.responses);
+            } else if (data.totalScore) {
+                 content = `Score: ${data.totalScore}`;
+                 if(data.category) content += ` (Category: ${data.category})`;
+            }
 
             if (['uk_school_contribution', 'nhs_neuro_questionnaire'].includes(template)) {
                 schoolViews += `\n[Form: ${template}]: ${content}`;
             } else if (['uk_one_page_profile'].includes(template)) {
                 parentViews += `\n[Form: ${template}]: ${content}`;
+            } else {
+                // General Assessments (WISC-V, etc.)
+                assessmentData += `\n[Assessment: ${template}]: ${content}`;
             }
         });
     } catch (e) {
@@ -152,23 +163,49 @@ export const handler = async (request: CallableRequest<any>) => {
     const docType = isReferral ? "Referral Letter" : "Statutory Report";
 
     const baseInstruction = `You are an expert Educational Psychologist acting as a ${userRole} in the UK.
-    Task: Write a ${docType} for ${firstName} ${lastName}.
+    Task: Write a professional ${docType} for ${firstName} ${lastName}.
     
     ### EVIDENCE SOURCE 1: CONSULTATION TRANSCRIPTS & INSIGHTS
     ${formattedEvidence}
 
-    ### EVIDENCE SOURCE 2: FORMS
-    School Views: ${schoolViews || "None"}
-    Parent Views: ${parentViews || "None"}
+    ### EVIDENCE SOURCE 2: SCHOOL & PARENT VIEWS
+    School Views: ${schoolViews || "No formal school contribution forms found."}
+    Parent Views: ${parentViews || "No formal parent forms found."}
+
+    ### EVIDENCE SOURCE 3: CLINICAL ASSESSMENTS & DATA
+    ${assessmentData || "No standardized assessments recorded."}
 
     ### INSTRUCTIONS:
-    1. Section A (Views): Quote the "STUDENT VOICE" from consultations directly.
-    2. Section B (Needs): Use the "THEMES" (Clinical Insights) to identify needs.
-    3. Section F (Provision): Use "AGREED INTERVENTIONS" to populate recommendations.
-    4. RISK: If student mentioned self-harm (see quotes), flag it immediately.
+    1. **Format**: Use professional HTML formatting. 
+       - Use <ul><li> for lists.
+       - Use <p> for paragraphs.
+       - Do NOT use Markdown (no **bold**, no # headings). Use <strong> and <h3> tags inside the content string if needed, but the JSON structure handles main section titles.
+    
+    2. **Section A (Views)**: 
+       - Quote the "STUDENT VOICE" from consultations directly.
+       - If School/Parent views are missing, explicitly state: "Formal views from school/parents were not available at the time of drafting, however, themes from the consultation indicate..." and synthesize indirect views if available in the transcript.
+    
+    3. **Section B (Needs)**: 
+       - Use the "THEMES" (Clinical Insights) to identify needs.
+       - Integrate WISC-V or other assessment scores if present in Source 3.
+    
+    4. **Section F (Provision)**: 
+       - Use "AGREED INTERVENTIONS" to populate recommendations.
+       - Be specific and quantifiable (e.g. "Weekly sessions of 30 mins").
+
+    5. **RISK**: If student mentioned self-harm (see quotes), flag it immediately in a dedicated section or heavily emphasized note.
 
     Constraints: ${constraints.join(', ')}
-    Output: JSON { sections: [{ id, title, content }] }`;
+    
+    Output JSON Schema:
+    {
+      "sections": [
+        { "id": "section_a", "title": "Section A: Student & Family Views", "content": "HTML string..." },
+        { "id": "section_b", "title": "Section B: Special Educational Needs", "content": "HTML string..." },
+        { "id": "section_f", "title": "Section F: Recommended Provision", "content": "HTML string..." }
+        ... more sections as appropriate for the template ...
+      ]
+    }`;
 
     const systemPrompt = buildSystemPrompt(baseInstruction, { 
         locale: 'en-GB', 
