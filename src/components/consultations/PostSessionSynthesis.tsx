@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     CheckCircle, AlertTriangle, FileText, ArrowRight, 
     Sparkles, Edit3, MessageSquare, Plus, Trash2,
@@ -45,7 +45,15 @@ interface PostSessionSynthesisProps {
     initialInsights: AiInsight[];
     student: Partial<StudentRecord>;
     assessments?: AssessmentResult[];
+    
+    // Restored State Props
+    initialManualNotes?: string[];
+    initialPlannedInterventions?: PlannedIntervention[];
+    initialReferrals?: string[];
+    initialPromotedEvidence?: string[];
+
     onComplete: (data: SynthesisResult) => void; 
+    onSave?: (data: SynthesisResult) => void;
 }
 
 export function PostSessionSynthesis({ 
@@ -54,22 +62,28 @@ export function PostSessionSynthesis({
     initialInsights, 
     student,
     assessments = [], 
-    onComplete 
+    initialManualNotes = [],
+    initialPlannedInterventions = [],
+    initialReferrals = [],
+    initialPromotedEvidence = [],
+    onComplete,
+    onSave
 }: PostSessionSynthesisProps) {
     const { toast } = useToast();
     
     // State
     const [activeTab, setActiveTab] = useState('review');
     const [clinicalOpinions, setClinicalOpinions] = useState<AiInsight[]>(initialInsights);
-    const [manualOpinions, setManualOpinions] = useState<string[]>([]);
+    const [manualOpinions, setManualOpinions] = useState<string[]>(initialManualNotes);
     const [newManualOpinion, setNewManualOpinion] = useState("");
     
-    const [plannedInterventions, setPlannedInterventions] = useState<PlannedIntervention[]>([]);
-    const [referrals, setReferrals] = useState<string[]>([]);
+    const [plannedInterventions, setPlannedInterventions] = useState<PlannedIntervention[]>(initialPlannedInterventions);
+    const [referrals, setReferrals] = useState<string[]>(initialReferrals);
     const [editedTranscript, setEditedTranscript] = useState(transcript); 
-    const [promotedEvidence, setPromotedEvidence] = useState<string[]>([]);
+    const [promotedEvidence, setPromotedEvidence] = useState<string[]>(initialPromotedEvidence);
     
     const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     
     // Q&A State
     const [question, setQuestion] = useState("");
@@ -110,6 +124,16 @@ export function PostSessionSynthesis({
             toast({ title: "Evidence Promoted", description: "Added to clinical context." });
         }
     };
+    
+    // New: Q&A Text Selection Handler
+    const handleQASelect = () => {
+         const selection = window.getSelection();
+         if (selection && selection.toString().length > 5) {
+             const text = selection.toString();
+             setPromotedEvidence(prev => [...prev, `Q&A Excerpt: ${text}`]);
+             toast({ title: "Evidence Promoted", description: "Selected Q&A text added to clinical context." });
+         }
+    };
 
     const generateTreatmentPlan = async () => {
         setIsGeneratingPlan(true);
@@ -129,9 +153,12 @@ export function PostSessionSynthesis({
             };
             
             const plans = await generateInterventionPlanAction(context);
-            setPlannedInterventions(plans);
-            
-            toast({ title: "Plan Generated", description: `Created ${plans.length} targeted interventions.` });
+            if (!plans || plans.length === 0) {
+                 toast({ title: "No Plans Generated", description: "AI returned no matches. Try adding more notes.", variant: "warning" });
+            } else {
+                 setPlannedInterventions(plans);
+                 toast({ title: "Plan Generated", description: `Created ${plans.length} targeted interventions.` });
+            }
         } catch (e) {
             console.error(e);
             toast({ title: "Error", description: "Failed to generate plan.", variant: "destructive" });
@@ -157,6 +184,23 @@ export function PostSessionSynthesis({
         if (answer) {
             setPromotedEvidence(prev => [...prev, `AI Insight: ${answer}`]);
             toast({ title: "Promoted to Evidence", description: "AI Answer added to findings." });
+        }
+    };
+    
+    const handleSaveProgress = async () => {
+        if (onSave) {
+            setIsSaving(true);
+            const synthesisResult: SynthesisResult = {
+                confirmedOpinions: clinicalOpinions, // Save all, including unconfirmed state
+                plannedInterventions,
+                referrals,
+                editedTranscript,
+                reportType: 'custom', 
+                manualClinicalNotes: [...manualOpinions, ...promotedEvidence] // Combine for storage, but we might want to split them on restore if possible. For now, this is okay.
+            };
+            await onSave(synthesisResult);
+            setIsSaving(false);
+            toast({ title: "Progress Saved", description: "Session state updated." });
         }
     };
 
@@ -196,6 +240,9 @@ export function PostSessionSynthesis({
                     <p className="text-slate-500 text-sm">Review timeline, triangulate findings, and plan interventions.</p>
                 </div>
                 <div className="flex gap-2">
+                    <Button variant="ghost" onClick={handleSaveProgress} disabled={isSaving}>
+                        <Save className="mr-2 h-4 w-4" /> {isSaving ? "Saving..." : "Save Progress"}
+                    </Button>
                     <Button variant="outline" onClick={() => setIsReferralModalOpen(true)}>
                         <Send className="mr-2 h-4 w-4" /> Generate Referral
                     </Button>
@@ -393,7 +440,7 @@ export function PostSessionSynthesis({
                                 </Button>
                             </div>
 
-                            <ScrollArea className="flex-grow bg-slate-50 rounded-lg p-4 border">
+                            <ScrollArea className="flex-grow bg-slate-50 rounded-lg p-4 border" onMouseUp={handleQASelect}>
                                 {answer ? (
                                     <div className="prose prose-sm max-w-none">
                                         <div className="flex items-center justify-between gap-2 font-bold text-slate-700 mb-2">
