@@ -30,12 +30,21 @@ export interface Certification {
     verifiedBy?: string;
 }
 
+export interface TrainingQuizQuestion {
+    id: string;
+    text: string;
+    options: string[];
+    correctIndex: number;
+    explanation?: string;
+}
+
 export interface TrainingLesson {
     id: string;
     title: string;
     type: 'video' | 'text' | 'quiz';
     contentUrl?: string; // Link to resource
     textContent?: string; // Markdown/HTML
+    questions?: TrainingQuizQuestion[]; // IF type === 'quiz'
     durationMinutes: number;
     completed?: boolean;
 }
