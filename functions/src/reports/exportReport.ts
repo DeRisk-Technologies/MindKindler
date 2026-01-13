@@ -17,7 +17,8 @@ export const exportReport = onCall({
 }, async (request: CallableRequest<any>) => {
     if (!request.auth) throw new Error('unauthenticated');
 
-    const { tenantId, reportId, redactionLevel, format } = request.data;
+    // Removed unused 'format'
+    const { tenantId, reportId, redactionLevel } = request.data;
     
     // 1. Fetch Report
     const reportSnap = await db.doc(`reports/${reportId}`).get(); 
@@ -83,21 +84,27 @@ export const exportReport = onCall({
     let pdfBuffer: Buffer;
 
     try {
+        // Casting chromium to any to avoid type mismatches with @sparticuz/chromium versions
+        const chrome = chromium as any;
+        
         browser = await puppeteer.launch({
-            args: chromium.args,
-            defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
+            args: chrome.args,
+            defaultViewport: chrome.defaultViewport,
+            executablePath: await chrome.executablePath(),
+            headless: chrome.headless,
         });
 
         const page = await browser.newPage();
         await page.setContent(reportHtml, { waitUntil: 'networkidle0' });
         
-        pdfBuffer = await page.pdf({
+        const uint8Array = await page.pdf({
             format: 'A4',
             printBackground: true,
             margin: { top: '20mm', bottom: '20mm', left: '20mm', right: '20mm' }
         });
+        
+        // Convert Uint8Array to Buffer
+        pdfBuffer = Buffer.from(uint8Array);
 
     } catch (error) {
         console.error("Puppeteer PDF generation failed:", error);
@@ -130,7 +137,7 @@ export const exportReport = onCall({
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         path: filePath,
         redactionLevel,
-        format: 'pdf' // Hardcoded since we only support PDF here for now
+        format: 'pdf' 
     });
 
     return { downloadUrl: url, exportId: filePath };
