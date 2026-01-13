@@ -1,8 +1,6 @@
 // src/types/schema.ts
 
-// ... (Existing Roles)
-// NOTE: We permit both "EPP" and "EducationalPsychologist" as strings here to support legacy/variant roles, 
-// but code should ideally normalize.
+// ... (Role & Other Interfaces remain same)
 export type Role = 
     'SuperAdmin' | 
     'TenantAdmin' | 
@@ -14,18 +12,49 @@ export type Role =
     'ParentUser' | 
     'GovAnalyst';
 
-// --- Phase 36: Professional Development & Compliance ---
+// --- Phase 37: Enterprise & White Labeling ---
 
+export interface TenantBranding {
+    logoUrl?: string; // e.g. "https://storage.../leeds-logo.png"
+    primaryColor?: string; // Hex e.g. "#4f46e5"
+    headerText?: string; // e.g. "Leeds City Council - SEND Services"
+    footerText?: string; // e.g. "Official Sensitive - Not for distribution"
+    reportTemplateId?: string; // Default docx template
+}
+
+export interface TenantConfig {
+    id: string;
+    name: string;
+    region: string;
+    plan: 'free' | 'pro' | 'enterprise';
+    
+    branding?: TenantBranding;
+    
+    // Limits
+    usage: {
+        maxReportsPerMonth: number;
+        currentReportsMonth: number;
+        resetAt: string;
+    };
+    
+    features: {
+        allowAi: boolean;
+        allowCopilot: boolean;
+        allowWhiteLabel: boolean;
+    };
+}
+
+// ... (Rest of existing interfaces: Certification, TrainingModule, etc.)
 export interface Certification {
     id: string;
     userId: string;
     tenantId: string;
-    name: string; // e.g. "HCPC Registration" or "ADOS-2 Certification"
-    issuer: string; // e.g. "HCPC" or "Pearson"
+    name: string; 
+    issuer: string; 
     referenceNumber?: string;
-    expiryDate?: string; // ISO Date
+    expiryDate?: string; 
     status: 'active' | 'expiring' | 'expired' | 'revoked';
-    proofUrl?: string; // Link to uploaded certificate
+    proofUrl?: string; 
     verifiedAt?: string;
     verifiedBy?: string;
 }
@@ -42,9 +71,9 @@ export interface TrainingLesson {
     id: string;
     title: string;
     type: 'video' | 'text' | 'quiz';
-    contentUrl?: string; // Link to resource
-    textContent?: string; // Markdown/HTML
-    questions?: TrainingQuizQuestion[]; // IF type === 'quiz'
+    contentUrl?: string; 
+    textContent?: string; 
+    questions?: TrainingQuizQuestion[]; 
     durationMinutes: number;
     completed?: boolean;
 }
@@ -55,34 +84,26 @@ export interface TrainingModule {
     assignedUserId: string;
     title: string;
     description?: string;
-    
-    // AI Specifics
     generatedBy: 'system' | 'ai_gap_scanner' | 'supervisor';
-    rationale?: string; // e.g. "Frequent edits to Sensory sections detected"
-    
+    rationale?: string; 
     content: TrainingLesson[];
-    
     status: 'pending' | 'in_progress' | 'completed';
     progressPercent: number;
-    
     dueDate?: string;
     completedAt?: string;
-    
-    // If it's a gap-filling module
-    linkedAuditEvents?: string[]; // IDs of the audit logs that triggered this
+    linkedAuditEvents?: string[]; 
 }
 
 export interface ExamResult {
     id: string;
     moduleId: string;
     userId: string;
-    score: number; // 0-100
+    score: number; 
     pass: boolean;
-    certificateUrl?: string; // Generated PDF
+    certificateUrl?: string; 
     attemptDate: string;
 }
 
-// ... (Provenance & Trust)
 export interface ProvenanceMetadata {
     source: 'manual' | 'ocr' | 'lms' | 'parent_portal' | 'migration';
     sourceId?: string;
@@ -112,7 +133,6 @@ export interface VerificationTask {
     resolvedBy?: string;
 }
 
-// ... (Student 360 Core)
 export interface ParentRecord {
     id: string;
     tenantId: string;
@@ -190,8 +210,6 @@ export interface ConsentRecord {
     notes?: string;
 }
 
-// --- Historical Context Engine (Phase 29) ---
-
 export type AcademicSubject = 'Math' | 'English' | 'Science' | 'History' | 'Geography' | 'Art' | 'PE' | 'Music' | 'Other';
 export type GradeType = 'Term' | 'Exam' | 'Predicted' | 'Standardized';
 
@@ -232,8 +250,7 @@ export interface StudentHistory {
 export interface StudentRecord {
     id: string;
     tenantId: string;
-    schoolId?: string; // Links student to a School Organization
-    
+    schoolId?: string; 
     identity: {
         firstName: ProvenanceField<string>;
         lastName: ProvenanceField<string>;
@@ -245,7 +262,6 @@ export interface StudentRecord {
         upi?: ProvenanceField<string>;
         photoUrl?: string;
     };
-
     education: {
         currentSchoolId?: ProvenanceField<string>;
         enrollmentDate?: ProvenanceField<string>;
@@ -256,29 +272,20 @@ export interface StudentRecord {
         ealStatus?: ProvenanceField<boolean>;
         attendancePercentage?: ProvenanceField<number>;
     };
-
     family: {
         parents: ParentRecord[];
         siblings?: { name: string; dob?: string; school?: string }[];
         languageHome?: string;
     };
-
     health: HealthRecord;
-
     careHistory?: {
         isLookedAfter: boolean;
         socialWorker?: { name: string; email: string; phone: string };
         placements: FosterPlacement[];
     };
-
     discipline?: DisciplineIncident[];
-
-    // The Time Machine: Historical Context
     timeline?: StudentHistory;
-
-    // Extension field for Country OS Modular Architecture
     extensions?: Record<string, any>; 
-
     meta: {
         createdAt: string;
         createdBy: string;
@@ -290,7 +297,6 @@ export interface StudentRecord {
     };
 }
 
-// ... (Legacy & Support Types)
 export interface AiFeedback {
     id: string;
     tenantId: string;
@@ -452,10 +458,10 @@ export interface ConsultationSession {
 }
 
 export interface ConsultationEvent {
-  timestamp: string; // ISO String
+  timestamp: string; 
   speaker: 'epp' | 'student';
   type: 'audio_transcript' | 'visual_card_selection' | 'ai_insight';
-  data?: any; // To hold type-specific payloads like the text or card ID
+  data?: any; 
 }
 
 export interface Student {
@@ -499,7 +505,7 @@ export interface Case {
   evidence?: any[];
   tags?: string[];
   slaDueAt?: string;
-  activities?: { // Added to match Dashboard Logic
+  activities?: { 
       date: string;
       summary: string;
       performedBy: string;
@@ -507,33 +513,27 @@ export interface Case {
   }[];
 }
 
-// NEW: Task Management for Assistants
 export interface CaseTask {
   id?: string;
   tenantId: string; 
   caseId?: string;  
   studentId?: string; 
-  
   title: string;
   description?: string;
   type: 'data_entry' | 'interview' | 'research' | 'observation' | 'report_drafting' | 'general'; 
   priority: 'low' | 'medium' | 'high' | 'critical';
   status: 'pending' | 'in_progress' | 'review' | 'completed' | 'late';
-  
   assignedTo: string; 
   assignedBy: string; 
   dueAt: string;
-  
   attachments?: {
       name: string;
       url: string;
   }[];
-  
   escalationPolicy?: {
       escalateAt: string; 
       escalateTo: string; 
   };
-  
   createdAt: string;
   completedAt?: string;
 }
@@ -653,29 +653,22 @@ export interface Report {
     title: string;
     type: 'consultation' | 'statutory' | 'ehcp_review';
     templateType?: string;
-    
-    status: 'draft' | 'review' | 'signed' | 'archived' | 'pending_review' | 'changes_requested'; // Updated
+    status: 'draft' | 'review' | 'signed' | 'archived' | 'pending_review' | 'changes_requested'; 
     version: number;
-    
     content: {
         sections: ReportSection[];
     };
-    
     citations?: Citation[];
-    
     createdBy: string;
     createdAt: any;
     updatedAt: any;
-    
     signedBy?: string;
     signedAt?: any;
     signatureHash?: string;
     locked?: boolean;
-
     aiProvenanceId?: string;
-    
-    supervisorId?: string; // Supervision
-    history?: ReportHistoryEvent[]; // Supervision History
+    supervisorId?: string; 
+    history?: ReportHistoryEvent[]; 
 }
 
 export interface ReportVersion {
@@ -686,7 +679,6 @@ export interface ReportVersion {
     changeSummary?: string;
     committedBy: string;
     createdAt: any;
-    
     type?: 'draft' | 'signed_final';
     signedBy?: string;
     signatureHash?: string;
@@ -734,10 +726,10 @@ export interface GuardianFinding {
 
 export interface GuardianEvent {
     tenantId: string;
-    eventType: string; // e.g., 'data_share', 'ai_generate', 'export', 'message_send'
+    eventType: string; 
     subjectType: 'student' | 'case' | 'report' | 'message';
     subjectId: string;
-    context: Record<string, any>; // Flexible context (content, destination, etc.)
+    context: Record<string, any>; 
     actorId: string;
     timestamp: string;
 }
@@ -748,21 +740,15 @@ export interface PolicyRule {
     name: string;
     description: string;
     severity: 'low' | 'medium' | 'high' | 'critical';
-    
-    triggerEvent: string; // matches GuardianEvent.eventType
+    triggerEvent: string; 
     triggerCondition: 'regex' | 'keyword' | 'missing_consent' | 'missing_metadata' | 'pii_leak' | 'safeguarding_recommended';
-    
-    // Configuration
     keywords?: string[];
     regexPattern?: string;
     requiredConsentCategory?: string;
-    
-    // Actions
-    mode: 'enforce' | 'monitor'; // Enforce = block, Monitor = log only
+    mode: 'enforce' | 'monitor'; 
     rolloutMode?: 'simulate' | 'live';
     blockActions: boolean;
     remediation?: string;
-    
     enabled: boolean;
     status: 'active' | 'deprecated';
 }
@@ -779,52 +765,39 @@ export interface GuardianOverrideRequest {
     approvedAt?: string;
 }
 
-// --- Sprint 4: Appointments & Calendar ---
-
 export interface AvailabilitySlot {
-    id: string; // "monday-0900-1200"
+    id: string; 
     tenantId: string;
-    userId: string; // EPP ID
-    dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
-    startTime: string; // "09:00"
-    endTime: string; // "17:00"
-    isException?: boolean; // If true, specific date overrides weekly pattern
-    exceptionDate?: string; // ISO Date "2023-10-25"
-    bufferMinutes: number; // e.g. 15
+    userId: string; 
+    dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6; 
+    startTime: string; 
+    endTime: string; 
+    isException?: boolean; 
+    exceptionDate?: string; 
+    bufferMinutes: number; 
 }
 
 export interface Appointment {
     id: string;
     tenantId: string;
-    hostUserId: string; // EPP
-    participantIds: string[]; // Parents, Staff
+    hostUserId: string; 
+    participantIds: string[]; 
     studentId?: string;
-    
     title: string;
     description?: string;
-    
-    startAt: string; // ISO Timestamp
-    endAt: string; // ISO Timestamp
-    timeZone: string; // "Europe/London"
-    
+    startAt: string; 
+    endAt: string; 
+    timeZone: string; 
     status: 'scheduled' | 'cancelled' | 'completed' | 'no_show';
     type: 'consultation' | 'telehealth' | 'assessment' | 'follow_up';
-    
-    // Telehealth & Integrations
     locationType: 'in_person' | 'video' | 'phone';
-    meetingLink?: string; // Zoom/Jitsi URL
+    meetingLink?: string; 
     meetingPassword?: string;
-    
-    // Consent & Privacy
-    recordingConsent?: boolean; // Has parent consented to recording?
-    consentProofId?: string; // Link to ConsentRecord
-    
-    // Sync
-    externalEventId?: string; // Google Calendar ID
+    recordingConsent?: boolean; 
+    consentProofId?: string; 
+    externalEventId?: string; 
     syncStatus?: 'synced' | 'failed' | 'pending';
-    
     remindersSent: boolean;
-    
     createdAt: string;
     createdBy: string;
 }
@@ -832,22 +805,20 @@ export interface Appointment {
 export interface CalendarIntegration {
     userId: string;
     provider: 'google' | 'outlook';
-    accessToken: string; // Encrypted at rest
-    refreshToken: string; // Encrypted at rest
+    accessToken: string; 
+    refreshToken: string; 
     expiresAt: number;
     syncEnabled: boolean;
-    calendarId?: string; // Target calendar ID
+    calendarId?: string; 
 }
-
-// --- Sprint 5: Internal Messaging (Secure Chat) ---
 
 export interface ChatChannel {
     id: string;
     tenantId: string;
     type: 'direct' | 'group' | 'case';
     participantIds: string[];
-    name?: string; // For groups
-    caseId?: string; // Link to specific case
+    name?: string; 
+    caseId?: string; 
     lastMessage?: {
         text: string;
         senderId: string;
@@ -862,29 +833,21 @@ export interface ChatMessage {
     id: string;
     chatId: string;
     senderId: string;
-    content: string; // Text
+    content: string; 
     type: 'text' | 'image' | 'voice' | 'file' | 'system';
-    
     attachments?: {
         id: string;
-        url: string; // Secure signed URL
+        url: string; 
         type: string;
         name: string;
     }[];
-    
-    // Status
-    readBy: string[]; // User IDs
+    readBy: string[]; 
     deliveredTo: string[];
-    
-    // Safety
     flagged?: boolean;
     flagReason?: string;
-    
     createdAt: string;
     replyToId?: string;
 }
-
-// --- Sprint 6: AI Chatbot (Copilot) ---
 
 export interface BotSession {
     id: string;
@@ -905,53 +868,41 @@ export interface BotMessage {
     sessionId: string;
     role: 'user' | 'assistant' | 'system';
     content: string;
-    
-    // RAG Metadata
     citations?: {
-        sourceId: string; // Doc ID or Web URL
+        sourceId: string; 
         text: string;
         relevance: number;
     }[];
-    
     confidence?: number;
-    
-    // Provenance
-    provenanceId?: string; // Link to ai_provenance log
-    
+    provenanceId?: string; 
     createdAt: string;
 }
-
-// --- Country OS: Knowledge Documents & Policy Drafts ---
 
 export interface KnowledgeDocument {
     id: string;
     type: 'rulebook' | 'report' | 'evidence';
     title: string;
-    description?: string; // ADDED
+    description?: string; 
     ownerId: string;
-    tenantId?: string; // If null, global/system doc
+    tenantId?: string; 
     visibility: 'private' | 'team' | 'public';
-    storagePath: string; // GS path
-    
+    storagePath: string; 
     status: 'uploaded' | 'processing' | 'indexed' | 'error';
-    
     metadata: {
         originalFileName: string;
-        authority?: string; // For rulebooks
-        evidenceType?: string; // For evidence
+        authority?: string; 
+        evidenceType?: string; 
         publicationYear?: string;
         trustScore?: number;
         verified?: boolean;
         caseTags?: string[];
     };
-
-    notes?: { // ADDED
+    notes?: { 
         id: string;
         content: string;
         authorId: string;
         createdAt: string;
     }[];
-    
     createdAt: string;
 }
 
@@ -959,13 +910,10 @@ export interface PolicyRuleDraft {
     id: string;
     tenantId: string;
     sourceDocumentId: string;
-    
     extractedText: string;
-    citations: string[]; // Chunk IDs
-    
-    confidence: number; // AI confidence 0-1
+    citations: string[]; 
+    confidence: number; 
     status: 'draft' | 'approved' | 'rejected';
-    
     structuredDraft: {
         title: string;
         severity: 'low' | 'medium' | 'high' | 'critical';
@@ -974,35 +922,28 @@ export interface PolicyRuleDraft {
         mode: 'advisory' | 'enforce';
         blockActions: boolean;
     };
-    
     createdAt: string;
     reviewedBy?: string;
     reviewedAt?: string;
 }
 
-// PHASE 14: Professional Verification (HCPC)
 export interface VerificationRecord {
-    hcpcNumber?: string; // e.g. "PYL043132"
+    hcpcNumber?: string; 
     status: 'unverified' | 'pending' | 'verified' | 'rejected';
     verifiedAt?: string;
-    verifiedBy?: string; // Admin User ID
+    verifiedBy?: string; 
     verificationNote?: string;
     documents?: { url: string; name: string }[];
 }
 
-// Update UserProfile or create StaffProfile interface extension
 export interface StaffProfile {
-    id: string; // userId
+    id: string; 
     tenantId: string;
     role: string;
     firstName: string;
     lastName: string;
     email: string;
-    
-    // Phase 14: Trust Engine
     verification?: VerificationRecord;
-    
-    // Country OS Extensions (SCR)
     extensions?: Record<string, any>;
 }
 
@@ -1014,22 +955,18 @@ export interface MarketplaceItem {
     version: string;
     publisherId: string;
     publisherOrg: string;
-    regionTags: string[]; // e.g. 'UK', 'US', 'Global'
-    categories: string[]; // e.g. 'Compliance', 'Assessment'
-    
+    regionTags: string[]; 
+    categories: string[]; 
     licensing: {
         licenseType: 'free' | 'per_seat' | 'site_license';
         price?: { amount: number; currency: string };
     };
-    
-    installManifest: any; // The JSON blob
-    certified: boolean; // MindKindler Verified
-    
+    installManifest: any; 
+    certified: boolean; 
     stats: {
         installs: number;
         rating: number;
     };
-    
     createdAt: string;
     updatedAt: string;
 }
@@ -1038,7 +975,7 @@ export interface MarketplaceReview {
     id: string;
     itemId: string;
     userId: string;
-    rating: number; // 1-5
+    rating: number; 
     comment?: string;
     createdAt: string;
 }
