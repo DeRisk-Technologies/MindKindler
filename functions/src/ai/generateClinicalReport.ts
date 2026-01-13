@@ -9,7 +9,8 @@ import { buildSystemPrompt } from "./utils/prompt-builder";
 import { VertexAI } from '@google-cloud/vertexai';
 import { logAuditEvent } from "../services/audit";
 import { formatConsultationHistory } from "./utils/consultation-formatter";
-import { checkAndIncrementUsage } from "../billing/usage"; // IMPORTED
+import { checkAndIncrementUsage } from "../billing/usage"; 
+import { reportMeteredUsage } from "../billing/usage-reporter"; // IMPORTED
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -59,6 +60,11 @@ export const handler = async (request: CallableRequest<any>) => {
     // This must happen before ANY expensive AI call.
     try {
         await checkAndIncrementUsage(tenantId, 'report_generation');
+        
+        // Report to Stripe (Metered Billing)
+        // Fire and forget (don't block latency)
+        reportMeteredUsage(tenantId, 10, 'ai_credits').catch(console.error);
+
     } catch (e: any) {
         console.warn(`[Billing] Usage limit exceeded for tenant ${tenantId}`);
         throw new HttpsError('resource-exhausted', e.message);
