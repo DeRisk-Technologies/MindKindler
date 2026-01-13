@@ -26,7 +26,6 @@
     "firebase-functions": "^7.0.3",
     "firebase-tools": "^15.0.0",
     "genkit": "^1.1.0",
-    "levenshtein": "^1.0.5",
     "nodemailer": "^6.10.1",
     "pdfmake": "^0.3.0",
     "pdfmake-lite": "^0.1.73",
