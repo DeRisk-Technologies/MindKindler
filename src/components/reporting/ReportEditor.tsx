@@ -64,11 +64,22 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     useEffect(() => {
         if (initialContent && editor) {
             let html = '';
-            if (initialContent.sections) {
-                initialContent.sections.forEach((s: any) => {
+            
+            // Check for both 'sections' and 'content' as fallback
+            const contentSource = initialContent.sections || initialContent.content || [];
+
+            if (Array.isArray(contentSource)) {
+                contentSource.forEach((s: any) => {
                     html += `<h2>${s.title}</h2><p>${s.content}</p>`;
                 });
+            } else if (typeof contentSource === 'string') {
+                 // Direct HTML string
+                 html = contentSource;
+            } else if (typeof contentSource === 'object') {
+                 // Single section object
+                 html = `<h2>${contentSource.title || 'Draft'}</h2><p>${contentSource.content || ''}</p>`;
             }
+
             if (editor.isEmpty && html) { 
                  editor.commands.setContent(html);
             }
@@ -107,14 +118,17 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             const result = await ReportService.requestAiDraft(tenantId, reportId, context);
             
             let html = '';
-            if (result.sections) {
-                result.sections.forEach((s: any) => {
+            // Robust check for AI result structure
+            const sections = result.sections || result.content || [];
+            
+            if (Array.isArray(sections)) {
+                sections.forEach((s: any) => {
                     html += `<h2>${s.title}</h2><p>${s.content}</p>`;
                 });
             } else {
-                // Fallback if structure is different
                  html = `<p>${JSON.stringify(result)}</p>`;
             }
+            
             editor.commands.setContent(html);
             
             toast({ title: 'Draft Generated', description: 'AI content inserted.' });
