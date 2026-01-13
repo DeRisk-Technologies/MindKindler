@@ -4,22 +4,21 @@
 
 import React, { use, useEffect, useState } from 'react';
 import { useAuth } from "@/hooks/use-auth";
-import { useFirestoreCollection } from "@/hooks/use-firestore";
 import { TrainingModule } from "@/types/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, GraduationCap, ArrowLeft, Bot, User, CheckCircle, HelpCircle } from "lucide-react";
+import { Send, ArrowLeft, Bot, User, HelpCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '@/lib/firebase';
+import { QuizRunner } from '@/components/training/QuizRunner';
+import { completeTrainingModule } from '@/app/actions/training';
+import { useToast } from '@/hooks/use-toast';
 
-// Reusing chat types but specialized for tutoring
 interface ChatMessage {
     role: 'user' | 'assistant';
     text: string;
@@ -29,6 +28,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string }>
     const { id } = use(params);
     const { user } = useAuth();
     const router = useRouter();
+    const { toast } = useToast();
     
     const [module, setModule] = useState<TrainingModule | null>(null);
     const [activeChapterIndex, setActiveChapterIndex] = useState(0);
@@ -39,7 +39,6 @@ export default function LessonPage({ params }: { params: Promise<{ id: string }>
     // Fetch Module Data
     useEffect(() => {
         if (!id) return;
-        // In real app, use SWR or detailed fetch hook
         async function loadModule() {
             const snap = await getDoc(doc(db, 'trainingModules', id));
             if (snap.exists()) setModule({ id: snap.id, ...snap.data() } as TrainingModule);
@@ -52,17 +51,38 @@ export default function LessonPage({ params }: { params: Promise<{ id: string }>
     const handleNext = async () => {
         if (!module) return;
         
-        // Mark current as complete locally (and save progress)
         const nextIndex = activeChapterIndex + 1;
         if (nextIndex < module.content.length) {
             setActiveChapterIndex(nextIndex);
-            // Update DB progress
             const progress = Math.round((nextIndex / module.content.length) * 100);
             await updateDoc(doc(db, 'trainingModules', module.id), { progressPercent: progress });
         } else {
-            // Completed
-            await updateDoc(doc(db, 'trainingModules', module.id), { status: 'completed', progressPercent: 100 });
-            router.push('/dashboard/training/my-learning');
+            // If the last chapter wasn't a quiz (e.g. just reading), mark complete here
+            if (activeChapter?.type !== 'quiz') {
+                await updateDoc(doc(db, 'trainingModules', module.id), { status: 'completed', progressPercent: 100 });
+                router.push('/dashboard/training/my-learning');
+            }
+        }
+    };
+
+    const handleQuizComplete = async (score: number, passed: boolean) => {
+        if (!module || !user) return;
+        
+        try {
+            const result = await completeTrainingModule(user.uid, module.id, score, passed);
+            if (result.success) {
+                toast({ 
+                    title: passed ? "Module Completed!" : "Quiz Finished", 
+                    description: passed ? "Certificate has been issued to your profile." : "Review the material and try again." 
+                });
+                if (passed) {
+                    setTimeout(() => router.push('/dashboard/training/my-learning'), 2000);
+                }
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (e: any) {
+            toast({ title: "Error", description: e.message, variant: "destructive" });
         }
     };
 
@@ -75,21 +95,10 @@ export default function LessonPage({ params }: { params: Promise<{ id: string }>
         setIsSending(true);
 
         try {
-            // Call "Chat with Tutor" Cloud Function
-            // Note: We're reusing chatWithCopilot logic but passing 'tutor' context
-            // Ideally, we'd have a specific `chatWithTutor` function or pass `contextMode: 'lesson'`
             const chatFn = httpsCallable(functions, 'chatWithCopilot');
-            
-            // Injecting lesson context into the prompt via a "system" message prefix handled by the function
-            // Or better: The function should accept 'contextText' override if secure
-            // For now, we simulate by prepending context in the message, but a robust impl changes the function.
-            // Let's assume we pass lesson content as metadata.
-            
             const result: any = await chatFn({
                 message: userMsg,
-                contextMode: 'general', // We'll rely on the RAG to pick up general knowledge, but ideally we force lesson context
-                // HACK for Prototype: We prepend instructions to the message so the general bot acts like a tutor
-                // In production, update `chatWithCopilot` to accept `contextText` directly.
+                contextMode: 'general', 
                 additionalContext: `Current Lesson: ${activeChapter.title}. Content: ${activeChapter.textContent?.substring(0, 1000)}...`
             });
 
@@ -121,32 +130,39 @@ export default function LessonPage({ params }: { params: Promise<{ id: string }>
             </div>
 
             <div className="flex flex-1 overflow-hidden">
-                {/* Left: Content Viewer */}
+                {/* Left: Content Viewer or Quiz */}
                 <div className="flex-1 flex flex-col p-6 overflow-hidden max-w-4xl mx-auto w-full">
                     <Card className="flex-1 flex flex-col shadow-md border-indigo-100 h-full">
                         <CardHeader className="border-b bg-white">
-                            <CardTitle className="flex justify-between">
-                                {activeChapter?.title}
-                                <Button variant="outline" size="sm"><HelpCircle className="mr-2 h-4 w-4"/> Quiz</Button>
+                            <CardTitle className="flex justify-between items-center">
+                                <span>{activeChapter?.title}</span>
+                                {activeChapter?.type === 'quiz' && <Badge variant="secondary">Assessment</Badge>}
                             </CardTitle>
                         </CardHeader>
                         <ScrollArea className="flex-1 p-8 bg-white">
-                            <div className="prose prose-slate max-w-none">
-                                {/* Render HTML/Markdown Content */}
-                                {activeChapter?.textContent ? (
-                                    <div dangerouslySetInnerHTML={{ __html: activeChapter.textContent.replace(/\n/g, '<br/>') }} />
-                                ) : (
-                                    <p className="text-slate-400 italic">No content available for this chapter.</p>
-                                )}
-                            </div>
+                            {activeChapter?.type === 'quiz' ? (
+                                <QuizRunner lesson={activeChapter} onComplete={handleQuizComplete} />
+                            ) : (
+                                <div className="prose prose-slate max-w-none">
+                                    {activeChapter?.textContent ? (
+                                        <div dangerouslySetInnerHTML={{ __html: activeChapter.textContent.replace(/\n/g, '<br/>') }} />
+                                    ) : (
+                                        <p className="text-slate-400 italic">No content available for this chapter.</p>
+                                    )}
+                                </div>
+                            )}
                         </ScrollArea>
+                        
+                        {/* Hide Next button if it's a quiz, let QuizRunner handle completion/next logic or just show previous */}
                         <div className="p-4 border-t bg-slate-50 flex justify-between items-center">
                             <Button variant="ghost" disabled={activeChapterIndex === 0} onClick={() => setActiveChapterIndex(prev => prev - 1)}>
                                 Previous
                             </Button>
-                            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleNext}>
-                                {activeChapterIndex === module.content.length - 1 ? 'Finish Lesson' : 'Next Chapter'}
-                            </Button>
+                            {activeChapter?.type !== 'quiz' && (
+                                <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleNext}>
+                                    {activeChapterIndex === module.content.length - 1 ? 'Finish Lesson' : 'Next Chapter'}
+                                </Button>
+                            )}
                         </div>
                     </Card>
                 </div>
