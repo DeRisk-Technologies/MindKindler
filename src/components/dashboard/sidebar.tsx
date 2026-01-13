@@ -49,7 +49,8 @@ import {
   Palette,
   Map as MapIcon,
   Activity,
-  BarChart3
+  BarChart3,
+  LineChart
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -183,10 +184,17 @@ export function DashboardSidebar() {
         </SidebarGroup>
 
         {/* 2. PRACTICE MANAGEMENT */}
-        {isPracticeOwner && !isSuperAdmin && (
+        {isPracticeOwner && (
             <SidebarGroup>
                 <SidebarGroupLabel>My Practice</SidebarGroupLabel>
                 <SidebarMenu>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/enterprise/analytics")} tooltip="District Command">
+                            <Link href="/dashboard/enterprise/analytics">
+                                <LineChart className="text-blue-600" /><span>Command Center</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
                     <SidebarMenuItem>
                         <SidebarMenuButton asChild isActive={isActive("/dashboard/practice/schools")} tooltip="My Clients">
                             <Link href="/dashboard/practice/schools">
@@ -346,8 +354,8 @@ export function DashboardSidebar() {
                     )}
                     
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild isActive={isActive("/dashboard/training/library")} tooltip="Academy">
-                            <Link href="/dashboard/training/library"><GraduationCap /><span>Training Academy</span></Link>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/training/my-learning")} tooltip="Academy">
+                            <Link href="/dashboard/training/my-learning"><GraduationCap /><span>Training Academy</span></Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
