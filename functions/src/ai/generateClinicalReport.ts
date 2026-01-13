@@ -9,20 +9,21 @@ import { buildSystemPrompt } from "./utils/prompt-builder";
 import { VertexAI } from '@google-cloud/vertexai';
 import { logAuditEvent } from "../services/audit";
 import { formatConsultationHistory } from "./utils/consultation-formatter";
+import { checkAndIncrementUsage } from "../billing/usage"; // IMPORTED
 
 if (!admin.apps.length) admin.initializeApp();
 
-// Initialize Vertex AI
+// ... (Rest of imports and configs)
 const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
 const location = 'europe-west3';
 const vertex_ai = new VertexAI({ project: project, location: location });
 
-// Use Explicit Version (2.5 Flash) with JSON Enforcement
 const generativeModel = vertex_ai.getGenerativeModel({ 
     model: 'gemini-2.5-flash',
     generationConfig: { responseMimeType: "application/json" } 
 });
 
+// ... (Schemas)
 const EditorSectionSchema = z.object({
     id: z.string(),
     title: z.string(),
@@ -54,6 +55,15 @@ export const handler = async (request: CallableRequest<any>) => {
         sessionContext  
     } = request.data;
     
+    // --- STEP 1: BILLING & USAGE CHECK ---
+    // This must happen before ANY expensive AI call.
+    try {
+        await checkAndIncrementUsage(tenantId, 'report_generation');
+    } catch (e: any) {
+        console.warn(`[Billing] Usage limit exceeded for tenant ${tenantId}`);
+        throw new HttpsError('resource-exhausted', e.message);
+    }
+    
     const userId = request.auth.uid;
     const userRole = request.auth.token.role || 'EPP';
     const region = request.auth.token.region || 'uk';
@@ -61,6 +71,7 @@ export const handler = async (request: CallableRequest<any>) => {
     
     console.log(`[GenerateReport] Starting for Tenant: ${tenantId}, Student: ${studentId}, Region: ${region}, DB: ${dbId}, Model: gemini-2.5-flash`);
 
+    // ... (Rest of the function remains identical)
     // Security Check
     if (request.auth.token.tenantId && request.auth.token.tenantId !== tenantId) {
          if (request.auth.token.role !== 'global_admin') {
