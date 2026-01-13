@@ -5,6 +5,9 @@
   "version": "1.1.0",
   "releaseDate": "2024-06-01",
   "changelog": "Added One Page Profile, refined Neuro questionnaire, and included DfE 2025 Attendance Codes (C2).",
+  "price": 29.99,
+  "stripePriceId": "price_1OtXYZ123",
+  "trialDays": 14,
   "regionTags": [
     "UK",
     "Europe"
@@ -324,6 +327,19 @@
           "Intervention Plan (Home/School/Community)"
         ],
         "tags": ["clinical", "complex", "safeguarding"]
+      },
+      {
+        "id": "uk_ehcp_drafting",
+        "title": "EHCP Drafting Assistant",
+        "description": "Guides the structuring of Section B and F for EHCPs.",
+        "system_prompt": "You are assisting in drafting an EHCP. Ensure strict alignment between Needs (Section B) and Provision (Section F). Use 'must' for provision.",
+        "required_sections": [
+          "Cognition & Learning",
+          "Communication & Interaction",
+          "SEMH",
+          "Sensory & Physical"
+        ],
+        "tags": ["statutory", "ehcp"]
       }
     ],
     "psychometricConfig": {

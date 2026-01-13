@@ -97,6 +97,13 @@ export interface MarketplaceManifest {
     releaseDate?: string; // e.g. "2024-01-01"
     changelog?: string; // e.g. "Added 2026 Attendance Codes"
     
+    // Commercial Fields (Phase 39)
+    price?: number; // Base Monthly Fee
+    stripePriceId?: string; // Stripe Subscription ID
+    stripeMeteredPriceId?: string; // Optional: For usage-based overage
+    trialDays?: number; // e.g. 14
+    currency?: string; // 'GBP' | 'USD'
+
     regionTags: string[];
     actions: InstallAction[];
     capabilities?: CountryPackConfig;
