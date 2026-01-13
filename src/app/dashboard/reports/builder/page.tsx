@@ -197,6 +197,26 @@ function ReportBuilderContent() {
             });
 
             const responseData = result.data as any;
+
+            // Check if responseData has content or sections
+            let contentToSave = responseData.sections || responseData.content || [];
+            if (!contentToSave || contentToSave.length === 0) {
+                 // Fallback: If AI returned raw text instead of JSON sections, wrap it.
+                 if (responseData.text || (responseData.parsed && responseData.parsed.text)) {
+                     contentToSave = { 
+                         sections: [
+                             { 
+                                 id: 'generated_content', 
+                                 title: 'Generated Draft', 
+                                 content: responseData.text || responseData.parsed.text 
+                             }
+                         ]
+                     };
+                 } else {
+                     console.warn("AI returned empty content", responseData);
+                     // Proceeding to save but user might see blank report
+                 }
+            }
             
             // 6. Persistence (Save with REAL Name for internal record)
             const realName = rawStudentData.identity?.firstName?.value + ' ' + rawStudentData.identity?.lastName?.value;
@@ -211,7 +231,7 @@ function ReportBuilderContent() {
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 createdBy: user?.uid, 
-                content: responseData.sections || responseData.content || [], 
+                content: contentToSave, // Use robust content
                 summary: responseData.summary || "",
                 type: 'statutory'
             };
