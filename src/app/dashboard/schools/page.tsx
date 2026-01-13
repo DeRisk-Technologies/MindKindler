@@ -53,18 +53,27 @@ export default function SchoolsPage() {
   const { toast } = useToast();
 
    const getDistrictName = (id: string) => {
-      return districts.find(d => d.id === id)?.name || id;
+      // Safe check for districts array
+      if (!districts) return id || 'Unknown';
+      return districts.find(d => d.id === id)?.name || id || 'Unknown';
    };
 
-   const filteredSchools = schools.filter(s => 
-     s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-     getDistrictName(s.districtId).toLowerCase().includes(searchTerm.toLowerCase())
-   );
+   const filteredSchools = schools ? schools.filter(s => {
+     // Safe checks for potentially missing fields
+     const nameMatch = (s.name || "").toLowerCase().includes(searchTerm.toLowerCase());
+     const districtMatch = getDistrictName(s.districtId).toLowerCase().includes(searchTerm.toLowerCase());
+     return nameMatch || districtMatch;
+   }) : [];
 
    const handleDeleteSchool = async (id: string) => {
       if(!confirm("Are you sure?")) return;
-      await deleteDoc(doc(db, "schools", id));
-      refreshSchools(); // Ensure UI updates
+      try {
+          await deleteDoc(doc(db, "schools", id));
+          toast({ title: "Deleted", description: "School removed." });
+          refreshSchools(); // Ensure UI updates
+      } catch (e) {
+          toast({ variant: "destructive", title: "Error", description: "Failed to delete." });
+      }
   };
 
    // --- DISTRICTS LOGIC ---
@@ -99,11 +108,16 @@ export default function SchoolsPage() {
 
   const handleDeleteDistrict = async (id: string) => {
     if(!confirm("Delete this district?")) return;
-    await deleteDoc(doc(db, "districts", id));
+    try {
+        await deleteDoc(doc(db, "districts", id));
+        toast({ title: "Deleted" });
+    } catch(e) {
+        toast({ title: "Error", variant: "destructive" });
+    }
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-8"> {/* Added Padding */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-primary">Schools & Districts</h1>
         <p className="text-muted-foreground">Manage educational institutions and administrative districts.</p>
@@ -172,28 +186,33 @@ export default function SchoolsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredSchools.map((s) => (
-                          <TableRow key={s.id}>
-                            <TableCell className="font-medium flex items-center gap-2">
-                              <SchoolIcon className="h-4 w-4 text-muted-foreground" />
-                              {s.name}
-                            </TableCell>
-                            <TableCell>{getDistrictName(s.districtId)}</TableCell>
-                            <TableCell>{s.principalName || 'N/A'}</TableCell>
-                            <TableCell>{s.senco?.name || 'N/A'}</TableCell> {/* Display SENCO */}
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                  <Button variant="ghost" size="icon" onClick={() => { setEditingSchool(s); setIsSchoolDialogOpen(true); }}>
-                                      <Pencil className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" onClick={() => handleDeleteSchool(s.id)}>
-                                      <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                              </div>
-                            </TableCell>
+                      {filteredSchools.length === 0 ? (
+                          <TableRow>
+                              <TableCell colSpan={5} className="text-center text-muted-foreground h-24">No schools found.</TableCell>
                           </TableRow>
-                        ))
-                      }
+                      ) : (
+                          filteredSchools.map((s) => (
+                              <TableRow key={s.id}>
+                                <TableCell className="font-medium flex items-center gap-2">
+                                  <SchoolIcon className="h-4 w-4 text-muted-foreground" />
+                                  {s.name}
+                                </TableCell>
+                                <TableCell>{getDistrictName(s.districtId)}</TableCell>
+                                <TableCell>{s.principalName || 'N/A'}</TableCell>
+                                <TableCell>{s.senco?.name || 'N/A'}</TableCell> {/* Display SENCO */}
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                      <Button variant="ghost" size="icon" onClick={() => { setEditingSchool(s); setIsSchoolDialogOpen(true); }}>
+                                          <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="icon" onClick={() => handleDeleteSchool(s.id)}>
+                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                      )}
                     </TableBody>
                   </Table>
                 )}
@@ -231,16 +250,16 @@ export default function SchoolsPage() {
                   <form onSubmit={handleSaveDistrict} className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="name">District Name</Label>
-                      <Input id="name" name="name" required defaultValue={editingDistrictId ? districts.find(d => d.id === editingDistrictId)?.name : ""} />
+                      <Input id="name" name="name" required defaultValue={editingDistrictId ? districts.find((d: any) => d.id === editingDistrictId)?.name : ""} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="ward">Ward</Label>
-                        <Input id="ward" name="ward" required defaultValue={editingDistrictId ? districts.find(d => d.id === editingDistrictId)?.ward : ""} />
+                        <Input id="ward" name="ward" required defaultValue={editingDistrictId ? districts.find((d: any) => d.id === editingDistrictId)?.ward : ""} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="lga">LGA</Label>
-                        <Input id="lga" name="lga" required defaultValue={editingDistrictId ? districts.find(d => d.id === editingDistrictId)?.lga : ""} />
+                        <Input id="lga" name="lga" required defaultValue={editingDistrictId ? districts.find((d: any) => d.id === editingDistrictId)?.lga : ""} />
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -276,7 +295,7 @@ export default function SchoolsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {districts.map((d) => (
+                      {districts.map((d: any) => (
                           <TableRow key={d.id}>
                             <TableCell className="font-medium flex items-center gap-2">
                               <Map className="h-4 w-4 text-muted-foreground" />

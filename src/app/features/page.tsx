@@ -1,9 +1,9 @@
-// src/app/features/page.tsx
+
 "use client";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, BrainCircuit, Activity, FileText, Globe, Store, Users, MessageSquare, Zap, Clock, ShieldCheck, Map as MapIcon } from "lucide-react";
+import { ArrowRight, BrainCircuit, Activity, FileText, Globe, Store, Users, MessageSquare, Zap, Clock, ShieldCheck, Map as MapIcon, GraduationCap } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 
@@ -54,12 +54,28 @@ export default function FeaturesPage() {
                         </p>
                         <ul className="space-y-3">
                             <li className="flex items-center gap-2"><Zap className="h-4 w-4 text-amber-500"/> <span>Automated "Widening Gap" analysis</span></li>
-                            <li className="flex items-center gap-2"><Activity className="h-4 w-4 text-emerald-500"/> <span>Psychometric Discrepancy detection</span></li>
+                            <li className="flex items-center gap-2"><Activity className="h-4 w-4 text-emerald-500"/> <span>Psychometric Discrepancy detection (WISC-V)</span></li>
                             <li className="flex items-center gap-2"><Clock className="h-4 w-4 text-blue-500"/> <span>Historical Context "Time Machine"</span></li>
                         </ul>
                     </div>
-                    <div className="md:w-1/2 bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
-                        <img src="/api/placeholder/600/400" alt="AI Dashboard" className="rounded-lg bg-slate-100" />
+                    <div className="md:w-1/2 bg-white p-6 rounded-2xl shadow-xl border border-slate-100 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-white opacity-50"></div>
+                        <div className="relative z-10 space-y-4">
+                            <div className="flex items-center gap-3 p-3 bg-white border rounded-lg shadow-sm">
+                                <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 font-bold">!</div>
+                                <div>
+                                    <div className="text-sm font-semibold">Discrepancy Detected</div>
+                                    <div className="text-xs text-slate-500">School reports "Low Focus" but Assessment shows PSI 115 (High).</div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 p-3 bg-white border rounded-lg shadow-sm">
+                                <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-bold">✓</div>
+                                <div>
+                                    <div className="text-sm font-semibold">Triangulation Complete</div>
+                                    <div className="text-xs text-slate-500">Parent, School, and Clinical data aligned.</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -78,8 +94,13 @@ export default function FeaturesPage() {
                             <li className="flex items-center gap-2"><Users className="h-4 w-4 text-indigo-500"/> <span>Person-Centered & Systemic Modes</span></li>
                         </ul>
                     </div>
-                    <div className="md:w-1/2 bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
-                        <img src="/api/placeholder/600/400" alt="Live Cockpit" className="rounded-lg bg-slate-100" />
+                    <div className="md:w-1/2 bg-white p-6 rounded-2xl shadow-xl border border-slate-100 flex items-center justify-center">
+                         <div className="text-center space-y-2">
+                             <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-50 text-red-600 rounded-full text-xs font-bold animate-pulse">
+                                 <span className="h-2 w-2 bg-red-500 rounded-full"></span> Live Recording
+                             </div>
+                             <div className="text-sm text-slate-400">Transcribing audio...</div>
+                         </div>
                     </div>
                 </div>
 
@@ -100,7 +121,44 @@ export default function FeaturesPage() {
                         </div>
                     </div>
                     <div className="md:w-1/2 bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
-                        <img src="/api/placeholder/600/400" alt="Marketplace" className="rounded-lg bg-slate-100" />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 border rounded-lg hover:bg-slate-50 cursor-pointer">
+                                <div className="font-bold">UK Pack</div>
+                                <div className="text-xs text-slate-500">Statutory</div>
+                            </div>
+                            <div className="p-4 border rounded-lg hover:bg-slate-50 cursor-pointer">
+                                <div className="font-bold">Autism Suite</div>
+                                <div className="text-xs text-slate-500">Clinical</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 4. Training Academy */}
+                <div className="flex flex-col md:flex-row-reverse items-center gap-12">
+                    <div className="md:w-1/2">
+                        <div className="h-12 w-12 bg-amber-100 rounded-xl flex items-center justify-center mb-6">
+                            <GraduationCap className="h-6 w-6 text-amber-600" />
+                        </div>
+                        <h2 className="text-3xl font-bold mb-4">AI Gap Scanner & Academy</h2>
+                        <p className="text-lg text-slate-600 mb-6">
+                            MindKindler monitors your report writing. If you struggle with specific sections (e.g. "Sensory Processing"), the AI automatically generates a personalized "Micro-Course" to bridge the gap.
+                        </p>
+                        <ul className="space-y-3">
+                            <li className="flex items-center gap-2"><Zap className="h-4 w-4 text-amber-500"/> <span>Automated CPD Suggestions</span></li>
+                            <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-500"/> <span>Compliance Training (GDPR/Safeguarding)</span></li>
+                        </ul>
+                    </div>
+                    <div className="md:w-1/2 bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                         <div className="space-y-3">
+                             <div className="flex justify-between items-center text-sm">
+                                 <span className="font-medium">Recent Activity Analysis</span>
+                                 <Badge variant="destructive">Gap Found</Badge>
+                             </div>
+                             <div className="p-3 bg-amber-50 border border-amber-100 rounded text-xs text-amber-800">
+                                 AI detected frequent rewrites in 'Cognition' section. Recommended Course: "WISC-V Interpretation Advanced".
+                             </div>
+                         </div>
                     </div>
                 </div>
 
@@ -122,7 +180,7 @@ export default function FeaturesPage() {
       
       <footer className="py-8 bg-white border-t text-center text-sm text-slate-500">
          <div className="container">
-            <p>&copy; 2024 MindKindler. Empowering EPPs globally.</p>
+            <p>&copy; 2026 MindKindler. Empowering EPPs globally.</p>
          </div>
       </footer>
     </div>
