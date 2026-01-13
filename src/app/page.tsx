@@ -184,7 +184,7 @@ export default function LandingPage() {
 
       <footer className="py-8 bg-white border-t text-center text-sm text-slate-500">
          <div className="container">
-            <p>&copy; 2026 MindKindler. All rights reserved.</p>
+            <p>&copy; 2026 MindKindler. A DeRisk Technologies Product. All rights reserved.</p>
             <div className="mt-2 flex items-center justify-center gap-2">
                 <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-400 border-slate-200">MindKindler Pilot v1.0</Badge>
                 <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-400 border-slate-200">Build Completed Jan 2026</Badge>
