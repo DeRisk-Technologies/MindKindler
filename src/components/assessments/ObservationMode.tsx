@@ -7,15 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Play, Pause, Save, RotateCcw, Maximize2, Minimize2, Plus, X, Activity } from 'lucide-react';
+import { Play, Pause, Save, RotateCcw, Maximize2, Minimize2, Plus, X, Activity, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { getRegionalDb } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useFirestoreCollection } from '@/hooks/use-firestore';
 
 interface ObservationModeProps {
-    studentId?: string; // Optional context linking
+    studentId?: string; 
     studentName?: string;
 }
 
@@ -27,9 +30,15 @@ const INITIAL_TILES = [
     { id: 'social', label: 'Peer Interaction' }
 ];
 
-export function ObservationMode({ studentId, studentName }: ObservationModeProps) {
+export function ObservationMode({ studentId: initialStudentId, studentName: initialStudentName }: ObservationModeProps) {
     const { toast } = useToast();
     const { user } = useAuth();
+    
+    // Context Selection State
+    const [selectedStudentId, setSelectedStudentId] = useState(initialStudentId || "");
+    const [selectedStudentName, setSelectedStudentName] = useState(initialStudentName || "");
+    const [showContextDialog, setShowContextDialog] = useState(!initialStudentId); // Show if no student pre-selected
+
     const [isActive, setIsActive] = useState(false);
     const [elapsed, setElapsed] = useState(0);
     const [customTiles, setCustomTiles] = useState<string[]>(INITIAL_TILES.map(t => t.label));
@@ -38,8 +47,9 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
     
     // Log of events (Timestamped) instead of just counters
     const [events, setEvents] = useState<{ label: string, time: number }[]>([]);
-    
     const [fullScreen, setFullScreen] = useState(false);
+
+    const { data: students } = useFirestoreCollection('students', 'firstName', 'asc');
 
     // Timer Logic
     useEffect(() => {
@@ -66,13 +76,8 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
 
     const handleTap = (label: string) => {
         if (!isActive) return;
-        // Haptic feedback
         if (navigator.vibrate) navigator.vibrate(50);
-        
-        // Log Event
         setEvents(prev => [...prev, { label, time: elapsed }]);
-        
-        // Optimistic Toast (Short)
         toast({ title: "Logged", description: label, duration: 1000 });
     };
 
@@ -83,43 +88,44 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
     };
 
     const handleSave = async () => {
-        if (events.length === 0) return;
+        if (events.length === 0 || !selectedStudentId) {
+             if(!selectedStudentId) setShowContextDialog(true);
+             return;
+        }
         setIsActive(false);
 
-        // Save to Firestore
         try {
-            if (studentId && user) {
+            if (user) {
                 const region = user.region || 'uk';
                 const db = getRegionalDb(region);
                 
-                // Save as a structured observation report or raw events
-                // We'll save to 'cases' or 'observations' subcollection
-                // For now, let's create a 'case' note or 'observation_session'
-                // Assuming 'observations' collection exists or subcollection
-                // We'll use a root collection 'observations' linked to student
-                
-                await addDoc(collection(db, 'observations'), {
+                // Save to 'assessment_results' so it appears in the Evidence Sidebar and Reports
+                await addDoc(collection(db, 'assessment_results'), {
                     tenantId: user.tenantId,
-                    studentId,
-                    observerId: user.uid,
-                    date: new Date().toISOString(),
-                    durationSeconds: elapsed,
-                    events: events,
-                    summary: countFrequencies(events),
-                    type: 'mobile_observation',
-                    createdAt: serverTimestamp()
+                    studentId: selectedStudentId,
+                    templateId: 'observation_log', // Unique ID for finding later
+                    category: 'Observation',
+                    completedAt: new Date().toISOString(),
+                    status: 'completed',
+                    responses: {
+                         durationSeconds: elapsed,
+                         events: events, // Full Log
+                         summary: countFrequencies(events) // Aggregate
+                    },
+                    totalScore: events.length, // Just a metric
+                    metadata: {
+                        observerId: user.uid,
+                        device: 'mobile_web'
+                    }
                 });
                 
                 toast({
                     title: "Observation Saved",
-                    description: `Synced to ${studentName || 'Student Profile'}.`
+                    description: `Synced to ${selectedStudentName}'s profile as Evidence.`
                 });
                 // Reset
                 setEvents([]);
                 setElapsed(0);
-            } else {
-                 console.log("Offline/Demo Save:", { elapsed, events });
-                 toast({ title: "Demo Save", description: "See console for data." });
             }
         } catch (e) {
             console.error("Save Failed", e);
@@ -134,15 +140,38 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
             "flex flex-col h-full bg-slate-50 transition-all duration-300",
             fullScreen ? "fixed inset-0 z-50 h-screen w-screen" : "w-full min-h-[500px]"
         )}>
+            {/* Context Selector Modal */}
+            <Dialog open={showContextDialog} onOpenChange={setShowContextDialog}>
+                 <DialogContent>
+                     <DialogHeader><DialogTitle>Select Student to Observe</DialogTitle></DialogHeader>
+                     <div className="py-4">
+                         <Select onValueChange={(val) => {
+                             const s = students.find(st => st.id === val);
+                             setSelectedStudentId(val);
+                             setSelectedStudentName(s ? `${s.firstName} ${s.lastName}` : "Student");
+                             setShowContextDialog(false);
+                         }}>
+                             <SelectTrigger><SelectValue placeholder="Choose Student..."/></SelectTrigger>
+                             <SelectContent>
+                                 {students.map(s => (
+                                     <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
+                                 ))}
+                             </SelectContent>
+                         </Select>
+                     </div>
+                 </DialogContent>
+            </Dialog>
+
+
             {/* Header / Controls */}
             <div className="flex-none bg-white p-4 border-b shadow-sm flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                     <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
-                        <Activity className="h-5 w-5" />
+                     <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700 cursor-pointer" onClick={() => setShowContextDialog(true)}>
+                        <User className="h-5 w-5" />
                      </div>
                      <div>
-                         <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
-                             {studentName ? `Observing: ${studentName}` : 'Observation Mode'}
+                         <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wide cursor-pointer hover:underline" onClick={() => setShowContextDialog(true)}>
+                             {selectedStudentName ? `${selectedStudentName}` : 'Select Student'}
                          </h2>
                          <div className="text-2xl font-mono font-bold text-slate-900 leading-none mt-1">
                              {formatTime(elapsed)}
@@ -152,8 +181,8 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
                 
                 <div className="flex items-center gap-2">
                      {!isActive ? (
-                        <Button onClick={() => setIsActive(true)} size="sm" className="bg-green-600 hover:bg-green-700 shadow-sm">
-                            <Play className="mr-2 h-4 w-4" /> Start
+                        <Button onClick={() => setIsActive(true)} disabled={!selectedStudentId} size="sm" className="bg-green-600 hover:bg-green-700 shadow-sm">
+                            <Play className="mr-2 h-4 w-4" /> Rec
                         </Button>
                     ) : (
                         <Button onClick={() => setIsActive(false)} size="sm" variant="secondary" className="animate-pulse">
@@ -247,7 +276,7 @@ export function ObservationMode({ studentId, studentName }: ObservationModeProps
                     disabled={events.length === 0}
                 >
                     <Save className="mr-2 h-5 w-5" /> 
-                    Save Session ({events.length} Events)
+                    Save to Evidence Bank ({events.length})
                 </Button>
             </div>
         </div>

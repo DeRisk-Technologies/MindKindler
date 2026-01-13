@@ -142,7 +142,7 @@ export function DashboardSidebar() {
                <SidebarMenuItem>
                    <SidebarMenuButton asChild isActive={isActive("/dashboard/assessments/mobile")} tooltip="Observation Mode">
                        <Link href="/dashboard/assessments/mobile">
-                           <Eye className="text-emerald-600" /><span>Observation Mode (iPad)</span>
+                           <Eye className="text-emerald-600" /><span>Observation Mode (mobile)</span>
                        </Link>
                    </SidebarMenuButton>
                </SidebarMenuItem>
