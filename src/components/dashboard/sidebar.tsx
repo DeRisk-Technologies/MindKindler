@@ -196,8 +196,8 @@ export function DashboardSidebar() {
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild isActive={isActive("/dashboard/practice/schools")} tooltip="My Clients">
-                            <Link href="/dashboard/practice/schools">
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/schools")} tooltip="My Clients">
+                            <Link href="/dashboard/schools">
                                 <Building className="text-indigo-600" /><span>Client Schools</span>
                             </Link>
                         </SidebarMenuButton>
@@ -210,7 +210,7 @@ export function DashboardSidebar() {
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild isActive={isActive("/dashboard/schools")} tooltip="Coverage Map">
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/schools?tab=map")} tooltip="Coverage Map">
                             <Link href="/dashboard/schools?tab=map">
                                 <MapIcon className="text-indigo-600" /><span>Coverage Map</span>
                             </Link>
