@@ -11,6 +11,9 @@ import { Search, GripVertical, Info, FileText } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useFirestoreCollection } from '@/hooks/use-firestore';
 import { FormBuilder } from '@/components/dashboard/questionnaires/FormBuilder';
+import { useAuth } from '@/hooks/use-auth';
+import { getRegionalDb } from '@/lib/firebase';
+import { collection, query as firestoreQuery, where, getDocs } from 'firebase/firestore';
 
 // Catalogs for Template Resolution
 import UK_PACK from '@/marketplace/catalog/uk_la_pack.json';
@@ -26,6 +29,9 @@ interface EvidenceItem {
     templateId?: string;
     responses?: any; 
     respondentName?: string;
+    // Assessment Specific
+    scores?: any;
+    category?: string;
 }
 
 interface CitationSidebarProps {
@@ -35,40 +41,66 @@ interface CitationSidebarProps {
 }
 
 export function CitationSidebar({ onInsert, studentId, region = 'UK' }: CitationSidebarProps) {
+    const { user } = useAuth();
     const [query, setQuery] = useState('');
     const [selectedItem, setSelectedItem] = useState<EvidenceItem | null>(null);
+    const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    // Fetch Digital Forms (Assessment Results)
-    const { data: assessmentResults, loading } = useFirestoreCollection('assessment_results', 'completedAt', 'desc', {
-        filter: studentId ? { field: 'studentId', operator: '==', value: studentId } : undefined
-    });
+    // Manual fetching to control DB source properly
+    useEffect(() => {
+        if (!user || !studentId) return;
 
-    // Transform Results into Evidence Items
-    const formEvidence: EvidenceItem[] = useMemo(() => {
-        if (!assessmentResults) return [];
-        return assessmentResults.map((res: any) => {
-            // Find Template
-            const template = UK_PACK.capabilities.digitalForms.find(t => t.id === res.templateId);
-            const title = template?.title || res.templateId;
-            
-            // Map responses array to object if needed, or stick to what we have
-            const responseMap = Array.isArray(res.responses) 
-                ? res.responses.reduce((acc: any, curr: any) => ({ ...acc, [curr.questionId]: curr.answer }), {})
-                : res.responses;
+        async function fetchEvidence() {
+            setLoading(true);
+            try {
+                const db = getRegionalDb(user?.region);
+                
+                // Fetch Assessment Results (Forms & Standardized)
+                const q = firestoreQuery(collection(db, 'assessment_results'), where('studentId', '==', studentId));
+                const snap = await getDocs(q);
 
-            return {
-                id: res.id,
-                type: 'form',
-                snippet: `${title} (${res.status})`,
-                sourceDate: res.completedAt ? new Date(res.completedAt).toLocaleDateString() : 'Unknown',
-                trustScore: 1.0,
-                templateId: res.templateId,
-                responses: responseMap
-            };
-        });
-    }, [assessmentResults]);
+                const items: EvidenceItem[] = snap.docs.map(doc => {
+                    const data = doc.data();
+                    let type: EvidenceItem['type'] = 'form';
+                    let snippet = data.templateId || 'Unknown Assessment';
+                    
+                    // Distinguish WISC/Cognitive from Forms
+                    if (data.category === 'Cognitive' || data.templateId === 'WISC-V') {
+                        type = 'assessment';
+                        snippet = `${data.templateId || 'Assessment'} (Score: ${data.totalScore || 'N/A'})`;
+                    } else {
+                         // Find Template Title if possible
+                         const template = UK_PACK.capabilities.digitalForms.find(t => t.id === data.templateId);
+                         if(template) snippet = `${template.title}`;
+                    }
 
-    const items = [...formEvidence].filter(i => i.snippet.toLowerCase().includes(query.toLowerCase()));
+                    return {
+                        id: doc.id,
+                        type,
+                        snippet,
+                        sourceDate: data.completedAt ? new Date(data.completedAt).toLocaleDateString() : 'Unknown',
+                        templateId: data.templateId,
+                        responses: data.responses,
+                        scores: data.responses, // For standardized tests, responses ARE the scores
+                        category: data.category
+                    };
+                });
+                
+                setEvidenceItems(items);
+
+            } catch (e) {
+                console.error("Failed to load evidence", e);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchEvidence();
+    }, [user, studentId]);
+
+
+    const items = evidenceItems.filter(i => i.snippet.toLowerCase().includes(query.toLowerCase()));
 
     const handleInsert = (item: EvidenceItem, type: 'ref' | 'quote') => {
         const text = type === 'quote' ? `"${item.snippet}" ` : "";
@@ -78,8 +110,41 @@ export function CitationSidebar({ onInsert, studentId, region = 'UK' }: Citation
 
     // Helper to get template definition
     const getTemplate = (id?: string) => {
-        // In real app, search all packs based on region
         return UK_PACK.capabilities.digitalForms.find(t => t.id === id);
+    };
+
+    // Helper to render assessment detail
+    const renderDetail = (item: EvidenceItem) => {
+        if (item.type === 'assessment' && item.scores) {
+             // WISC-V or similar standardized render
+             return (
+                 <div className="space-y-4">
+                     <div className="grid grid-cols-2 gap-2">
+                         {Object.entries(item.scores).map(([key, val]) => (
+                             <div key={key} className="flex justify-between p-2 bg-white rounded border">
+                                 <span className="text-muted-foreground">{key}</span>
+                                 <span className="font-bold">{String(val)}</span>
+                             </div>
+                         ))}
+                     </div>
+                 </div>
+             );
+        } else if (item.type === 'form' && item.templateId) {
+             const tmpl = getTemplate(item.templateId);
+             if (tmpl) {
+                 return <FormBuilder template={tmpl} initialData={item.responses} readOnly />;
+             }
+             // Fallback for form without template (e.g. legacy or deleted template)
+             return (
+                 <div className="space-y-2">
+                     <p className="text-amber-600 text-xs">Template definition unavailable. Displaying raw data.</p>
+                     <pre className="text-xs bg-slate-100 p-2 rounded overflow-x-auto">
+                         {JSON.stringify(item.responses, null, 2)}
+                     </pre>
+                 </div>
+             );
+        }
+        return <div className="whitespace-pre-wrap">{item.fullText || item.snippet}</div>;
     };
 
     return (
@@ -150,19 +215,7 @@ export function CitationSidebar({ onInsert, studentId, region = 'UK' }: Citation
                     </DialogHeader>
                     
                     <div className="bg-slate-50 p-4 rounded-md text-sm border">
-                        {selectedItem?.type === 'form' && selectedItem.templateId ? (
-                            getTemplate(selectedItem.templateId) ? (
-                                <FormBuilder 
-                                    template={getTemplate(selectedItem.templateId)!} 
-                                    initialData={selectedItem.responses} 
-                                    readOnly 
-                                />
-                            ) : (
-                                <div className="text-red-500">Template definition not found. Raw Data: {JSON.stringify(selectedItem.responses)}</div>
-                            )
-                        ) : (
-                            <div className="whitespace-pre-wrap">{selectedItem?.fullText || selectedItem?.snippet}</div>
-                        )}
+                        {selectedItem && renderDetail(selectedItem)}
                     </div>
 
                     <DialogFooter className="gap-2 sm:gap-0 sticky bottom-0 bg-white py-2 border-t mt-4">
