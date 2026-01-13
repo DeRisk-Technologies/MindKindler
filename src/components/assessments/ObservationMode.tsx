@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Play, Pause, Save, RotateCcw, Maximize2, Minimize2, Plus, X, Activity, User } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea'; // For Field Notes
+import { Play, Pause, Save, RotateCcw, Maximize2, Minimize2, Plus, X, Activity, User, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { getRegionalDb } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -37,7 +38,7 @@ export function ObservationMode({ studentId: initialStudentId, studentName: init
     // Context Selection State
     const [selectedStudentId, setSelectedStudentId] = useState(initialStudentId || "");
     const [selectedStudentName, setSelectedStudentName] = useState(initialStudentName || "");
-    const [showContextDialog, setShowContextDialog] = useState(!initialStudentId); // Show if no student pre-selected
+    const [showContextDialog, setShowContextDialog] = useState(!initialStudentId); 
 
     const [isActive, setIsActive] = useState(false);
     const [elapsed, setElapsed] = useState(0);
@@ -45,8 +46,13 @@ export function ObservationMode({ studentId: initialStudentId, studentName: init
     const [newTileName, setNewTileName] = useState("");
     const [isAddingTile, setIsAddingTile] = useState(false);
     
-    // Log of events (Timestamped) instead of just counters
+    // Log of events (Timestamped)
     const [events, setEvents] = useState<{ label: string, time: number }[]>([]);
+    
+    // Field Note (New Requirement)
+    const [fieldNote, setFieldNote] = useState("");
+    const [isNoteOpen, setIsNoteOpen] = useState(false);
+
     const [fullScreen, setFullScreen] = useState(false);
 
     const { data: students } = useFirestoreCollection('students', 'firstName', 'asc');
@@ -88,7 +94,7 @@ export function ObservationMode({ studentId: initialStudentId, studentName: init
     };
 
     const handleSave = async () => {
-        if (events.length === 0 || !selectedStudentId) {
+        if ((events.length === 0 && !fieldNote) || !selectedStudentId) {
              if(!selectedStudentId) setShowContextDialog(true);
              return;
         }
@@ -99,20 +105,21 @@ export function ObservationMode({ studentId: initialStudentId, studentName: init
                 const region = user.region || 'uk';
                 const db = getRegionalDb(region);
                 
-                // Save to 'assessment_results' so it appears in the Evidence Sidebar and Reports
+                // Save to 'assessment_results' (Unified Evidence Bank)
                 await addDoc(collection(db, 'assessment_results'), {
                     tenantId: user.tenantId,
                     studentId: selectedStudentId,
-                    templateId: 'observation_log', // Unique ID for finding later
+                    templateId: 'observation_log', 
                     category: 'Observation',
                     completedAt: new Date().toISOString(),
                     status: 'completed',
                     responses: {
                          durationSeconds: elapsed,
-                         events: events, // Full Log
-                         summary: countFrequencies(events) // Aggregate
+                         events: events, 
+                         summary: countFrequencies(events),
+                         fieldNote: fieldNote // Persist Note
                     },
-                    totalScore: events.length, // Just a metric
+                    totalScore: events.length, 
                     metadata: {
                         observerId: user.uid,
                         device: 'mobile_web'
@@ -125,6 +132,7 @@ export function ObservationMode({ studentId: initialStudentId, studentName: init
                 });
                 // Reset
                 setEvents([]);
+                setFieldNote("");
                 setElapsed(0);
             }
         } catch (e) {
@@ -195,75 +203,102 @@ export function ObservationMode({ studentId: initialStudentId, studentName: init
                 </div>
             </div>
 
-            {/* Dynamic Grid (Matches LiveCockpit) */}
-            <div className="flex-grow p-4 overflow-y-auto">
-                 <div className="flex justify-between items-center mb-4">
-                    <span className="text-xs font-bold text-slate-500 uppercase">Behaviors</span>
+            {/* Content Area: Grid + Note */}
+            <div className="flex-grow flex flex-col min-h-0 bg-slate-50">
+                {/* Field Note Toggle */}
+                <div className="px-4 pt-4">
                     <Button 
-                        variant="ghost" 
+                        variant="outline" 
                         size="sm" 
-                        className="h-6 w-6 p-0 hover:bg-slate-200 rounded-full"
-                        onClick={() => setIsAddingTile(!isAddingTile)}
+                        className="w-full flex justify-between text-slate-600 bg-white border-slate-200"
+                        onClick={() => setIsNoteOpen(!isNoteOpen)}
                     >
-                        {isAddingTile ? <X className="w-4 h-4 text-slate-500"/> : <Plus className="w-4 h-4 text-indigo-600"/>}
+                        <span className="flex items-center gap-2"><FileText className="h-4 w-4"/> Field Notes / Context</span>
+                        <span className="text-xs bg-slate-100 px-2 py-0.5 rounded">{fieldNote.length > 0 ? 'Active' : 'Empty'}</span>
                     </Button>
+                    
+                    {isNoteOpen && (
+                        <div className="mt-2 animate-in fade-in slide-in-from-top-2">
+                            <Textarea 
+                                placeholder="Describe the setting, antecedents, or specific triggers..." 
+                                value={fieldNote}
+                                onChange={e => setFieldNote(e.target.value)}
+                                className="min-h-[100px] text-sm bg-white border-indigo-200 focus:border-indigo-400"
+                            />
+                        </div>
+                    )}
                 </div>
 
-                {/* Add Tile Input */}
-                {isAddingTile && (
-                    <div className="mb-4 flex gap-2 animate-in slide-in-from-top-2">
-                        <Input 
-                            className="h-9 text-sm" 
-                            placeholder="Label (e.g. 'Stimming')" 
-                            value={newTileName}
-                            onChange={(e) => setNewTileName(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && addTile()}
-                            autoFocus
-                        />
-                        <Button size="sm" className="bg-indigo-600" onClick={addTile}>Add</Button>
-                    </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                    {customTiles.map((tile, idx) => (
-                        <button
-                            key={idx}
-                            onClick={() => handleTap(tile)}
-                            disabled={!isActive}
-                            className={cn(
-                                "relative group flex flex-col items-center justify-center p-6 bg-white border border-slate-200 rounded-2xl shadow-sm transition-all active:scale-95",
-                                isActive ? "hover:border-indigo-400 hover:shadow-md hover:bg-indigo-50/50" : "opacity-60 grayscale cursor-not-allowed"
-                            )}
+                {/* Grid */}
+                <div className="flex-grow p-4 overflow-y-auto">
+                     <div className="flex justify-between items-center mb-4">
+                        <span className="text-xs font-bold text-slate-500 uppercase">Behaviors</span>
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0 hover:bg-slate-200 rounded-full"
+                            onClick={() => setIsAddingTile(!isAddingTile)}
                         >
-                            <div className={cn(
-                                "h-3 w-3 rounded-full mb-3 transition-colors",
-                                isActive ? "bg-slate-300 group-hover:bg-indigo-500" : "bg-slate-200"
-                            )} />
-                            <span className="text-sm font-bold text-slate-700 text-center leading-tight group-hover:text-indigo-900">
-                                {tile}
-                            </span>
-                            
-                            {/* Counter Badge */}
-                            {counts[tile] > 0 && (
-                                <Badge className="absolute top-2 right-2 bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200">
-                                    {counts[tile]}
-                                </Badge>
-                            )}
+                            {isAddingTile ? <X className="w-4 h-4 text-slate-500"/> : <Plus className="w-4 h-4 text-indigo-600"/>}
+                        </Button>
+                    </div>
 
-                            {/* Delete Hover (Only if active and count is 0 to prevent accidental data loss? Or just allow) */}
-                            {isActive && (
-                                <div 
-                                    className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setCustomTiles(prev => prev.filter((_, i) => i !== idx));
-                                    }}
-                                >
-                                    <X className="w-3 h-3 text-red-400" />
-                                </div>
-                            )}
-                        </button>
-                    ))}
+                    {/* Add Tile Input */}
+                    {isAddingTile && (
+                        <div className="mb-4 flex gap-2 animate-in slide-in-from-top-2">
+                            <Input 
+                                className="h-9 text-sm" 
+                                placeholder="Label (e.g. 'Stimming')" 
+                                value={newTileName}
+                                onChange={(e) => setNewTileName(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && addTile()}
+                                autoFocus
+                            />
+                            <Button size="sm" className="bg-indigo-600" onClick={addTile}>Add</Button>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                        {customTiles.map((tile, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => handleTap(tile)}
+                                disabled={!isActive}
+                                className={cn(
+                                    "relative group flex flex-col items-center justify-center p-6 bg-white border border-slate-200 rounded-2xl shadow-sm transition-all active:scale-95",
+                                    isActive ? "hover:border-indigo-400 hover:shadow-md hover:bg-indigo-50/50" : "opacity-60 grayscale cursor-not-allowed"
+                                )}
+                            >
+                                <div className={cn(
+                                    "h-3 w-3 rounded-full mb-3 transition-colors",
+                                    isActive ? "bg-slate-300 group-hover:bg-indigo-500" : "bg-slate-200"
+                                )} />
+                                <span className="text-sm font-bold text-slate-700 text-center leading-tight group-hover:text-indigo-900">
+                                    {tile}
+                                </span>
+                                
+                                {/* Counter Badge */}
+                                {counts[tile] > 0 && (
+                                    <Badge className="absolute top-2 right-2 bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200">
+                                        {counts[tile]}
+                                    </Badge>
+                                )}
+
+                                {/* Delete Hover */}
+                                {isActive && (
+                                    <div 
+                                        className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCustomTiles(prev => prev.filter((_, i) => i !== idx));
+                                        }}
+                                    >
+                                        <X className="w-3 h-3 text-red-400" />
+                                    </div>
+                                )}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
@@ -273,10 +308,10 @@ export function ObservationMode({ studentId: initialStudentId, studentName: init
                     variant="default" 
                     className="w-full h-12 text-lg bg-indigo-600 hover:bg-indigo-700 shadow-md"
                     onClick={handleSave} 
-                    disabled={events.length === 0}
+                    disabled={events.length === 0 && !fieldNote}
                 >
                     <Save className="mr-2 h-5 w-5" /> 
-                    Save to Evidence Bank ({events.length})
+                    Save to Evidence Bank ({events.length} Events)
                 </Button>
             </div>
         </div>
