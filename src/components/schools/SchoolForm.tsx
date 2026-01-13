@@ -16,6 +16,7 @@ import { addDoc, collection, updateDoc, doc } from 'firebase/firestore';
 import { getRegionalDb } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useFirestoreCollection } from "@/hooks/use-firestore";
 
 interface SchoolFormProps {
     initialData?: any;
@@ -27,14 +28,17 @@ export function SchoolForm({ initialData, onSave }: SchoolFormProps) {
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     
-    // Complex State
+    // Fetch available Districts for association
+    const { data: districts } = useFirestoreCollection('districts', 'name', 'asc');
+
+    // State
+    const [districtId, setDistrictId] = useState(initialData?.districtId || "");
     const [senco, setSenco] = useState(initialData?.senco || { name: '', email: '', phone: '', mobile: '', role: '', qualifications: [], officeHours: '' });
     const [address, setAddress] = useState(initialData?.address || { street: '', city: '', postcode: '', lat: 51.5074, lng: -0.1278 });
     const [operations, setOperations] = useState(initialData?.operations || { schoolDayStart: "08:30", schoolDayEnd: "15:30", timetables: [] });
     const [calendar, setCalendar] = useState(initialData?.calendar || { termDates: [], holidays: [], events: [] });
     const [stats, setStats] = useState(initialData?.stats || { studentsOnRoll: 0, senRegister: 0, staffCount: 0 });
 
-    // Helper for Arrays
     const addArrayItem = (obj: any, setObj: any, key: string, newItem: any) => {
         setObj({ ...obj, [key]: [...(obj[key] || []), newItem] });
     };
@@ -55,6 +59,7 @@ export function SchoolForm({ initialData, onSave }: SchoolFormProps) {
             name: formData.get('name'),
             urn: formData.get('urn'),
             type: formData.get('type'),
+            districtId: districtId, // Association
             contact: {
                 phone: formData.get('phone'),
                 email: formData.get('email'),
@@ -78,7 +83,9 @@ export function SchoolForm({ initialData, onSave }: SchoolFormProps) {
         };
 
         try {
+            // Fix: Use Regional DB based on user context
             const db = getRegionalDb(user.region || 'uk');
+            
             if (initialData?.id) {
                 await updateDoc(doc(db, 'schools', initialData.id), schoolData);
                 toast({ title: "Updated", description: "School 360 profile updated." });
@@ -87,9 +94,9 @@ export function SchoolForm({ initialData, onSave }: SchoolFormProps) {
                 toast({ title: "Created", description: "New school added to directory." });
             }
             onSave();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast({ title: "Error", description: "Failed to save school.", variant: "destructive" });
+            toast({ title: "Error", description: error.message, variant: "destructive" });
         } finally {
             setIsSubmitting(false);
         }
@@ -130,6 +137,21 @@ export function SchoolForm({ initialData, onSave }: SchoolFormProps) {
                                     </Select>
                                 </div>
                             </div>
+                            
+                            {/* District Association */}
+                            <div className="space-y-2">
+                                <Label>Associated District / Local Authority</Label>
+                                <Select value={districtId} onValueChange={setDistrictId}>
+                                    <SelectTrigger><SelectValue placeholder="Select Authority..."/></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">None (Independent)</SelectItem>
+                                        {districts.map((d: any) => (
+                                            <SelectItem key={d.id} value={d.id}>{d.name} ({d.type || 'LEA'})</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label>URN (Ofsted)</Label>

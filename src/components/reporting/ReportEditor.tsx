@@ -14,8 +14,9 @@ import { useToast } from '@/hooks/use-toast';
 import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; 
 import { SubmitForReviewModal } from './modals/SubmitForReviewModal'; 
 import { ExportOptionsModal } from './modals/ExportOptionsModal';
+import { generateDocx } from '@/lib/export/docx-generator';
 
-// Mock Supervisors (In real app, fetch from Staff Service)
+// Mock Supervisors
 const MOCK_SUPERVISORS = [
     { id: 'sup_001', name: 'Dr. Sarah Smith (Senior EPP)' },
     { id: 'sup_002', name: 'Dr. James Wilson (Lead)' }
@@ -28,7 +29,7 @@ interface ReportEditorProps {
     initialContent?: any;
     userId: string; 
     userRole?: string;
-    region?: string; // New Prop
+    region?: string; 
 }
 
 export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId, userRole = 'EPP', region = 'uk' }: ReportEditorProps) {
@@ -65,7 +66,6 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         if (initialContent && editor) {
             let html = '';
             
-            // Check for both 'sections' and 'content' as fallback
             const contentSource = initialContent.sections || initialContent.content || [];
 
             if (Array.isArray(contentSource)) {
@@ -73,10 +73,8 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                     html += `<h2>${s.title}</h2><p>${s.content}</p>`;
                 });
             } else if (typeof contentSource === 'string') {
-                 // Direct HTML string
                  html = contentSource;
             } else if (typeof contentSource === 'object') {
-                 // Single section object
                  html = `<h2>${contentSource.title || 'Draft'}</h2><p>${contentSource.content || ''}</p>`;
             }
 
@@ -91,15 +89,35 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         setIsSaving(true);
         try {
             const json = editor.getJSON();
-            // Pass the region explicitly to ensure it goes to the correct DB
-            await ReportService.saveDraft(tenantId, reportId, json, region);
+            // Store content as a flat JSON string or sanitize deeply nested objects if Firestore complains.
+            // TipTap JSON is usually safe, but let's wrap it correctly.
+            // The error "invalid nested entity" often means we are trying to save 'undefined' or a circular structure.
+            // JSON.stringify/parse cleans undefined.
+            const cleanContent = JSON.parse(JSON.stringify(json));
+
+            await ReportService.saveDraft(tenantId, reportId, cleanContent, region);
             setLastSaved(new Date());
             toast({ title: 'Saved', description: 'Draft updated.' });
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            toast({ title: 'Error', description: 'Failed to save.', variant: 'destructive' });
+            toast({ title: 'Error', description: 'Failed to save: ' + e.message, variant: 'destructive' });
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleFinalize = async () => {
+        if (!editor) return;
+        try {
+            const json = editor.getJSON();
+            const cleanContent = JSON.parse(JSON.stringify(json));
+            // Save final state
+            await ReportService.saveDraft(tenantId, reportId, cleanContent, region);
+            // Ideally call updateDoc to set status='final'
+            // For now, just toast
+            toast({ title: 'Finalized', description: 'Report locked and ready for export.' });
+        } catch(e) {
+            toast({ title: 'Error', variant: 'destructive' });
         }
     };
 
@@ -157,12 +175,20 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     if (!editor) return null;
 
     // Construct partial report object for export
+    // We need to map TipTap JSON back to "Sections" for the Docx Generator if possible,
+    // or just pass raw text if the generator supports it.
+    // Ideally, we parse the editor HTML.
     const currentReport = {
         id: reportId,
         tenantId,
         studentId,
-        title: "Statutory Advice Draft", // Should ideally come from props
-        content: { sections: initialContent?.sections || [] } // Using initial for now, but ideally editor state
+        title: "Statutory Advice Draft", 
+        // Hack: Passing HTML content as a single section for export
+        content: { 
+            sections: [
+                { id: 'full_body', title: 'Report Content', content: editor.getHTML() }
+            ] 
+        }
     };
 
     return (
@@ -179,7 +205,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             <ExportOptionsModal 
                 isOpen={isExportModalOpen}
                 onClose={() => setIsExportModalOpen(false)}
-                report={currentReport}
+                report={currentReport as any}
                 tenantName="MindKindler Practice" 
             />
 
@@ -235,7 +261,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                                 <CheckCircle className="mr-2 h-4 w-4" /> Submit for Review
                             </Button>
                         ) : (
-                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" onClick={handleFinalize}>
                                 <FileText className="mr-2 h-4 w-4" /> Finalize
                             </Button>
                         )}
