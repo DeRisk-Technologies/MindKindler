@@ -1,6 +1,6 @@
 // src/components/staff/StaffEntryForm.tsx
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
@@ -8,50 +8,89 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Save, ShieldAlert, FileWarning } from 'lucide-react';
+import { Loader2, Save, ShieldAlert, BookOpen, Users } from 'lucide-react';
 import { useSchemaExtensions } from '@/hooks/use-schema-extensions';
 import { DynamicFormField } from '@/components/ui/dynamic-form-field';
 import { StaffService } from '@/services/staff-service';
 import { useAuth } from '@/hooks/use-auth';
+import { getRegionalDb } from '@/lib/firebase';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const defaultValues = {
     firstName: '',
     lastName: '',
     role: 'Teacher',
+    category: 'academic',
     email: '',
+    schoolId: '',
+    subjects: [],
+    assignedClasses: [],
     extensions: {} // Dynamic bucket for SCR fields
 };
 
+// Common subjects and classes for picker
+const COMMON_SUBJECTS = ["Maths", "English", "Science", "History", "Geography", "Art", "PE", "Computing"];
+const COMMON_CLASSES = ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11", "Year 12", "Year 13", "6A", "6B", "Form 1"];
+
 export function StaffEntryForm() {
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [schools, setSchools] = useState<any[]>([]);
+    const [students, setStudents] = useState<any[]>([]);
+    const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+    
     const { toast } = useToast();
     const { user } = useAuth();
     const { config: schemaConfig, loading } = useSchemaExtensions();
 
     const form = useForm({ defaultValues });
 
+    // Fetch Schools and Students on Load
+    useEffect(() => {
+        if (!user) return;
+        async function loadData() {
+            try {
+                const db = getRegionalDb(user?.region);
+                // Schools
+                const schoolsSnap = await getDocs(collection(db, 'schools'));
+                setSchools(schoolsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+                
+                // Students (Simple fetch for now, can be optimized)
+                const studentsSnap = await getDocs(collection(db, 'students'));
+                setStudents(studentsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+            } catch (e) {
+                console.error("Failed to load options", e);
+            }
+        }
+        loadData();
+    }, [user]);
+
     const onSubmit = async (data: any) => {
         if (!user?.tenantId) return;
         
         setIsSubmitting(true);
         try {
-            // Determine Region (In prod, this is stored in the User/Tenant Profile)
-            // For MVP, we default to 'uk' if the UK pack is installed, or fallback to 'default'
-            // A robust implementation would look up `user.region` from the token claims.
-            const region = 'uk'; 
+            const region = user.region || 'uk'; 
 
             await StaffService.createStaffMember(user.tenantId, region, {
                 tenantId: user.tenantId,
                 firstName: data.firstName,
                 lastName: data.lastName,
                 role: data.role,
+                category: data.category,
                 email: data.email,
+                schoolId: data.schoolId,
+                subjects: data.subjects,
+                assignedClasses: data.assignedClasses,
+                assignedStudents: selectedStudentIds,
                 status: 'active',
                 extensions: data.extensions
             });
             
             toast({ title: "Staff Record Created", description: "Securely saved to Regional Single Central Record." });
             form.reset();
+            setSelectedStudentIds([]);
         } catch (e: any) {
             console.error(e);
             toast({ variant: "destructive", title: "Error", description: e.message || "Failed to create staff." });
@@ -61,17 +100,17 @@ export function StaffEntryForm() {
     };
 
     return (
-        <div className="max-w-3xl mx-auto py-6">
+        <div className="max-w-4xl mx-auto py-6">
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                     <Card>
                         <CardHeader>
                             <CardTitle>Add Staff Member</CardTitle>
-                            <CardDescription>Enter basic details and statutory vetting information.</CardDescription>
+                            <CardDescription>Enter academic, pastoral, and statutory vetting information.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
                             
-                            {/* Standard Fields */}
+                            {/* Personal & School Link */}
                             <div className="grid grid-cols-2 gap-4">
                                 <FormField
                                     control={form.control}
@@ -97,25 +136,173 @@ export function StaffEntryForm() {
                                 />
                             </div>
 
-                            <FormField
+                             <FormField
                                 control={form.control}
-                                name="role"
+                                name="schoolId"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Role</FormLabel>
+                                        <FormLabel>Assigned School</FormLabel>
                                         <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                            <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                                            <FormControl><SelectTrigger><SelectValue placeholder="Select School..."/></SelectTrigger></FormControl>
                                             <SelectContent>
-                                                <SelectItem value="Teacher">Teacher</SelectItem>
-                                                <SelectItem value="TA">Teaching Assistant</SelectItem>
-                                                <SelectItem value="Admin">Administrator</SelectItem>
-                                                <SelectItem value="Volunteer">Volunteer</SelectItem>
+                                                {schools.map(s => (
+                                                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                         <FormMessage />
                                     </FormItem>
                                 )}
                             />
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField
+                                    control={form.control}
+                                    name="role"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Job Title / Role</FormLabel>
+                                             <FormControl><Input {...field} placeholder="e.g. Head of Year 9"/></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="category"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Category</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="academic">Academic / Teaching</SelectItem>
+                                                    <SelectItem value="support">Support / TA</SelectItem>
+                                                    <SelectItem value="admin">Admin / Ops</SelectItem>
+                                                    <SelectItem value="leadership">Leadership / SLT</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+
+                             <FormField
+                                control={form.control}
+                                name="email"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Work Email</FormLabel>
+                                        <FormControl><Input {...field} type="email" /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            {/* Academic Assignments */}
+                             <div className="pt-4 border-t">
+                                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                    <BookOpen className="h-4 w-4"/> Academic Assignments
+                                </h3>
+                                <div className="grid grid-cols-2 gap-6">
+                                    <FormField
+                                        control={form.control}
+                                        name="subjects"
+                                        render={() => (
+                                            <FormItem>
+                                                <FormLabel>Subjects Taught</FormLabel>
+                                                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border p-2 rounded">
+                                                    {COMMON_SUBJECTS.map((item) => (
+                                                        <FormField
+                                                            key={item}
+                                                            control={form.control}
+                                                            name="subjects"
+                                                            render={({ field }) => {
+                                                                return (
+                                                                    <FormItem key={item} className="flex flex-row items-start space-x-2 space-y-0">
+                                                                        <FormControl>
+                                                                            <Checkbox
+                                                                                checked={field.value?.includes(item as never)}
+                                                                                onCheckedChange={(checked) => {
+                                                                                    return checked
+                                                                                        ? field.onChange([...(field.value || []), item])
+                                                                                        : field.onChange(field.value?.filter((value) => value !== item));
+                                                                                }}
+                                                                            />
+                                                                        </FormControl>
+                                                                        <FormLabel className="font-normal cursor-pointer">{item}</FormLabel>
+                                                                    </FormItem>
+                                                                );
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </FormItem>
+                                        )}
+                                    />
+                                     <FormField
+                                        control={form.control}
+                                        name="assignedClasses"
+                                        render={() => (
+                                            <FormItem>
+                                                <FormLabel>Classes / Forms</FormLabel>
+                                                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border p-2 rounded">
+                                                    {COMMON_CLASSES.map((item) => (
+                                                        <FormField
+                                                            key={item}
+                                                            control={form.control}
+                                                            name="assignedClasses"
+                                                            render={({ field }) => {
+                                                                return (
+                                                                    <FormItem key={item} className="flex flex-row items-start space-x-2 space-y-0">
+                                                                        <FormControl>
+                                                                            <Checkbox
+                                                                                checked={field.value?.includes(item as never)}
+                                                                                onCheckedChange={(checked) => {
+                                                                                    return checked
+                                                                                        ? field.onChange([...(field.value || []), item])
+                                                                                        : field.onChange(field.value?.filter((value) => value !== item));
+                                                                                }}
+                                                                            />
+                                                                        </FormControl>
+                                                                        <FormLabel className="font-normal cursor-pointer">{item}</FormLabel>
+                                                                    </FormItem>
+                                                                );
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                             </div>
+
+                             {/* Student Assignment */}
+                             <div className="pt-4 border-t">
+                                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                    <Users className="h-4 w-4"/> Assigned Students ({selectedStudentIds.length})
+                                </h3>
+                                <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto border p-2 rounded bg-slate-50">
+                                    {students.map((stu) => (
+                                        <div key={stu.id} className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id={`stu-${stu.id}`}
+                                                checked={selectedStudentIds.includes(stu.id)}
+                                                onCheckedChange={(checked) => {
+                                                    if(checked) setSelectedStudentIds(prev => [...prev, stu.id]);
+                                                    else setSelectedStudentIds(prev => prev.filter(id => id !== stu.id));
+                                                }}
+                                            />
+                                            <label htmlFor={`stu-${stu.id}`} className="text-xs cursor-pointer select-none">
+                                                {stu.firstName} {stu.lastName}
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                             </div>
+
 
                             {/* Dynamic SCR Section */}
                             {schemaConfig.staffFields.length > 0 && (
