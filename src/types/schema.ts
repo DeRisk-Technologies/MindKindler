@@ -14,6 +14,65 @@ export type Role =
     'ParentUser' | 
     'GovAnalyst';
 
+// --- Phase 36: Professional Development & Compliance ---
+
+export interface Certification {
+    id: string;
+    userId: string;
+    tenantId: string;
+    name: string; // e.g. "HCPC Registration" or "ADOS-2 Certification"
+    issuer: string; // e.g. "HCPC" or "Pearson"
+    referenceNumber?: string;
+    expiryDate?: string; // ISO Date
+    status: 'active' | 'expiring' | 'expired' | 'revoked';
+    proofUrl?: string; // Link to uploaded certificate
+    verifiedAt?: string;
+    verifiedBy?: string;
+}
+
+export interface TrainingLesson {
+    id: string;
+    title: string;
+    type: 'video' | 'text' | 'quiz';
+    contentUrl?: string; // Link to resource
+    textContent?: string; // Markdown/HTML
+    durationMinutes: number;
+    completed?: boolean;
+}
+
+export interface TrainingModule {
+    id: string;
+    tenantId: string;
+    assignedUserId: string;
+    title: string;
+    description?: string;
+    
+    // AI Specifics
+    generatedBy: 'system' | 'ai_gap_scanner' | 'supervisor';
+    rationale?: string; // e.g. "Frequent edits to Sensory sections detected"
+    
+    content: TrainingLesson[];
+    
+    status: 'pending' | 'in_progress' | 'completed';
+    progressPercent: number;
+    
+    dueDate?: string;
+    completedAt?: string;
+    
+    // If it's a gap-filling module
+    linkedAuditEvents?: string[]; // IDs of the audit logs that triggered this
+}
+
+export interface ExamResult {
+    id: string;
+    moduleId: string;
+    userId: string;
+    score: number; // 0-100
+    pass: boolean;
+    certificateUrl?: string; // Generated PDF
+    attemptDate: string;
+}
+
 // ... (Provenance & Trust)
 export interface ProvenanceMetadata {
     source: 'manual' | 'ocr' | 'lms' | 'parent_portal' | 'migration';
@@ -431,6 +490,12 @@ export interface Case {
   evidence?: any[];
   tags?: string[];
   slaDueAt?: string;
+  activities?: { // Added to match Dashboard Logic
+      date: string;
+      summary: string;
+      performedBy: string;
+      type?: string;
+  }[];
 }
 
 // NEW: Task Management for Assistants
