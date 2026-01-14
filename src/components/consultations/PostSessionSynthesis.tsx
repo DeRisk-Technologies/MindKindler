@@ -74,13 +74,13 @@ export function PostSessionSynthesis({
     // State
     const [activeTab, setActiveTab] = useState('review');
     const [clinicalOpinions, setClinicalOpinions] = useState<AiInsight[]>(initialInsights);
-    const [manualOpinions, setManualOpinions] = useState<string[]>(initialManualNotes);
+    const [manualOpinions, setManualOpinions] = useState<string[]>(initialManualNotes || []);
     const [newManualOpinion, setNewManualOpinion] = useState("");
     
-    const [plannedInterventions, setPlannedInterventions] = useState<PlannedIntervention[]>(initialPlannedInterventions);
-    const [referrals, setReferrals] = useState<string[]>(initialReferrals);
+    const [plannedInterventions, setPlannedInterventions] = useState<PlannedIntervention[]>(initialPlannedInterventions || []);
+    const [referrals, setReferrals] = useState<string[]>(initialReferrals || []);
     const [editedTranscript, setEditedTranscript] = useState(transcript); 
-    const [promotedEvidence, setPromotedEvidence] = useState<string[]>(initialPromotedEvidence);
+    const [promotedEvidence, setPromotedEvidence] = useState<string[]>(initialPromotedEvidence || []);
     
     const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -125,7 +125,6 @@ export function PostSessionSynthesis({
         }
     };
     
-    // New: Q&A Text Selection Handler
     const handleQASelect = () => {
          const selection = window.getSelection();
          if (selection && selection.toString().length > 5) {
@@ -152,6 +151,8 @@ export function PostSessionSynthesis({
                 region: 'UK' 
             };
             
+            console.log("[Synthesis] Generating Plan with Context:", context);
+
             const plans = await generateInterventionPlanAction(context);
             if (!plans || plans.length === 0) {
                  toast({ title: "No Plans Generated", description: "AI returned no matches. Try adding more notes.", variant: "warning" });
@@ -187,21 +188,29 @@ export function PostSessionSynthesis({
         }
     };
     
-    const handleSaveProgress = async () => {
+    const handleSaveProgress = async (silent = false) => {
         if (onSave) {
-            setIsSaving(true);
+            if (!silent) setIsSaving(true);
             const synthesisResult: SynthesisResult = {
-                confirmedOpinions: clinicalOpinions, // Save all, including unconfirmed state
+                confirmedOpinions: clinicalOpinions, 
                 plannedInterventions,
                 referrals,
                 editedTranscript,
                 reportType: 'custom', 
-                manualClinicalNotes: [...manualOpinions, ...promotedEvidence] // Combine for storage, but we might want to split them on restore if possible. For now, this is okay.
+                manualClinicalNotes: [...manualOpinions, ...promotedEvidence] 
             };
             await onSave(synthesisResult);
-            setIsSaving(false);
-            toast({ title: "Progress Saved", description: "Session state updated." });
+            if (!silent) {
+                setIsSaving(false);
+                toast({ title: "Progress Saved", description: "Session state updated." });
+            }
         }
+    };
+    
+    const handleTabChange = (val: string) => {
+        // Auto-save on tab switch to prevent data loss if user navigates away later
+        handleSaveProgress(true);
+        setActiveTab(val);
     };
 
     const handleDraftReport = (type: 'statutory' | 'custom') => {
@@ -240,7 +249,7 @@ export function PostSessionSynthesis({
                     <p className="text-slate-500 text-sm">Review timeline, triangulate findings, and plan interventions.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="ghost" onClick={handleSaveProgress} disabled={isSaving}>
+                    <Button variant="ghost" onClick={() => handleSaveProgress(false)} disabled={isSaving}>
                         <Save className="mr-2 h-4 w-4" /> {isSaving ? "Saving..." : "Save Progress"}
                     </Button>
                     <Button variant="outline" onClick={() => setIsReferralModalOpen(true)}>
@@ -254,7 +263,7 @@ export function PostSessionSynthesis({
 
             <SessionTimeline events={mockTimelineEvents} durationMs={1000 * 60 * 15} />
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-grow flex flex-col">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-grow flex flex-col">
                 <TabsList className="w-full justify-start border-b rounded-none bg-transparent p-0 mb-4">
                     <TabsTrigger value="review" className="px-6 py-2">1. Clinical Review</TabsTrigger>
                     <TabsTrigger value="plan" className="px-6 py-2">2. Treatment Plan</TabsTrigger>

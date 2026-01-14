@@ -14,11 +14,95 @@ async function getTenantBranding(tenantId: string) {
     };
 }
 
+// --- HTML Parsing Helpers ---
+
+function parseInline(text: string): TextRun[] {
+    const runs: TextRun[] = [];
+    // Regex for bold
+    const parts = text.split(/(<(?:b|strong)>.*?<\/(?:b|strong)>)/gi);
+    
+    parts.forEach(part => {
+        if (!part) return;
+        if (part.match(/<(?:b|strong)>/i)) {
+            // Bold
+            const clean = part.replace(/<\/?(?:b|strong)>/gi, '').replace(/<[^>]+>/g, '');
+            runs.push(new TextRun({ text: clean, bold: true }));
+        } else {
+            // Check for italic inside non-bold parts
+            const italicParts = part.split(/(<(?:i|em)>.*?<\/(?:i|em)>)/gi);
+            italicParts.forEach(iPart => {
+                if (!iPart) return;
+                if (iPart.match(/<(?:i|em)>/i)) {
+                    const clean = iPart.replace(/<\/?(?:i|em)>/gi, '').replace(/<[^>]+>/g, '');
+                    runs.push(new TextRun({ text: clean, italics: true }));
+                } else {
+                    // Plain (strip any other tags like spans/br)
+                    // Replace <br> with \n if needed, but TextRun doesn't support \n easily without break:1
+                    // For now, simple strip
+                    const clean = iPart.replace(/<[^>]+>/g, '');
+                    if (clean) runs.push(new TextRun({ text: clean }));
+                }
+            });
+        }
+    });
+    return runs;
+}
+
+function parseHtmlToParagraphs(html: string): Paragraph[] {
+    if (!html) return [];
+    
+    // Normalize newlines to avoid regex issues
+    const raw = html.replace(/\n/g, ' ');
+    
+    // Regex to match block tags: p, h1-h6, li
+    const blockRegex = /<(p|h[1-6]|li|blockquote)[^>]*>(.*?)<\/\1>/gi;
+    const paras: Paragraph[] = [];
+    
+    let match;
+    let found = false;
+    
+    while ((match = blockRegex.exec(raw)) !== null) {
+        found = true;
+        const tag = match[1].toLowerCase();
+        let content = match[2];
+        
+        const children = parseInline(content);
+        const options: any = { children };
+        
+        if (tag.startsWith('h')) {
+            // Map h1->Heading1, etc.
+            // docx supports "Heading1", "Heading2"...
+            options.heading = `Heading${tag.replace('h','')}`;
+            options.spacing = { before: 200, after: 100 };
+        }
+        else if (tag === 'li') {
+            options.bullet = { level: 0 };
+        }
+        else if (tag === 'blockquote') {
+             options.indent = { left: 720 }; 
+             options.style = "Quote"; // Might require defined style, fallback to indentation
+        }
+        else {
+            // Paragraph
+            options.spacing = { after: 120 };
+        }
+        
+        paras.push(new Paragraph(options));
+    }
+    
+    // Fallback: If no block tags found (e.g. plain text or just one chunk), treat as one paragraph
+    if (!found) {
+        paras.push(new Paragraph({ children: parseInline(html) }));
+    }
+    
+    return paras;
+}
+
 export const DocxGenerator = {
     generate: async (report: Report, tenantName: string): Promise<Blob> => {
         const branding = await getTenantBranding(report.tenantId);
 
-        // Convert HTML Sections to DOCX Paragraphs (Simplified)
+        // Convert HTML Sections to DOCX Paragraphs
         const contentChildren: Paragraph[] = [];
 
         // Title
@@ -45,21 +129,19 @@ export const DocxGenerator = {
         // Sections
         if (report.content && report.content.sections) {
             report.content.sections.forEach((section: any) => {
+                // Section Title
                 contentChildren.push(
                     new Paragraph({
                         text: section.title,
                         heading: "Heading1",
-                        spacing: { before: 200, after: 100 }
+                        spacing: { before: 300, after: 100 },
+                        border: { bottom: { color: "auto", space: 1, value: "single", size: 6 } }
                     })
                 );
-                // Strip HTML tags for basic text
-                const cleanText = section.content ? section.content.replace(/<[^>]*>?/gm, '') : ''; 
-                contentChildren.push(
-                    new Paragraph({
-                        text: cleanText,
-                        spacing: { after: 200 }
-                    })
-                );
+                
+                // Section Content (Rich Text)
+                const parsedParas = parseHtmlToParagraphs(section.content || "");
+                contentChildren.push(...parsedParas);
             });
         }
 

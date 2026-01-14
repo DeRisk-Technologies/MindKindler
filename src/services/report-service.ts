@@ -80,6 +80,15 @@ export const ReportService = {
     await this.saveDraft(tenantId, reportId, structuredContent, region);
     return structuredContent;
   },
-
-  // ... (Other methods updated similarly if needed, assuming UK default for now)
+  
+  // Added for Phase 39: PDF Export
+  async exportReport(tenantId: string, reportId: string, options: { redactionLevel: string; format: string }): Promise<{ downloadUrl: string }> {
+      const exportFn = httpsCallable(functions, 'exportReport');
+      const result = await exportFn({
+          tenantId,
+          reportId,
+          ...options
+      });
+      return result.data as { downloadUrl: string };
+  }
 };
