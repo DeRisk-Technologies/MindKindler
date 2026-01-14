@@ -155,6 +155,15 @@ service cloud.firestore {
     match /dealRegistrations/{id} { allow read, write: if isAuthenticated(); }
     
     match /document_staging/{id} { allow read, write: if isAuthorized(); }
+    
+    // --- 8. PHASE 40/41 ADDITIONS (Portal & Consent) ---
+    match /consents/{id} { allow read, write: if isAuthorized(); }
+    match /external_requests/{id} { allow read, write: if isAuthorized(); }
+    match /contribution_requests/{id} { allow read, write: if isAuthorized(); }
+    match /contribution_submissions/{id} { allow read, write: if isAuthorized(); }
+    
+    match /telemetry_report_edits/{id} { allow read, write: if isAuthorized(); }
+    match /mail_queue/{id} { allow read, write: if isAuthorized(); }
 
     match /{document=**} { allow read, write: if false; }
   }

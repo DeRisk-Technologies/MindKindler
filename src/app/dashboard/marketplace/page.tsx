@@ -8,37 +8,27 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { Loader2, Globe, ShieldCheck, Download, CheckCircle, AlertTriangle, Building2, RefreshCw, ChevronRight, Info } from 'lucide-react';
+import { Loader2, Globe, ShieldCheck, Download, CheckCircle, AlertTriangle, Building2, RefreshCw, ChevronRight, Info, ShoppingCart, Sparkles } from 'lucide-react';
 import { installPack } from '@/marketplace/installer';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 // Logic Hooks
 import { useMarketplaceUpdates } from '@/hooks/use-marketplace-updates';
-import { doc, getDoc } from 'firebase/firestore'; 
-import { db } from '@/lib/firebase'; 
+import { doc, getDoc, getDocs, collection } from 'firebase/firestore'; 
+import { db, getRegionalDb } from '@/lib/firebase'; 
 import { MarketplaceManifest } from '@/marketplace/types';
 
-// Catalog Imports
+// Catalog Imports (Static)
 import ukPack from "@/marketplace/catalog/uk_la_pack.json";
 import usPack from "@/marketplace/catalog/us_district_pack.json";
 import gulfPack from "@/marketplace/catalog/gulf_pack.json";
 
-const CATALOG: Record<string, any> = {
+const STATIC_CATALOG: Record<string, any> = {
     'uk_la_pack': ukPack,
     'us_district_pack': usPack,
     'gulf_pack': gulfPack
 };
-
-// Transform Catalog to Display Array
-const catalogDisplay = Object.values(CATALOG).map((pack: any) => ({
-    id: pack.id,
-    name: pack.name,
-    description: pack.description,
-    version: pack.version,
-    region: pack.regionTags[0] || 'Global',
-    tags: pack.capabilities?.digitalForms ? ['Statutory', 'Forms', 'Compliance'] : ['Statutory', 'Compliance']
-}));
 
 export default function MarketplacePage() {
     const { user } = useAuth();
@@ -47,50 +37,100 @@ export default function MarketplacePage() {
     const [installed, setInstalled] = useState<Record<string, boolean>>({});
     const [loadingState, setLoadingState] = useState(true);
     const [targetTenantId, setTargetTenantId] = useState<string | null>(null);
+    const [dynamicCatalog, setDynamicCatalog] = useState<any[]>([]);
 
     // Lifecycle Hook
-    const { updatesAvailable, newModulesAvailable, loading: updatesLoading } = useMarketplaceUpdates();
+    const { updatesAvailable, newModulesAvailable } = useMarketplaceUpdates();
 
-    // Fetch Installed Status on Mount
+    // 1. Fetch Installed Status & Dynamic Catalog
     useEffect(() => {
         if (!user) return;
 
         const tid = user.tenantId; 
         setTargetTenantId(tid || null);
         
-        if (!tid) {
-            setLoadingState(false);
-            return;
-        }
-
-        async function checkInstalledPacks() {
+        async function init() {
             try {
-                const docRef = doc(db, `tenants/${tid}/settings/installed_packs`);
-                const snap = await getDoc(docRef);
-                if (snap.exists()) {
-                    const data = snap.data();
-                    const statusMap: Record<string, boolean> = {};
-                    Object.keys(data).forEach(key => {
-                        statusMap[key] = true;
-                    });
-                    setInstalled(statusMap);
+                // A. Check Installed
+                if (tid) {
+                    const docRef = doc(db, `tenants/${tid}/settings/installed_packs`);
+                    const snap = await getDoc(docRef);
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        const statusMap: Record<string, boolean> = {};
+                        Object.keys(data).forEach(key => {
+                            statusMap[key] = true;
+                        });
+                        setInstalled(statusMap);
+                    }
                 }
+
+                // B. Fetch Dynamic Catalog (from Regional DB)
+                // This allows Admin to inject new packs without redeploying code
+                const regionalDb = getRegionalDb(user.region);
+                const marketSnap = await getDocs(collection(regionalDb, 'marketplace_items'));
+                const items = marketSnap.docs.map(d => d.data());
+                setDynamicCatalog(items);
+
             } catch (e) {
-                console.error("Failed to fetch installed packs", e);
+                console.error("Failed to load marketplace data", e);
             } finally {
                 setLoadingState(false);
             }
         }
 
-        checkInstalledPacks();
+        init();
     }, [user]);
+
+    // 2. Merge Catalogs
+    const mergedCatalog = [
+        ...Object.values(STATIC_CATALOG).map((pack: any) => ({
+            id: pack.id,
+            name: pack.name,
+            description: pack.description,
+            version: pack.version,
+            price: pack.price,
+            trialDays: pack.trialDays,
+            region: pack.regionTags?.[0] || 'Global',
+            tags: pack.capabilities?.digitalForms ? ['Statutory', 'Forms'] : ['Compliance'],
+            manifest: pack // Full manifest
+        })),
+        ...dynamicCatalog.map(p => ({
+            id: p.id,
+            name: p.title || p.name,
+            description: p.description,
+            version: p.version,
+            price: p.price,
+            trialDays: p.trialDays,
+            region: p.regionTags?.[0] || 'Global',
+            tags: [p.type],
+            manifest: p // Assuming Firestore doc mimics manifest structure
+        }))
+    ];
 
     const handleInstall = async (packId: string) => {
         if (!user || !targetTenantId) return;
 
+        // Check if we need payment redirect
+        const item = mergedCatalog.find(p => p.id === packId);
+        if (item && (item.price > 0 || item.trialDays > 0) && !installed[packId]) {
+            // Redirect to Details Page which handles Stripe
+            // We can't easily do it here without duplicating InstallPackButton logic
+            window.location.href = `/dashboard/marketplace/${packId}`;
+            return;
+        }
+
         setInstalling(packId);
         try {
-            const manifest = CATALOG[packId] as MarketplaceManifest;
+            // Fallback for Free/Static packs
+            let manifest = STATIC_CATALOG[packId] as MarketplaceManifest;
+            
+            // If not static, try dynamic
+            if (!manifest) {
+                const dyn = dynamicCatalog.find(d => d.id === packId);
+                if (dyn) manifest = dyn as MarketplaceManifest;
+            }
+
             if (!manifest) throw new Error("Pack manifest not found.");
 
             const res = await installPack(manifest, targetTenantId);
@@ -98,7 +138,7 @@ export default function MarketplacePage() {
             if (res.success) {
                 toast({
                     title: installed[packId] ? "Pack Updated" : "Installation Complete",
-                    description: `Successfully configured ${packId} for ${targetTenantId}`,
+                    description: `Successfully configured ${packId}`,
                 });
                 setInstalled(prev => ({ ...prev, [packId]: true }));
             } else {
@@ -137,7 +177,6 @@ export default function MarketplacePage() {
                             {updatesAvailable.map(u => (
                                 <li key={u.manifest.id}>
                                     <strong>{u.manifest.name}</strong> (v{u.installedVersion} → v{u.latestVersion})
-                                    {u.changelog && <span className="block text-slate-500 italic">Change: {u.changelog}</span>}
                                 </li>
                             ))}
                         </ul>
@@ -145,25 +184,8 @@ export default function MarketplacePage() {
                 </Alert>
             )}
 
-            {newModulesAvailable.length > 0 && (
-                <Alert className="bg-blue-50 border-blue-200 text-blue-900">
-                    <Info className="h-4 w-4 text-blue-600" />
-                    <AlertTitle>New Regional Modules</AlertTitle>
-                    <AlertDescription>
-                        We detected you are in the <strong>{user?.region?.toUpperCase()}</strong> region. You might be interested in:
-                        <div className="flex gap-2 mt-2">
-                            {newModulesAvailable.map(m => (
-                                <Badge key={m.manifest.id} variant="secondary" className="cursor-pointer hover:bg-blue-200" onClick={() => handleInstall(m.manifest.id)}>
-                                    Install {m.manifest.name}
-                                </Badge>
-                            ))}
-                        </div>
-                    </AlertDescription>
-                </Alert>
-            )}
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {catalogDisplay.map(pack => (
+                {mergedCatalog.map(pack => (
                     <Card key={pack.id} className="flex flex-col hover:shadow-lg transition-shadow">
                         <CardHeader>
                             <div className="flex justify-between items-start">
@@ -188,29 +210,43 @@ export default function MarketplacePage() {
                                     </span>
                                 ))}
                             </div>
-                            <div className="mt-4 text-xs text-slate-400">
-                                Version: {pack.version}
+                            <div className="flex justify-between items-center mt-4">
+                                <div className="text-xs text-slate-400">Version: {pack.version}</div>
+                                {pack.price > 0 ? (
+                                    <div className="text-sm font-bold text-slate-900">£{pack.price}</div>
+                                ) : (
+                                    <div className="text-sm font-bold text-green-600">Free</div>
+                                )}
                             </div>
                         </CardContent>
                         <CardFooter className="pt-4 border-t bg-slate-50 gap-2">
-                            <Button 
-                                variant={installed[pack.id] ? "outline" : "default"}
-                                className="flex-grow h-10" 
-                                onClick={() => handleInstall(pack.id)} 
-                                disabled={!!installing || loadingState}
-                            >
-                                {installing === pack.id ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : installed[pack.id] ? (
-                                    <RefreshCw className="mr-2 h-4 w-4" />
-                                ) : (
-                                    <Download className="mr-2 h-4 w-4" />
-                                )}
-                                {installing === pack.id ? "Working..." : installed[pack.id] ? "Update" : "Install"}
-                            </Button>
+                            {/* Action Button */}
+                            {pack.price > 0 && !installed[pack.id] ? (
+                                <Button className="flex-grow h-10 bg-indigo-600 hover:bg-indigo-700" asChild>
+                                    <Link href={`/dashboard/marketplace/${pack.id}`}>
+                                        <ShoppingCart className="mr-2 h-4 w-4" /> Buy / Trial
+                                    </Link>
+                                </Button>
+                            ) : (
+                                <Button 
+                                    variant={installed[pack.id] ? "outline" : "default"}
+                                    className="flex-grow h-10" 
+                                    onClick={() => handleInstall(pack.id)} 
+                                    disabled={!!installing || loadingState}
+                                >
+                                    {installing === pack.id ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : installed[pack.id] ? (
+                                        <RefreshCw className="mr-2 h-4 w-4" />
+                                    ) : (
+                                        <Download className="mr-2 h-4 w-4" />
+                                    )}
+                                    {installing === pack.id ? "Working..." : installed[pack.id] ? "Update" : "Install"}
+                                </Button>
+                            )}
                             
                             <Button variant="ghost" size="icon" asChild>
-                                <Link href={`/marketplace/${pack.id}`}>
+                                <Link href={`/dashboard/marketplace/${pack.id}`}>
                                     <ChevronRight className="h-4 w-4" />
                                 </Link>
                             </Button>
