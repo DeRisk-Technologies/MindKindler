@@ -13,12 +13,20 @@ service cloud.firestore {
       );
     }
 
-    // STRICT TENANT CHECK
+    // STRICT TENANT CHECK (Updated to support managedByTenantId)
     function isTenantScoped() {
       return isSystemAdmin() || (
         isAuthenticated() && 
-        (resource == null || resource.data.tenantId == request.auth.token.tenantId) &&
-        (request.resource == null || request.resource.data.tenantId == request.auth.token.tenantId)
+        (
+          resource == null || 
+          resource.data.tenantId == request.auth.token.tenantId ||
+          resource.data.managedByTenantId == request.auth.token.tenantId
+        ) &&
+        (
+          request.resource == null || 
+          request.resource.data.tenantId == request.auth.token.tenantId ||
+          request.resource.data.managedByTenantId == request.auth.token.tenantId
+        )
       );
     }
 
@@ -94,6 +102,7 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
     
+    // Schools: STRICT Tenant Scoped
     match /schools/{id} { 
         allow read, write: if isAuthorized();
         match /staff/{staffId} { allow read, write: if isAuthorized(); }
@@ -113,6 +122,7 @@ service cloud.firestore {
 
     // --- 6. ASSETS & INTEGRATIONS ---
     match /integrations/{configId} { allow read, write: if isAuthorized(); }
+    match /bottom_data_jobs/{jobId} { allow read, write: if isAuthorized(); }
     match /data_jobs/{jobId} { allow read, write: if isAuthorized(); }
     
     match /knowledgeDocuments/{docId} { 
@@ -123,32 +133,23 @@ service cloud.firestore {
     match /uploaded_documents/{docId} { allow read, write: if isAuthorized(); }
     
     // --- 7. MISSING COLLECTIONS (Added for Pilot Unblocking) ---
-    // These should ideally also be tenant scoped, but kept open for pilot community features if intended. 
-    // Assuming Community is global? The prompt said "MindKindler Community" is a feature.
-    // However, if data lives in UK shard, it should probably be region scoped at least.
-    
-    // Community / Forum (Region Scoped?)
     match /threads/{threadId} { allow read, write: if isRegionAuthorized(); }
     match /posts/{postId} { allow read, write: if isRegionAuthorized(); }
     
-    // Training Academy
     match /trainingModules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /trainingCompletions/{id} { allow read, write: if isAuthenticated(); } 
     match /certificates/{id} { allow read, write: if isAuthenticated(); }
     
-    // Marketplace
     match /marketplaceItems/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /marketplaceReviews/{id} { allow read, write: if isAuthenticated(); }
     match /marketplacePurchases/{id} { allow read, write: if isAuthorized(); }
     
-    // Partner Portal
     match /partners/{id} { allow read, write: if isAuthenticated(); }
     match /partnerStatements/{id} { allow read, write: if isAuthenticated(); }
     match /partnerInvoices/{id} { allow read, write: if isAuthenticated(); }
     match /partnerRevenueLedger/{id} { allow read, write: if isAuthenticated(); }
     match /dealRegistrations/{id} { allow read, write: if isAuthenticated(); }
     
-    // Data Operations / Review Queue
     match /document_staging/{id} { allow read, write: if isAuthorized(); }
 
     match /{document=**} { allow read, write: if false; }
