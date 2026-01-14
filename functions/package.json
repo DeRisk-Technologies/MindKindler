@@ -18,6 +18,7 @@
     "@google-cloud/aiplatform": "^6.0.0",
     "@google-cloud/documentai": "^9.5.0",
     "@google-cloud/vertexai": "^1.10.0",
+    "@sendgrid/mail": "^8.1.6",
     "@sparticuz/chromium": "^143.0.4",
     "@types/uuid": "^10.0.0",
     "axios": "^1.13.2",

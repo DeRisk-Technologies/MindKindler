@@ -1,5 +1,6 @@
 // functions/src/services/email.ts
 import * as nodemailer from 'nodemailer';
+import * as sendgrid from '@sendgrid/mail';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 
 // Interface for email options
@@ -92,6 +93,32 @@ const TEMPLATES: Record<string, (data: any) => { subject: string, html: string }
  */
 export const emailService = {
     async send(options: EmailOptions): Promise<boolean> {
+        const sendgridKey = process.env.SENDGRID_API_KEY;
+        const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@mindkindler.com'; // Verified Sender
+        
+        // 1. Try SendGrid
+        if (sendgridKey) {
+            try {
+                sendgrid.setApiKey(sendgridKey);
+                await sendgrid.send({
+                    to: options.to,
+                    from: fromEmail,
+                    subject: options.subject,
+                    text: options.text,
+                    html: options.html,
+                    attachments: options.attachments,
+                });
+                console.log(`[Email Service] Sent email to ${options.to} via SendGrid`);
+                return true;
+            } catch (error: any) {
+                console.error("[Email Service] Failed to send email via SendGrid", error.response?.body || error);
+                // Don't fall back to SMTP if SendGrid is configured but failed (likely auth/limit issue), 
+                // unless it's a connection error, but for now we throw to trigger retry logic in queue.
+                throw error; 
+            }
+        }
+
+        // 2. Fallback to SMTP
         const host = process.env.SMTP_HOST;
         const port = parseInt(process.env.SMTP_PORT || "587");
         const user = process.env.SMTP_USER;
@@ -115,23 +142,23 @@ export const emailService = {
                     attachments: options.attachments,
                 });
 
-                console.log(`[Email Service] Sent email to ${options.to}`);
+                console.log(`[Email Service] Sent email to ${options.to} via SMTP`);
                 return true;
             } catch (error) {
                 console.error("[Email Service] Failed to send email via SMTP", error);
                 throw error;
             }
-        } else {
-             // Fallback for Development/MVP if env vars missing
-             console.log(`
-             >>> [OUTBOUND EMAIL (MOCK)] >>>
-             To: ${options.to}
-             Subject: ${options.subject}
-             Content-Length: ${options.html?.length || options.text?.length}
-             <<< [END EMAIL] <<<
-             `);
-             return true;
-        }
+        } 
+        
+        // 3. Dev Mode / Mock
+        console.log(`
+            >>> [OUTBOUND EMAIL (MOCK)] >>>
+            To: ${options.to}
+            Subject: ${options.subject}
+            Content-Length: ${options.html?.length || options.text?.length}
+            <<< [END EMAIL] <<<
+        `);
+        return true;
     }
 };
 
@@ -142,7 +169,8 @@ export const emailService = {
  */
 export const processEmailQueue = onDocumentCreated({
     document: "mail_queue/{emailId}",
-    region: "europe-west3"
+    region: "europe-west3",
+    secrets: ["SENDGRID_API_KEY"] // Ensure secret is accessible
 }, async (event) => {
     const snap = event.data;
     if (!snap) return;

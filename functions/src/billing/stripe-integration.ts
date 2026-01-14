@@ -24,7 +24,10 @@ const PLAN_PRICE_MAP: Record<string, string> = {
  * Supports Plans AND Marketplace Items.
  * Handles Multi-Region Tenants via User Routing.
  */
-export const createCheckoutSession = onCall(callOptions, async (request) => {
+export const createCheckoutSession = onCall({ 
+    ...callOptions, 
+    secrets: ["STRIPE_SECRET_KEY"] 
+}, async (request) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'Login required.');
     }
@@ -61,6 +64,7 @@ export const createCheckoutSession = onCall(callOptions, async (request) => {
     
     if (!finalPriceId) {
         // Assume priceId is valid
+        // Verify it exists in Stripe if strictly necessary, or trust client (less secure)
     }
 
     try {
@@ -132,8 +136,156 @@ export const createCheckoutSession = onCall(callOptions, async (request) => {
     }
 });
 
-// ... Webhook Handler (Keep existing logic or update similarly) ...
-export const handleStripeWebhook = onRequest({ region }, async (req, res) => {
-    // ... existing implementation ...
-    res.json({received: true});
+/**
+ * handleStripeWebhook
+ * Securely processes Stripe events.
+ * Key Logic:
+ * - Verify signature
+ * - checkout.session.completed -> Enable feature/pack/subscription
+ * - invoice.payment_failed -> Update status to 'past_due'
+ * - customer.subscription.deleted -> Update status to 'canceled'
+ */
+export const handleStripeWebhook = onRequest({ 
+    region, 
+    secrets: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"] 
+}, async (req, res) => {
+    const signature = req.headers['stripe-signature'] as string;
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!endpointSecret) {
+        console.error('STRIPE_WEBHOOK_SECRET is missing');
+        res.status(500).send('Configuration Error');
+        return;
+    }
+
+    let event: Stripe.Event;
+
+    try {
+        event = stripe.webhooks.constructEvent(req.rawBody, signature, endpointSecret);
+    } catch (err: any) {
+        console.error(`⚠️  Webhook signature verification failed.`, err.message);
+        res.status(400).send(`Webhook Error: ${err.message}`);
+        return;
+    }
+
+    try {
+        switch (event.type) {
+            case 'checkout.session.completed': {
+                const session = event.data.object as Stripe.Checkout.Session;
+                await handleCheckoutCompleted(session);
+                break;
+            }
+            case 'invoice.payment_succeeded': {
+                const invoice = event.data.object as Stripe.Invoice;
+                await handleInvoicePaymentSucceeded(invoice);
+                break;
+            }
+            case 'invoice.payment_failed': {
+                const invoice = event.data.object as Stripe.Invoice;
+                await handleInvoicePaymentFailed(invoice);
+                break;
+            }
+            case 'customer.subscription.deleted': {
+                const subscription = event.data.object as Stripe.Subscription;
+                await handleSubscriptionDeleted(subscription);
+                break;
+            }
+            default:
+                // console.log(`Unhandled event type ${event.type}`);
+        }
+    } catch (error) {
+        console.error("Error processing webhook:", error);
+        res.status(500).send("Internal Server Error");
+        return;
+    }
+
+    res.json({ received: true });
 });
+
+// --- Webhook Handlers ---
+
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+    const { tenantId, packId } = session.metadata || {};
+    
+    if (!tenantId) {
+        console.warn('⚠️ Checkout session missing tenantId metadata', session.id);
+        return;
+    }
+
+    console.log(`✅ Checkout completed for Tenant: ${tenantId}, Pack: ${packId || 'Subscription'}`);
+
+    if (packId) {
+        // It's a Marketplace Pack installation
+        const installedRef = db.collection('tenants').doc(tenantId).collection('installed_packs').doc(packId);
+        await installedRef.set({
+            packId,
+            installedAt: new Date().toISOString(),
+            status: 'active',
+            purchaseId: session.id,
+            subscriptionId: session.subscription
+        }, { merge: true });
+        
+        // Also update main tenant doc to reflect active add-ons if needed
+        await db.collection('tenants').doc(tenantId).update({
+            [`modules.${packId}`]: true
+        });
+
+    } else {
+        // It's a Core Platform Subscription
+        await db.collection('tenants').doc(tenantId).set({
+            subscription: {
+                status: 'active',
+                planId: session.metadata?.planId || 'pro', // Default or from metadata
+                stripeSubscriptionId: session.subscription,
+                updatedAt: new Date().toISOString()
+            }
+        }, { merge: true });
+    }
+}
+
+async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+    const subscriptionId = invoice.subscription as string;
+    if (!subscriptionId) return;
+
+    // Find tenant by subscription ID
+    // Note: In a large system, we'd query 'stripe_customers' or keep a reverse index.
+    // For now, we search tenants. This is inefficient at scale but works for pilot.
+    // Better: Store tenantId in Subscription metadata.
+    
+    // Ideally, we fetch the subscription from Stripe to get metadata
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const tenantId = subscription.metadata?.tenantId;
+
+    if (tenantId) {
+        await db.collection('tenants').doc(tenantId).update({
+            'subscription.status': 'active',
+            'subscription.lastPayment': new Date().toISOString()
+        });
+    }
+}
+
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+    const subscriptionId = invoice.subscription as string;
+    if (!subscriptionId) return;
+
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const tenantId = subscription.metadata?.tenantId;
+
+    if (tenantId) {
+        await db.collection('tenants').doc(tenantId).update({
+            'subscription.status': 'past_due',
+            'subscription.paymentFailure': new Date().toISOString()
+        });
+        // TODO: Trigger email alert via emailService
+    }
+}
+
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+    const tenantId = subscription.metadata?.tenantId;
+    if (tenantId) {
+        await db.collection('tenants').doc(tenantId).update({
+            'subscription.status': 'canceled',
+            'subscription.canceledAt': new Date().toISOString()
+        });
+    }
+}

@@ -5,6 +5,7 @@ import { getRegionalDb } from "@/lib/firebase";
 import { collection, addDoc, doc, getDoc, updateDoc } from "firebase/firestore";
 import { generateMagicToken, getExpiryDate, isExpired } from "@/lib/security/magic-links";
 import { ContributionType, ContributionRequest, ContributionSubmission } from "@/types/schema";
+import { timingSafeEqual } from "crypto";
 
 // --- Actions ---
 
@@ -70,9 +71,19 @@ export async function verifyPortalToken(requestId: string, token: string, region
     if (!snap.exists()) return { valid: false, error: 'Request not found' };
 
     const data = snap.data() as ContributionRequest;
-
-    // 1. Verify Token
-    if (data.token !== token) return { valid: false, error: 'Invalid token' };
+    
+    // 1. Verify Token (Constant-Time Comparison)
+    // We expect both tokens to be 64-char hex strings (32 bytes).
+    if (!token || token.length !== data.token.length) {
+         return { valid: false, error: 'Invalid token' };
+    }
+    
+    const bufferA = Buffer.from(data.token);
+    const bufferB = Buffer.from(token);
+    
+    if (!timingSafeEqual(bufferA, bufferB)) {
+        return { valid: false, error: 'Invalid token' };
+    }
 
     // 2. Check Expiry
     if (isExpired(data.expiresAt)) return { valid: false, error: 'Link expired' };
