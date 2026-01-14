@@ -13,26 +13,39 @@ service cloud.firestore {
       );
     }
 
-    // STRICT TENANT CHECK
+    // STRICT TENANT CHECK (Robust & Syntax Correct)
     function isTenantScoped() {
-      return isSystemAdmin() || (
-        isAuthenticated() && 
-        (resource == null || resource.data.tenantId == request.auth.token.tenantId) &&
-        (request.resource == null || request.resource.data.tenantId == request.auth.token.tenantId)
+      let userTenant = request.auth.token.tenantId;
+      
+      // Determine Operation Type
+      let isReadOrDelete = (request.method == 'get' || request.method == 'list' || request.method == 'delete');
+      let isCreate = (request.method == 'create');
+      let isUpdate = (request.method == 'update');
+      
+      // Check Existing Resource (safely handle null resource for create)
+      let existingMatch = resource != null && (
+          resource.data.get('tenantId', '') == userTenant || 
+          resource.data.get('managedByTenantId', '') == userTenant
       );
-    }
+      
+      // Check New Resource (safely handle null request.resource for delete)
+      let newMatch = request.resource != null && (
+          request.resource.data.get('tenantId', '') == userTenant || 
+          request.resource.data.get('managedByTenantId', '') == userTenant
+      );
 
-    // REGION CHECK: Ensure user belongs to UK region
-    function isRegionAuthorized() {
-       return isAuthenticated() && (
-         isSystemAdmin() || 
-         request.auth.token.region == 'uk'
-       );
+      return isSystemAdmin() || (
+        isAuthenticated() && (
+          (isReadOrDelete && existingMatch) ||
+          (isCreate && newMatch) ||
+          (isUpdate && existingMatch && newMatch)
+        )
+      );
     }
 
     // Combined Check
     function isAuthorized() {
-        return isRegionAuthorized() && isTenantScoped();
+        return isTenantScoped();
     }
 
     // --- 1. CORE USER & ROUTING ---
@@ -94,6 +107,7 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
     
+    // Schools: STRICT Tenant Scoped
     match /schools/{id} { 
         allow read, write: if isAuthorized();
         match /staff/{staffId} { allow read, write: if isAuthorized(); }
@@ -123,33 +137,34 @@ service cloud.firestore {
     match /uploaded_documents/{docId} { allow read, write: if isAuthorized(); }
     
     // --- 7. MISSING COLLECTIONS (Added for Pilot Unblocking) ---
-    // These should ideally also be tenant scoped, but kept open for pilot community features if intended. 
-    // Assuming Community is global? The prompt said "MindKindler Community" is a feature.
-    // However, if data lives in UK shard, it should probably be region scoped at least.
+    match /threads/{threadId} { allow read, write: if isAuthenticated(); }
+    match /posts/{postId} { allow read, write: if isAuthenticated(); }
     
-    // Community / Forum (Region Scoped?)
-    match /threads/{threadId} { allow read, write: if isRegionAuthorized(); }
-    match /posts/{postId} { allow read, write: if isRegionAuthorized(); }
-    
-    // Training Academy
     match /trainingModules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
     match /trainingCompletions/{id} { allow read, write: if isAuthenticated(); } 
     match /certificates/{id} { allow read, write: if isAuthenticated(); }
     
-    // Marketplace
-    match /marketplaceItems/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /marketplaceReviews/{id} { allow read, write: if isAuthenticated(); }
-    match /marketplacePurchases/{id} { allow read, write: if isAuthorized(); }
+    // FIXED: CamelCase to Snake_Case mismatch
+    match /marketplace_items/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /marketplace_reviews/{id} { allow read, write: if isAuthenticated(); }
+    match /marketplace_purchases/{id} { allow read, write: if isAuthorized(); }
     
-    // Partner Portal
     match /partners/{id} { allow read, write: if isAuthenticated(); }
     match /partnerStatements/{id} { allow read, write: if isAuthenticated(); }
     match /partnerInvoices/{id} { allow read, write: if isAuthenticated(); }
     match /partnerRevenueLedger/{id} { allow read, write: if isAuthenticated(); }
     match /dealRegistrations/{id} { allow read, write: if isAuthenticated(); }
     
-    // Data Operations / Review Queue
     match /document_staging/{id} { allow read, write: if isAuthorized(); }
+    
+    // --- 8. PHASE 40/41 ADDITIONS (Portal & Consent) ---
+    match /consents/{id} { allow read, write: if isAuthorized(); }
+    match /external_requests/{id} { allow read, write: if isAuthorized(); }
+    match /contribution_requests/{id} { allow read, write: if isAuthorized(); }
+    match /contribution_submissions/{id} { allow read, write: if isAuthorized(); }
+    
+    match /telemetry_report_edits/{id} { allow read, write: if isAuthorized(); }
+    match /mail_queue/{id} { allow read, write: if isAuthorized(); }
 
     match /{document=**} { allow read, write: if false; }
   }

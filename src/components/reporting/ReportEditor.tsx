@@ -14,7 +14,6 @@ import { useToast } from '@/hooks/use-toast';
 import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; 
 import { SubmitForReviewModal } from './modals/SubmitForReviewModal'; 
 import { ExportOptionsModal } from './modals/ExportOptionsModal';
-import { generateDocx } from '@/lib/export/docx-generator';
 
 // Mock Supervisors
 const MOCK_SUPERVISORS = [
@@ -89,10 +88,6 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         setIsSaving(true);
         try {
             const json = editor.getJSON();
-            // Store content as a flat JSON string or sanitize deeply nested objects if Firestore complains.
-            // TipTap JSON is usually safe, but let's wrap it correctly.
-            // The error "invalid nested entity" often means we are trying to save 'undefined' or a circular structure.
-            // JSON.stringify/parse cleans undefined.
             const cleanContent = JSON.parse(JSON.stringify(json));
 
             await ReportService.saveDraft(tenantId, reportId, cleanContent, region);
@@ -113,8 +108,6 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             const cleanContent = JSON.parse(JSON.stringify(json));
             // Save final state
             await ReportService.saveDraft(tenantId, reportId, cleanContent, region);
-            // Ideally call updateDoc to set status='final'
-            // For now, just toast
             toast({ title: 'Finalized', description: 'Report locked and ready for export.' });
         } catch(e) {
             toast({ title: 'Error', variant: 'destructive' });
@@ -174,10 +167,6 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
 
     if (!editor) return null;
 
-    // Construct partial report object for export
-    // We need to map TipTap JSON back to "Sections" for the Docx Generator if possible,
-    // or just pass raw text if the generator supports it.
-    // Ideally, we parse the editor HTML.
     const currentReport = {
         id: reportId,
         tenantId,

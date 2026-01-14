@@ -15,6 +15,10 @@ import { useToast } from "@/hooks/use-toast";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+// Phase 42 Imports
+import { PilotBanner } from "@/components/dashboard/PilotBanner";
+import { GlobalErrorBoundary } from "@/components/ui/error-boundary";
+
 const FUNCTIONS_REGION = "europe-west3";
 
 export default function DashboardLayout({
@@ -52,22 +56,10 @@ export default function DashboardLayout({
   }, []);
 
   const handleContactAdmin = async () => {
-      // Logic: Send a message to the regional admin OR create a notification task
-      // For now, let's simulate sending a message to the "Admin" inbox of the region.
-      // Since we don't know the exact Admin UID easily without querying, we can drop a message in a global support queue 
-      // OR just guide them to the Messages page.
-      
       try {
-          // Create a system message in the user's inbox
-          // This ensures they see the instructions clearly.
           if (!auth.currentUser) return;
-
-          // Determine contact email based on shard
           const regionCode = shardId?.replace('mindkindler-', '') || 'uk';
           const adminEmail = `admin_${regionCode}@mindkindler.com`;
-
-          // This message is just a local "Welcome/Instruction" message
-          // Ideally we would actually EMAIL the admin.
           
           toast({
               title: "Contact Request Sent",
@@ -80,46 +72,51 @@ export default function DashboardLayout({
   };
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background text-foreground relative flex-col">
-        
-        {/* Verification Banner */}
-        {showVerificationBanner && (
-            <div className="bg-amber-100 border-b border-amber-200 p-4 text-amber-900 sticky top-0 z-50">
-                <div className="container mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <ShieldAlert className="h-6 w-6 text-amber-600" />
-                        <div>
-                            <h3 className="font-semibold">Account Pending Verification</h3>
-                            <p className="text-sm">
-                                Your account is currently under review by the Regional Super Admin. 
-                                Some features will be restricted until your registration number is verified.
-                            </p>
+    <GlobalErrorBoundary>
+        <SidebarProvider>
+          <div className="flex min-h-screen w-full bg-background text-foreground relative flex-col">
+            
+            {/* Pilot Status Banner */}
+            <PilotBanner />
+
+            {/* Verification Banner */}
+            {showVerificationBanner && (
+                <div className="bg-amber-100 border-b border-amber-200 p-4 text-amber-900 sticky top-0 z-50">
+                    <div className="container mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <ShieldAlert className="h-6 w-6 text-amber-600" />
+                            <div>
+                                <h3 className="font-semibold">Account Pending Verification</h3>
+                                <p className="text-sm">
+                                    Your account is currently under review by the Regional Super Admin. 
+                                    Some features will be restricted until your registration number is verified.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="bg-white border-amber-300 hover:bg-amber-50" onClick={handleContactAdmin}>
+                                <Mail className="mr-2 h-4 w-4" /> Contact Admin
+                            </Button>
                         </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="bg-white border-amber-300 hover:bg-amber-50" onClick={handleContactAdmin}>
-                            <Mail className="mr-2 h-4 w-4" /> Contact Admin
-                        </Button>
-                    </div>
                 </div>
-            </div>
-        )}
+            )}
 
-        <div className="flex flex-1">
-            <Sidebar className="border-r">
-            <DashboardSidebar />
-            </Sidebar>
-            <SidebarInset className="flex w-full flex-col">
-            <DashboardHeader />
-            <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
-                {children}
-            </main>
-            </SidebarInset>
-        </div>
-        {/* Replaced old AIAssistantFloat with CopilotFloat */}
-        <CopilotFloat contextMode="general" /> 
-      </div>
-    </SidebarProvider>
+            <div className="flex flex-1">
+                <Sidebar className="border-r">
+                <DashboardSidebar />
+                </Sidebar>
+                <SidebarInset className="flex w-full flex-col">
+                <DashboardHeader />
+                <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+                    {children}
+                </main>
+                </SidebarInset>
+            </div>
+            {/* Replaced old AIAssistantFloat with CopilotFloat */}
+            <CopilotFloat contextMode="general" /> 
+          </div>
+        </SidebarProvider>
+    </GlobalErrorBoundary>
   );
 }

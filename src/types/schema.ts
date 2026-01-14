@@ -990,3 +990,105 @@ export interface InstalledPack {
     installedBy: string;
     configSnapshot?: any;
 }
+
+// --- Phase 40: External Portal & Magic Links ---
+
+export type ContributionType = 'parent_view' | 'school_advice';
+export type ContributionStatus = 'sent' | 'opened' | 'submitted' | 'expired';
+export type ExternalRequestType = 'parent_view' | 'school_advice' | 'consent_request';
+export type RequestStatus = 'sent' | 'opened' | 'submitted' | 'expired';
+
+// The secure token object stored in DB
+export interface ContributionRequest {
+  id: string;
+  tenantId: string;
+  studentId: string;
+  studentName: string; 
+  recipientEmail: string;
+  recipientRole: 'Parent' | 'SENCO' | 'Teacher';
+  type: ContributionType;
+  token: string; // Cryptographically secure string
+  expiresAt: string; // ISO Date
+  status: ContributionStatus;
+  createdAt: string;
+  createdBy: string; // EPP ID
+}
+
+// The actual data submitted back
+export interface ContributionSubmission {
+  id: string;
+  requestId: string;
+  studentId: string;
+  submittedAt: string;
+  
+  // Structured data based on UK SEND Section A (Parent) or Section B (School)
+  data: {
+    // Common fields
+    respondentName: string;
+    
+    // Parent Specific (Section A)
+    childStrengths?: string[];
+    childAspirations?: string;
+    historyOfNeeds?: string;
+    homeSupport?: string;
+    
+    // School Specific (Section B & F)
+    currentAttainment?: Record<string, any>; // Math, English scores
+    interventionsTried?: {
+      name: string;
+      duration: string;
+      outcome: string;
+    }[];
+    attendance?: number;
+  };
+}
+
+export interface ExternalRequest {
+  id: string;
+  tenantId: string;
+  studentId: string;
+  caseId: string;
+  recipientEmail: string;
+  recipientRole: 'Parent' | 'SENCO' | 'Teacher' | 'Student_16_Plus';
+  type: ExternalRequestType;
+  token: string; // 32-byte secure hex
+  expiresAt: string; // 7 days
+  status: RequestStatus;
+  
+  // For Consent Requests specifically
+  consentConfig?: {
+     requiresInvolvement: boolean; // Standard EP involvement
+     requiresInformationSharing: boolean; // Multi-agency sharing
+     requiresAudioRecording: boolean; // For AI Transcription
+  };
+
+  auditLog: {
+    sentAt: string;
+    openedAt?: string;
+    ipAddress?: string;
+    userAgent?: string;
+  };
+}
+
+// The Submission Object (stored in 'contributions' collection)
+export interface ExternalSubmission {
+  id: string;
+  requestId: string;
+  studentId: string;
+  submittedAt: string;
+  signedBy: string; // Typed name
+  data: any; // The form payload
+}
+
+// --- Phase 42: Telemetry & Gap Scanner ---
+
+export interface ReportTelemetry {
+   reportId: string;
+   tenantId: string;
+   sectionId: string; 
+   aiVersion: string; // Original AI draft
+   finalVersion: string; // EPP signed text
+   editDistance: number; // Levenshtein or % difference
+   timestamp: string;
+   userId: string;
+}

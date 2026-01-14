@@ -22,46 +22,36 @@ export const setupUserProfileHandler = async (request: CallableRequest) => {
     const auth = admin.auth();
     const { uid, token } = request.auth;
     
-    try {
-        // 1. Fetch Profile Data (Default DB)
-        const userRef = db.collection("users").doc(uid);
-        const docSnap = await userRef.get();
-        let userData = docSnap.exists ? docSnap.data() : null;
+    console.log(`[setupUserProfile] Processing UID: ${uid}. Current Claims: tenantId=${token.tenantId}, role=${token.role}, region=${token.region}`);
 
-        // 2. Fetch Routing Data (Default DB)
+    try {
+        // 1. Fetch Routing Data (Source of Truth - Always in Default DB)
         const routingRef = db.collection("user_routing").doc(uid);
         const routingSnap = await routingRef.get();
         const routingData = routingSnap.exists ? routingSnap.data() : null;
 
-        if (!docSnap.exists) {
-            // Create default profile if missing
-            userData = {
-                uid: uid,
-                email: token.email || "",
-                displayName: token.name || "New User",
-                role: routingData?.role || 'parent', 
-                tenantId: routingData?.tenantId || 'default',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            };
-            await userRef.set(userData);
-        }
+        // 2. Fetch Profile Data (Default DB fallback)
+        const userRef = db.collection("users").doc(uid);
+        const docSnap = await userRef.get();
+        let userData = docSnap.exists ? docSnap.data() : null;
 
-        // 3. Compare with Token Claims
-        const currentClaims = token || {};
-        
-        // Priority: Routing > Profile > Defaults
+        // Determine targets
         const targetRole = routingData?.role || userData?.role || 'parent';
         const targetTenant = routingData?.tenantId || userData?.tenantId || 'default';
-        const targetRegion = routingData?.region || 'uk';
+        const targetRegion = routingData?.region || userData?.region || 'uk';
 
+        // 3. Compare with Token Claims
         const needsSync = (
-            currentClaims.role !== targetRole || 
-            currentClaims.tenantId !== targetTenant ||
-            currentClaims.region !== targetRegion
+            token.role !== targetRole || 
+            token.tenantId !== targetTenant ||
+            token.region !== targetRegion
         );
 
         if (needsSync) {
-            console.log(`[Auth Sync] Updating claims for ${uid}: role=${targetRole}, tenant=${targetTenant}, region=${targetRegion}`);
+            console.log(`[Auth Sync] MISMATCH DETECTED for ${uid}. 
+                Current: {role: ${token.role}, tenant: ${token.tenantId}, region: ${token.region}}
+                Target: {role: ${targetRole}, tenant: ${targetTenant}, region: ${targetRegion}}
+                Updating Auth Claims now...`);
             
             await auth.setCustomUserClaims(uid, {
                 role: targetRole,
@@ -69,13 +59,22 @@ export const setupUserProfileHandler = async (request: CallableRequest) => {
                 region: targetRegion
             });
 
+            // Update Firestore Profile if mismatched too
+            if (userData && userData.tenantId !== targetTenant) {
+                 await userRef.update({ 
+                    tenantId: targetTenant, 
+                    role: targetRole 
+                });
+            }
+
             return { 
                 status: 'updated', 
-                message: 'Custom claims synchronized.',
+                message: 'Custom claims synchronized with user_routing.',
                 claims: { role: targetRole, tenantId: targetTenant, region: targetRegion }
             };
         }
         
+        console.log(`[setupUserProfile] Claims are already in sync for ${uid}.`);
         return { status: 'exists', message: 'Profile and claims are healthy.' };
 
     } catch (e: any) {

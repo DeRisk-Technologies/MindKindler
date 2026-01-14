@@ -61,6 +61,8 @@ export function useFirestoreCollection<T = DocumentData>(
       if (hasTenant && !isSuperAdmin && !isGlobalCollection) {
           // If options.filter already handles tenantId, skip to avoid conflict
           if (!options?.filter || options.filter.field !== 'tenantId') {
+               // Standardize on 'tenantId'. 
+               // If your schema uses 'managedByTenantId', you must migrate data or pass it in options.filter explicitly.
                constraints.push(where('tenantId', '==', user.tenantId));
           }
       }
@@ -108,6 +110,7 @@ export function useFirestoreCollection<T = DocumentData>(
   return { data, loading, error, refresh };
 }
 
+// ... rest of file (useFirestoreDocument, etc.) same as before ...
 export function useFirestoreDocument<T = DocumentData>(
     collectionName: string, 
     docId: string,

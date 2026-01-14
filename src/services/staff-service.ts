@@ -15,34 +15,30 @@ export interface StaffMember {
     extensions?: Record<string, any>; // SCR Fields (DBS, etc.)
     status: 'active' | 'suspended' | 'archived';
     createdAt?: any;
+    schoolId?: string;
 }
 
 export class StaffService {
 
     /**
      * Creates a new staff member in the Regional Data Shard.
-     * SECURITY: Writes to REGIONAL SHARD (not Global Router) because SCR data (DBS) is PII.
      */
     static async createStaffMember(tenantId: string, region: string, data: StaffMember): Promise<string> {
         
-        // 1. Get the Regional DB Instance (e.g. mindkindler-uk)
         const regionalDb = getRegionalDb(region);
         
-        // 2. Prepare the payload
         const payload = {
             ...data,
             tenantId,
             status: 'active',
             createdAt: serverTimestamp(),
-            // Ensure encryption flag is respected (Client-Side Encryption logic would go here)
-            // For V1, we rely on Firestore Rules and At-Rest Encryption.
         };
 
-        // 3. Write to the Tenant's Subcollection in the Regional Shard
-        // Path: tenants/{tenantId}/staff/{staffId}
-        const staffRef = await addDoc(collection(regionalDb, `tenants/${tenantId}/staff`), payload);
+        // WRITE TO ROOT COLLECTION 'staff' (Standardized)
+        // This ensures queries like useFirestoreCollection('staff') work.
+        const staffRef = await addDoc(collection(regionalDb, 'staff'), payload);
         
-        console.log(`[StaffService] Created staff ${staffRef.id} in region ${region}`);
+        console.log(`[StaffService] Created staff ${staffRef.id} in region ${region} (Root Collection)`);
         return staffRef.id;
     }
 
@@ -51,7 +47,7 @@ export class StaffService {
      */
     static async updateStaffMember(tenantId: string, region: string, staffId: string, updates: Partial<StaffMember>) {
         const regionalDb = getRegionalDb(region);
-        const staffRef = doc(regionalDb, `tenants/${tenantId}/staff`, staffId);
+        const staffRef = doc(regionalDb, 'staff', staffId);
         
         await updateDoc(staffRef, {
             ...updates,

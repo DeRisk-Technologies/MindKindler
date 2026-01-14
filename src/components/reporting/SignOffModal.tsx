@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ReportService } from '@/services/report-service';
+import { useAuth } from '@/hooks/use-auth';
 
 interface SignOffModalProps {
     open: boolean;
@@ -20,6 +21,7 @@ interface SignOffModalProps {
 }
 
 export function SignOffModal({ open, onOpenChange, reportId, tenantId, content, onSigned }: SignOffModalProps) {
+    const { user } = useAuth();
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [confirmed, setConfirmed] = useState(false);
@@ -34,7 +36,7 @@ export function SignOffModal({ open, onOpenChange, reportId, tenantId, content, 
                 .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''));
 
             // 2. Call service to finalize
-            await ReportService.signReport(tenantId, reportId, content, signatureHash);
+            await ReportService.signReport(tenantId, reportId, content, signatureHash, user?.uid || 'unknown');
             
             toast({ title: "Report Signed", description: "Document is now locked and finalized." });
             onSigned();

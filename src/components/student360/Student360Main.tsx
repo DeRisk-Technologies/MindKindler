@@ -14,6 +14,10 @@ import { QuickActionsBar } from './QuickActionsBar';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 
+// Phase 41: Data Triangulation Panels
+import { FamilyVoicePanel } from './FamilyVoicePanel';
+import { SchoolDataPanel } from './SchoolDataPanel';
+
 interface Student360Props {
     student: any;
     assessments?: any[];
@@ -92,17 +96,30 @@ export function Student360Main({ student, assessments = [], interventions = [], 
                 </TabsList>
 
                 <TabsContent value="overview">
-                    <div className="grid grid-cols-2 gap-4">
-                       <Card>
-                           <CardHeader><CardTitle>Timeline</CardTitle></CardHeader>
-                           <CardContent><LongitudinalProgressChart data={assessments} /></CardContent>
-                       </Card>
-                       <Card>
-                           <CardHeader><CardTitle>Key Contacts</CardTitle></CardHeader>
-                           <CardContent>
-                               <div className="text-sm text-slate-500">Parents: {student.family?.parents?.map((p: any) => p.firstName).join(', ')}</div>
-                           </CardContent>
-                       </Card>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       {/* LEFT: Family Voice (Section A) */}
+                       <div className="space-y-6 h-full">
+                           <FamilyVoicePanel student={student} />
+                           
+                           {/* Timeline */}
+                           <Card>
+                               <CardHeader className="py-3 bg-slate-50/50"><CardTitle className="text-sm text-slate-600">Progress Tracking</CardTitle></CardHeader>
+                               <CardContent className="pt-4"><LongitudinalProgressChart data={assessments} /></CardContent>
+                           </Card>
+                       </div>
+
+                       {/* RIGHT: School Data (Section B/F) */}
+                       <div className="space-y-6 h-full">
+                           <SchoolDataPanel student={student} />
+                           
+                           <Card>
+                               <CardHeader className="py-3 bg-slate-50/50"><CardTitle className="text-sm text-slate-600">Key Contacts</CardTitle></CardHeader>
+                               <CardContent>
+                                   <div className="text-sm text-slate-500">Parents: {student.family?.parents?.map((p: any) => p.firstName).join(', ') || "None recorded"}</div>
+                                   <div className="text-sm text-slate-500 mt-1">Social Worker: {student.careHistory?.socialWorker?.name || "None"}</div>
+                               </CardContent>
+                           </Card>
+                       </div>
                     </div>
                 </TabsContent>
 

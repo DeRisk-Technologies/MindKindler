@@ -17,6 +17,8 @@ import { useToast } from '@/hooks/use-toast';
 
 // Phase 23 Components
 import { StatutoryTimeline } from '@/components/cases/StatutoryTimeline';
+// Phase 40 Components
+import { RequestInfoWidget } from '@/components/dashboard/cases/RequestInfoWidget';
 
 export default function CasePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -152,56 +154,68 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
                 </TabsList>
 
                 <TabsContent value="evidence" className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        {/* Consultations List */}
-                        <Card>
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-sm font-medium uppercase text-slate-500">Consultation Sessions</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                {consultations.length === 0 ? (
-                                    <div className="text-sm text-slate-400 italic">No sessions recorded.</div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {consultations.map(c => (
-                                            <div key={c.id} className="flex justify-between items-center p-3 bg-white border rounded-lg shadow-sm">
-                                                <div>
-                                                    <div className="font-medium text-sm">Session: {c.mode || "Standard"}</div>
-                                                    <div className="text-xs text-slate-500">{new Date(c.date || c.createdAt).toLocaleDateString()}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* LEFT COLUMN: Internal Evidence */}
+                        <div className="col-span-2 space-y-4">
+                            <Card>
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-sm font-medium uppercase text-slate-500">Consultation Sessions</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    {consultations.length === 0 ? (
+                                        <div className="text-sm text-slate-400 italic">No sessions recorded.</div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {consultations.map(c => (
+                                                <div key={c.id} className="flex justify-between items-center p-3 bg-white border rounded-lg shadow-sm">
+                                                    <div>
+                                                        <div className="font-medium text-sm">Session: {c.mode || "Standard"}</div>
+                                                        <div className="text-xs text-slate-500">{new Date(c.date || c.createdAt).toLocaleDateString()}</div>
+                                                    </div>
+                                                    <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/consultations/synthesis/${c.id}`)}>
+                                                        View
+                                                    </Button>
                                                 </div>
-                                                <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/consultations/synthesis/${c.id}`)}>
-                                                    View
-                                                </Button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
+                                            ))}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
 
-                        {/* Assessments List */}
-                        <Card>
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-sm font-medium uppercase text-slate-500">Psychometric Assessments</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                {assessments.length === 0 ? (
-                                    <div className="text-sm text-slate-400 italic">No assessments completed.</div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {assessments.map(a => (
-                                            <div key={a.id} className="flex justify-between items-center p-3 bg-white border rounded-lg shadow-sm">
-                                                <div>
-                                                    <div className="font-medium text-sm">{a.templateId}</div>
-                                                    <div className="text-xs text-slate-500">Score: {a.totalScore}</div>
+                            <Card>
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-sm font-medium uppercase text-slate-500">Psychometric Assessments</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    {assessments.length === 0 ? (
+                                        <div className="text-sm text-slate-400 italic">No assessments completed.</div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {assessments.map(a => (
+                                                <div key={a.id} className="flex justify-between items-center p-3 bg-white border rounded-lg shadow-sm">
+                                                    <div>
+                                                        <div className="font-medium text-sm">{a.templateId}</div>
+                                                        <div className="text-xs text-slate-500">Score: {a.totalScore}</div>
+                                                    </div>
+                                                    <CheckCircle className="h-4 w-4 text-emerald-500" />
                                                 </div>
-                                                <CheckCircle className="h-4 w-4 text-emerald-500" />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
+                                            ))}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* RIGHT COLUMN: External Requests */}
+                        <div className="col-span-1">
+                            <RequestInfoWidget 
+                                caseId={id} 
+                                studentId={caseData.subjectId} 
+                                studentName={`${studentData?.identity?.firstName?.value || ''} ${studentData?.identity?.lastName?.value || ''}`}
+                                tenantId={user?.tenantId || 'default'}
+                                parents={studentData?.family?.parents || []}
+                            />
+                        </div>
                     </div>
                 </TabsContent>
 

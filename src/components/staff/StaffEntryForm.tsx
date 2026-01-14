@@ -26,10 +26,9 @@ const defaultValues = {
     schoolId: '',
     subjects: [],
     assignedClasses: [],
-    extensions: {} // Dynamic bucket for SCR fields
+    extensions: {} 
 };
 
-// Common subjects and classes for picker
 const COMMON_SUBJECTS = ["Maths", "English", "Science", "History", "Geography", "Art", "PE", "Computing"];
 const COMMON_CLASSES = ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11", "Year 12", "Year 13", "6A", "6B", "Form 1"];
 
@@ -45,22 +44,35 @@ export function StaffEntryForm() {
 
     const form = useForm({ defaultValues });
 
-    // Fetch Schools and Students on Load
+    // Fetch Schools and Students on Load (SECURE)
     useEffect(() => {
-        if (!user) return;
+        if (!user || !user.tenantId) return;
         async function loadData() {
             try {
                 const db = getRegionalDb(user?.region);
-                // Schools
-                const schoolsSnap = await getDocs(collection(db, 'schools'));
+                
+                // Secure Queries: Filter by tenantId to match Firestore Rules
+                // Note: Schools use 'tenantId' now standardized
+                const schoolsQ = query(
+                    collection(db, 'schools'), 
+                    where('tenantId', '==', user?.tenantId)
+                );
+                const schoolsSnap = await getDocs(schoolsQ);
                 setSchools(schoolsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
                 
-                // Students (Simple fetch for now, can be optimized)
-                const studentsSnap = await getDocs(collection(db, 'students'));
+                const studentsQ = query(
+                    collection(db, 'students'), 
+                    where('tenantId', '==', user?.tenantId)
+                );
+                const studentsSnap = await getDocs(studentsQ);
                 setStudents(studentsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-            } catch (e) {
+            } catch (e: any) {
                 console.error("Failed to load options", e);
+                // If permission denied, it likely means index is missing or rules are strict
+                if (e.code === 'permission-denied') {
+                    toast({ title: "Access Error", description: "Could not load schools. Check permissions.", variant: "destructive" });
+                }
             }
         }
         loadData();
@@ -83,10 +95,12 @@ export function StaffEntryForm() {
                 schoolId: data.schoolId,
                 subjects: data.subjects,
                 assignedClasses: data.assignedClasses,
-                assignedStudents: selectedStudentIds,
+                // Cast to any if needed to bypass strict type checking for this field
+                // or update interface
+                assignedStudents: selectedStudentIds, 
                 status: 'active',
                 extensions: data.extensions
-            });
+            } as any);
             
             toast({ title: "Staff Record Created", description: "Securely saved to Regional Single Central Record." });
             form.reset();
