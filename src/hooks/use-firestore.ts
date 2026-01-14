@@ -60,8 +60,10 @@ export function useFirestoreCollection<T = DocumentData>(
 
       if (hasTenant && !isSuperAdmin && !isGlobalCollection) {
           // If options.filter already handles tenantId, skip to avoid conflict
-          if (!options?.filter || options.filter.field !== 'tenantId') {
-               constraints.push(where('tenantId', '==', user.tenantId));
+          if (!options?.filter || (options.filter.field !== 'tenantId' && options.filter.field !== 'managedByTenantId')) {
+               // Dynamic Tenant Field: Support schemas using 'managedByTenantId' instead of 'tenantId'
+               const tenantField = ['schools', 'districts'].includes(collectionName) ? 'managedByTenantId' : 'tenantId';
+               constraints.push(where(tenantField, '==', user.tenantId));
           }
       }
       
@@ -72,7 +74,12 @@ export function useFirestoreCollection<T = DocumentData>(
 
       // 3. Sorting
       // Note: If filtering by tenantId, Firestore requires a composite index: (tenantId ASC, sortField DESC)
-      constraints.push(orderBy(sortField, direction));
+      // FIX: Only sort by createdAt if we aren't filtering by managedByTenantId OR if we have the index.
+      // For pilot, removing sort on schools/districts to avoid "Index Required" blocking.
+      const skipSort = ['schools', 'districts'].includes(collectionName);
+      if (!skipSort) {
+          constraints.push(orderBy(sortField, direction));
+      }
 
       const q = query(collection(targetDb, collectionName), ...constraints);
 
@@ -86,6 +93,7 @@ export function useFirestoreCollection<T = DocumentData>(
       }, (err) => {
         if (err.code === 'permission-denied') {
              console.warn(`[Permission Denied] Reading ${collectionName} from ${effectiveShard}. User Tenant: ${user?.tenantId}`);
+             // If denied, we return empty list but keep error state
              setData([]); 
         } else if (err.code === 'failed-precondition') {
              // Often implies missing index
