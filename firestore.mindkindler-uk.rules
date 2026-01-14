@@ -3,6 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     // --- Helper Functions ---
+    
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -13,37 +14,34 @@ service cloud.firestore {
       );
     }
 
-    // STRICT TENANT CHECK
-    function isTenantScoped() {
-      let userTenant = request.auth.token.tenantId;
-      
-      // Use logical OR for simple check without local variables inside function body
-      // Firestore Rules Language doesn't support 'let' inside functions well in older versions
-      // So we inline the logic.
-      
-      return isSystemAdmin() || (
-        isAuthenticated() && 
+    function isTenantMatch() {
+      return (
+        // Check 'tenantId' field if it exists
         (
-          resource == null || 
-          resource.data.tenantId == userTenant || 
-          resource.data.managedByTenantId == userTenant
-        ) &&
+          resource.data.get('tenantId', '') == request.auth.token.tenantId
+        ) ||
+        // OR Check 'managedByTenantId' field if it exists
         (
-          request.resource == null || 
-          request.resource.data.tenantId == userTenant ||
-          request.resource.data.managedByTenantId == userTenant
+          resource.data.get('managedByTenantId', '') == request.auth.token.tenantId
         )
       );
     }
 
-    // REGION CHECK
-    function isRegionAuthorized() {
-       return true; 
-    }
-
-    // Combined Check
+    // Combined Check for Read/Write
     function isAuthorized() {
-        return isTenantScoped(); 
+      return isAuthenticated() && (
+        isSystemAdmin() || 
+        (
+          // For Writes (Create/Update): Check New Data
+          (request.method == 'create' || request.method == 'update') ? 
+            (
+              request.resource.data.get('tenantId', '') == request.auth.token.tenantId ||
+              request.resource.data.get('managedByTenantId', '') == request.auth.token.tenantId
+            ) : 
+          // For Reads/Delete: Check Existing Data
+            isTenantMatch()
+        )
+      );
     }
 
     // --- 1. CORE USER & ROUTING ---
@@ -125,7 +123,6 @@ service cloud.firestore {
 
     // --- 6. ASSETS & INTEGRATIONS ---
     match /integrations/{configId} { allow read, write: if isAuthorized(); }
-    match /bottom_data_jobs/{jobId} { allow read, write: if isAuthorized(); }
     match /data_jobs/{jobId} { allow read, write: if isAuthorized(); }
     
     match /knowledgeDocuments/{docId} { 
