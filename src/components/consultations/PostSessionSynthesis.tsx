@@ -2,11 +2,11 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     CheckCircle, AlertTriangle, FileText, ArrowRight, 
     Sparkles, Edit3, MessageSquare, Plus, Trash2,
-    Clock, Activity, BrainCircuit, Save, X, Highlighter, Send
+    Clock, Activity, BrainCircuit, Save, X, Highlighter, Send, BookmarkPlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -23,7 +23,7 @@ import { Input } from '@/components/ui/input';
 import { askSessionQuestionAction, AiInsight } from '@/app/actions/consultation';
 import { generateInterventionPlanAction, PlannedIntervention } from '@/app/actions/intervention';
 import { SessionTimeline } from './analysis/SessionTimeline'; 
-import { ReferralGeneratorModal } from '@/components/reporting/modals/ReferralGeneratorModal'; // Phase 22 Integration
+import { ReferralGeneratorModal } from '@/components/reporting/modals/ReferralGeneratorModal'; 
 
 const MOCK_UK_LIBRARY: InterventionLogic[] = [
     { id: "uk_elklan_vci", domain: "VCI", threshold: 85, programName: "ELKLAN Language Builders", description: "Structured oral language support.", evidenceLevel: "gold" },
@@ -45,7 +45,15 @@ interface PostSessionSynthesisProps {
     initialInsights: AiInsight[];
     student: Partial<StudentRecord>;
     assessments?: AssessmentResult[];
+    
+    // Restored State Props
+    initialManualNotes?: string[];
+    initialPlannedInterventions?: PlannedIntervention[];
+    initialReferrals?: string[];
+    initialPromotedEvidence?: string[];
+
     onComplete: (data: SynthesisResult) => void; 
+    onSave?: (data: SynthesisResult) => void;
 }
 
 export function PostSessionSynthesis({ 
@@ -54,29 +62,35 @@ export function PostSessionSynthesis({
     initialInsights, 
     student,
     assessments = [], 
-    onComplete 
+    initialManualNotes = [],
+    initialPlannedInterventions = [],
+    initialReferrals = [],
+    initialPromotedEvidence = [],
+    onComplete,
+    onSave
 }: PostSessionSynthesisProps) {
     const { toast } = useToast();
     
     // State
     const [activeTab, setActiveTab] = useState('review');
     const [clinicalOpinions, setClinicalOpinions] = useState<AiInsight[]>(initialInsights);
-    const [manualOpinions, setManualOpinions] = useState<string[]>([]);
+    const [manualOpinions, setManualOpinions] = useState<string[]>(initialManualNotes || []);
     const [newManualOpinion, setNewManualOpinion] = useState("");
     
-    const [plannedInterventions, setPlannedInterventions] = useState<PlannedIntervention[]>([]);
-    const [referrals, setReferrals] = useState<string[]>([]);
+    const [plannedInterventions, setPlannedInterventions] = useState<PlannedIntervention[]>(initialPlannedInterventions || []);
+    const [referrals, setReferrals] = useState<string[]>(initialReferrals || []);
     const [editedTranscript, setEditedTranscript] = useState(transcript); 
-    const [promotedEvidence, setPromotedEvidence] = useState<string[]>([]);
+    const [promotedEvidence, setPromotedEvidence] = useState<string[]>(initialPromotedEvidence || []);
     
     const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     
     // Q&A State
     const [question, setQuestion] = useState("");
     const [answer, setAnswer] = useState("");
     const [isAsking, setIsAsking] = useState(false);
 
-    // Referral Modal State (Phase 22)
+    // Referral Modal State
     const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
 
     // --- Helpers ---
@@ -110,6 +124,15 @@ export function PostSessionSynthesis({
             toast({ title: "Evidence Promoted", description: "Added to clinical context." });
         }
     };
+    
+    const handleQASelect = () => {
+         const selection = window.getSelection();
+         if (selection && selection.toString().length > 5) {
+             const text = selection.toString();
+             setPromotedEvidence(prev => [...prev, `Q&A Excerpt: ${text}`]);
+             toast({ title: "Evidence Promoted", description: "Selected Q&A text added to clinical context." });
+         }
+    };
 
     const generateTreatmentPlan = async () => {
         setIsGeneratingPlan(true);
@@ -128,10 +151,15 @@ export function PostSessionSynthesis({
                 region: 'UK' 
             };
             
+            console.log("[Synthesis] Generating Plan with Context:", context);
+
             const plans = await generateInterventionPlanAction(context);
-            setPlannedInterventions(plans);
-            
-            toast({ title: "Plan Generated", description: `Created ${plans.length} targeted interventions.` });
+            if (!plans || plans.length === 0) {
+                 toast({ title: "No Plans Generated", description: "AI returned no matches. Try adding more notes.", variant: "warning" });
+            } else {
+                 setPlannedInterventions(plans);
+                 toast({ title: "Plan Generated", description: `Created ${plans.length} targeted interventions.` });
+            }
         } catch (e) {
             console.error(e);
             toast({ title: "Error", description: "Failed to generate plan.", variant: "destructive" });
@@ -151,6 +179,38 @@ export function PostSessionSynthesis({
         const response = await askSessionQuestionAction(question, editedTranscript, cleanStudent);
         setAnswer(response);
         setIsAsking(false);
+    };
+
+    const promoteAnswerToEvidence = () => {
+        if (answer) {
+            setPromotedEvidence(prev => [...prev, `AI Insight: ${answer}`]);
+            toast({ title: "Promoted to Evidence", description: "AI Answer added to findings." });
+        }
+    };
+    
+    const handleSaveProgress = async (silent = false) => {
+        if (onSave) {
+            if (!silent) setIsSaving(true);
+            const synthesisResult: SynthesisResult = {
+                confirmedOpinions: clinicalOpinions, 
+                plannedInterventions,
+                referrals,
+                editedTranscript,
+                reportType: 'custom', 
+                manualClinicalNotes: [...manualOpinions, ...promotedEvidence] 
+            };
+            await onSave(synthesisResult);
+            if (!silent) {
+                setIsSaving(false);
+                toast({ title: "Progress Saved", description: "Session state updated." });
+            }
+        }
+    };
+    
+    const handleTabChange = (val: string) => {
+        // Auto-save on tab switch to prevent data loss if user navigates away later
+        handleSaveProgress(true);
+        setActiveTab(val);
     };
 
     const handleDraftReport = (type: 'statutory' | 'custom') => {
@@ -189,7 +249,9 @@ export function PostSessionSynthesis({
                     <p className="text-slate-500 text-sm">Review timeline, triangulate findings, and plan interventions.</p>
                 </div>
                 <div className="flex gap-2">
-                    {/* Phase 22: Updated Actions */}
+                    <Button variant="ghost" onClick={() => handleSaveProgress(false)} disabled={isSaving}>
+                        <Save className="mr-2 h-4 w-4" /> {isSaving ? "Saving..." : "Save Progress"}
+                    </Button>
                     <Button variant="outline" onClick={() => setIsReferralModalOpen(true)}>
                         <Send className="mr-2 h-4 w-4" /> Generate Referral
                     </Button>
@@ -201,17 +263,15 @@ export function PostSessionSynthesis({
 
             <SessionTimeline events={mockTimelineEvents} durationMs={1000 * 60 * 15} />
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-grow flex flex-col">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-grow flex flex-col">
                 <TabsList className="w-full justify-start border-b rounded-none bg-transparent p-0 mb-4">
                     <TabsTrigger value="review" className="px-6 py-2">1. Clinical Review</TabsTrigger>
                     <TabsTrigger value="plan" className="px-6 py-2">2. Treatment Plan</TabsTrigger>
                     <TabsTrigger value="qa" className="px-6 py-2">3. AI Q&A</TabsTrigger>
                 </TabsList>
 
-                {/* Tab 1: Clinical Review (Enhanced) */}
+                {/* Tab 1: Clinical Review */}
                 <TabsContent value="review" className="flex-grow flex gap-6 mt-0">
-                    
-                    {/* Left: Transcript Review */}
                     <Card className="w-1/2 flex flex-col">
                         <CardHeader className="py-3 bg-slate-50 border-b">
                             <CardTitle className="text-sm font-semibold flex justify-between items-center">
@@ -229,10 +289,7 @@ export function PostSessionSynthesis({
                         </CardContent>
                     </Card>
 
-                    {/* Right: Triangulation Panel */}
                     <div className="w-1/2 flex flex-col gap-4">
-                        
-                        {/* 1. Evidence Bank */}
                         <Card className="flex-grow bg-white border-indigo-100 shadow-sm">
                             <CardHeader className="py-3 border-b bg-indigo-50/50">
                                 <CardTitle className="text-sm font-semibold text-indigo-900 flex items-center">
@@ -242,7 +299,6 @@ export function PostSessionSynthesis({
                             </CardHeader>
                             <ScrollArea className="flex-grow h-[300px] px-4 py-2">
                                 <div className="space-y-4">
-                                    {/* Promoted Evidence */}
                                     {promotedEvidence.length > 0 && (
                                         <div className="space-y-2">
                                             <h4 className="text-xs font-bold text-slate-400 uppercase">Transcript Evidence</h4>
@@ -254,7 +310,6 @@ export function PostSessionSynthesis({
                                         </div>
                                     )}
 
-                                    {/* AI Insights */}
                                     <div className="space-y-2">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase">AI Hypotheses</h4>
                                         {clinicalOpinions.map((insight) => (
@@ -277,7 +332,6 @@ export function PostSessionSynthesis({
                             </ScrollArea>
                         </Card>
 
-                        {/* 2. Manual Notes */}
                         <Card className="h-1/3">
                             <CardHeader className="py-2"><CardTitle className="text-xs">Manual Notes</CardTitle></CardHeader>
                             <CardContent className="p-2">
@@ -298,7 +352,7 @@ export function PostSessionSynthesis({
                     </div>
                 </TabsContent>
 
-                {/* Tab 2: Treatment Plan (Existing) */}
+                {/* Tab 2: Treatment Plan */}
                 <TabsContent value="plan" className="flex-grow flex gap-6 mt-0">
                     <Card className="w-2/3 flex flex-col">
                         <CardHeader className="flex flex-row items-center justify-between">
@@ -325,30 +379,20 @@ export function PostSessionSynthesis({
                                                     <div>
                                                         <h3 className="font-bold text-slate-800">{plan.programName}</h3>
                                                         <Badge variant="secondary" className="text-[10px] mr-2">{plan.category}</Badge>
-                                                        {plan.evidenceLevel === 'gold' && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Gold Standard</Badge>}
                                                     </div>
                                                     <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-red-500" onClick={() => setPlannedInterventions(prev => prev.filter(p => p.id !== plan.id))}>
                                                         <Trash2 className="w-4 h-4" />
                                                     </Button>
                                                 </div>
-                                                
                                                 <p className="text-sm text-slate-600 mb-3 italic">"{plan.rationale}"</p>
-                                                
                                                 <div className="flex gap-4 mb-3 text-xs text-slate-500">
                                                     <span className="flex items-center"><Clock className="w-3 h-3 mr-1" /> {plan.duration}</span>
                                                     <span className="flex items-center"><Activity className="w-3 h-3 mr-1" /> {plan.frequency}</span>
                                                 </div>
-
                                                 <div className="bg-slate-50 p-3 rounded text-sm text-slate-700">
-                                                    <div className="font-semibold text-xs text-slate-400 uppercase mb-1">Recommended Steps (Editable)</div>
                                                     <ul className="list-disc pl-4 space-y-1">
                                                         {plan.steps.map((step, i) => (
-                                                            <li key={i} className="flex gap-2 items-start">
-                                                                <input 
-                                                                    className="bg-transparent border-none w-full focus:outline-none focus:bg-white rounded px-1"
-                                                                    defaultValue={step} 
-                                                                />
-                                                            </li>
+                                                            <li key={i}>{step}</li>
                                                         ))}
                                                     </ul>
                                                 </div>
@@ -359,16 +403,11 @@ export function PostSessionSynthesis({
                             </ScrollArea>
                         </CardContent>
                     </Card>
-
                     <Card className="w-1/3 flex flex-col">
-                        <CardHeader>
-                            <CardTitle>Referrals</CardTitle>
-                        </CardHeader>
+                        <CardHeader><CardTitle>Referrals</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
                             <Select onValueChange={handleReferralAdd}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Add Referral..." />
-                                </SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder="Add Referral..." /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="Speech & Language Therapy">Speech & Language Therapy</SelectItem>
                                     <SelectItem value="Occupational Therapy">Occupational Therapy</SelectItem>
@@ -378,19 +417,11 @@ export function PostSessionSynthesis({
                                     <SelectItem value="SENCO (School Counselor)">SENCO (School Counselor)</SelectItem>
                                 </SelectContent>
                             </Select>
-
                             <div className="space-y-2 mt-4">
                                 {referrals.map((ref, idx) => (
                                     <div key={idx} className="flex items-center justify-between p-3 bg-white border rounded shadow-sm">
                                         <span className="text-sm font-medium">{ref}</span>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="sm" 
-                                            className="h-6 w-6 p-0 text-red-400 hover:text-red-600"
-                                            onClick={() => setReferrals(referrals.filter(r => r !== ref))}
-                                        >
-                                            ×
-                                        </Button>
+                                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-400 hover:text-red-600" onClick={() => setReferrals(referrals.filter(r => r !== ref))}>×</Button>
                                     </div>
                                 ))}
                             </div>
@@ -398,7 +429,7 @@ export function PostSessionSynthesis({
                     </Card>
                 </TabsContent>
 
-                {/* Tab 3: AI Q&A */}
+                {/* Tab 3: AI Q&A (Enhanced) */}
                 <TabsContent value="qa" className="flex-grow mt-0">
                     <Card className="h-full flex flex-col">
                         <CardHeader>
@@ -418,12 +449,18 @@ export function PostSessionSynthesis({
                                 </Button>
                             </div>
 
-                            <ScrollArea className="flex-grow bg-slate-50 rounded-lg p-4 border">
+                            <ScrollArea className="flex-grow bg-slate-50 rounded-lg p-4 border" onMouseUp={handleQASelect}>
                                 {answer ? (
                                     <div className="prose prose-sm max-w-none">
-                                        <div className="flex items-center gap-2 font-bold text-slate-700 mb-2">
-                                            <BrainCircuit className="w-4 h-4 text-indigo-500" />
-                                            AI Answer:
+                                        <div className="flex items-center justify-between gap-2 font-bold text-slate-700 mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <BrainCircuit className="w-4 h-4 text-indigo-500" />
+                                                AI Answer:
+                                            </div>
+                                            {/* Phase 35: Promote Button */}
+                                            <Button variant="outline" size="sm" className="h-6 text-xs" onClick={promoteAnswerToEvidence}>
+                                                <BookmarkPlus className="w-3 h-3 mr-1" /> Use as Evidence
+                                            </Button>
                                         </div>
                                         <p className="text-slate-800 whitespace-pre-wrap">{answer}</p>
                                     </div>

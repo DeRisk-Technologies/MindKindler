@@ -5,17 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getRegionalDb, db } from '@/lib/firebase';
 import { InterventionLogic } from '@/marketplace/types';
 import { Sparkles, PlusCircle, BookOpen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface Props {
     scores: Array<{ name: string; score: number }>; // e.g. [{name: 'VCI', score: 82}]
+    studentId?: string; // Phase 35: Linking to Student
 }
 
-export function SmartInterventionMapper({ scores }: Props) {
+export function SmartInterventionMapper({ scores, studentId }: Props) {
     const { user } = useAuth();
     const { toast } = useToast();
     const [logic, setLogic] = useState<InterventionLogic[]>([]);
@@ -32,6 +33,12 @@ export function SmartInterventionMapper({ scores }: Props) {
                 const snap = await getDoc(doc(db, `tenants/${user?.tenantId}/settings/analytics`));
                 if (snap.exists() && snap.data().interventionLogic) {
                     setLogic(snap.data().interventionLogic);
+                } else {
+                     // Fallback/Mock logic for Demo if empty
+                     setLogic([
+                         { id: 'elklan', programName: 'ELKLAN Language Builders', domain: 'VCI', threshold: 85, evidenceLevel: 'gold', description: 'Structured oral language support for low Verbal Comprehension.' },
+                         { id: 'talkboost', programName: 'Talk Boost (KS1/KS2)', domain: 'VCI', threshold: 85, evidenceLevel: 'silver', description: 'Targeted intervention for delayed language.' }
+                     ]);
                 }
             } catch (e) {
                 console.error("Failed to load intervention logic", e);
@@ -61,11 +68,40 @@ export function SmartInterventionMapper({ scores }: Props) {
         setRecommendations(uniqueMatches);
     }, [logic, scores]);
 
-    const handleAddToPlan = (rec: InterventionLogic) => {
-        toast({
-            title: "Intervention Added",
-            description: `Added "${rec.programName}" to the student's provisional plan.`,
-        });
+    const handleAddToPlan = async (rec: InterventionLogic) => {
+        if (!studentId) {
+             toast({ title: "Error", description: "No student context found.", variant: "destructive" });
+             return;
+        }
+
+        try {
+            const region = user?.region || 'uk';
+            const db = getRegionalDb(region);
+            
+            // Save to 'interventions' collection (or cases)
+            // We'll create a new 'case' or 'intervention' record
+            await addDoc(collection(db, 'cases'), {
+                tenantId: user?.tenantId,
+                type: 'intervention',
+                studentId: studentId,
+                title: `Intervention: ${rec.programName}`,
+                status: 'planned',
+                priority: 'Medium',
+                description: rec.description,
+                source: 'smart_mapper',
+                evidenceBase: rec.evidenceLevel,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+
+            toast({
+                title: "Intervention Added",
+                description: `Added "${rec.programName}" to the student's plan.`,
+            });
+        } catch (e) {
+            console.error("Failed to add intervention", e);
+            toast({ title: "Error", description: "Failed to save plan.", variant: "destructive" });
+        }
     };
 
     if (recommendations.length === 0) return null;

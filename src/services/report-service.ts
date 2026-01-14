@@ -1,5 +1,5 @@
 // src/services/report-service.ts
-import { db, functions } from '@/lib/firebase';
+import { db, functions, getRegionalDb } from '@/lib/firebase';
 import { 
   collection, doc, getDoc, setDoc, updateDoc, 
   addDoc, serverTimestamp, increment 
@@ -7,11 +7,16 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { Report } from '@/types/schema';
 
+// Helper to determine DB (Global or Regional)
+// For Pilot, reports are in Regional DB (mindkindler-uk) if user has region.
+const getDb = (region?: string) => region ? getRegionalDb(region) : db;
+
 const COLLECTION = 'reports'; 
 
 export const ReportService = {
-  async createReport(tenantId: string, payload: Partial<Report>): Promise<string> {
-    const reportRef = doc(collection(db, COLLECTION));
+  async createReport(tenantId: string, payload: Partial<Report>, region: string = 'uk'): Promise<string> {
+    const targetDb = getDb(region);
+    const reportRef = doc(collection(targetDb, COLLECTION));
     const now = serverTimestamp();
     
     await setDoc(reportRef, {
@@ -28,41 +33,31 @@ export const ReportService = {
     return reportRef.id;
   },
 
-  async getReport(tenantId: string, reportId: string): Promise<Report | null> {
-    const ref = doc(db, COLLECTION, reportId);
+  async getReport(tenantId: string, reportId: string, region: string = 'uk'): Promise<Report | null> {
+    const targetDb = getDb(region);
+    const ref = doc(targetDb, COLLECTION, reportId);
     const snap = await getDoc(ref);
     return snap.exists() ? ({ id: snap.id, ...snap.data() } as Report) : null;
   },
 
-  async saveDraft(tenantId: string, reportId: string, content: any): Promise<void> {
-    const ref = doc(db, COLLECTION, reportId);
-    await updateDoc(ref, {
+  async saveDraft(tenantId: string, reportId: string, content: any, region: string = 'uk'): Promise<void> {
+    // Force lowercase for region to ensure consistency
+    const r = region.toLowerCase();
+    const targetDb = getDb(r);
+    const ref = doc(targetDb, COLLECTION, reportId);
+    
+    console.log(`[ReportService] Saving draft to DB. Region: ${r}, ID: ${reportId}`);
+
+    // Use setDoc with merge to ensure doc exists
+    await setDoc(ref, {
       content,
       updatedAt: serverTimestamp()
-    });
-  },
-
-  async createVersion(tenantId: string, reportId: string, versionData: any): Promise<string> {
-    const reportRef = doc(db, COLLECTION, reportId);
-    const versionsCollection = collection(reportRef, 'versions');
-    
-    // Create version snapshot
-    const verRef = await addDoc(versionsCollection, {
-        ...versionData,
-        createdAt: serverTimestamp()
-    });
-
-    // Update main report version counter
-    await updateDoc(reportRef, {
-        version: increment(1),
-        updatedAt: serverTimestamp()
-    });
-
-    return verRef.id;
+    }, { merge: true });
   },
 
   async requestAiDraft(tenantId: string, reportId: string, context: any): Promise<any> {
     const generateFn = httpsCallable(functions, 'generateClinicalReport');
+    
     // Call server-side function
     const result = await generateFn({
         tenantId,
@@ -76,51 +71,24 @@ export const ReportService = {
         sections: generatedContent.sections || []
     };
 
-    await this.saveDraft(tenantId, reportId, structuredContent);
+    // Use region from context or default to 'uk'
+    // Ensure we handle case insensitivity
+    const region = (context.region || 'uk').toLowerCase();
+    
+    console.log(`[ReportService] Received AI Draft. Saving to Region: ${region}`);
+    
+    await this.saveDraft(tenantId, reportId, structuredContent, region);
     return structuredContent;
   },
-
-  async insertCitation(tenantId: string, reportId: string, versionId: string, evidenceId: string, location: number): Promise<string> {
-     const reportRef = doc(db, COLLECTION, reportId);
-     const citationRef = collection(reportRef, 'citations');
-     
-     const docRef = await addDoc(citationRef, {
-         evidenceId,
-         locationIndex: location,
-         createdAt: serverTimestamp(),
-         status: 'active'
-     });
-
-     return docRef.id;
-  },
-
-  async signReport(tenantId: string, reportId: string, content: any, signatureHash: string): Promise<void> {
-      const reportRef = doc(db, COLLECTION, reportId);
-      
-      // 1. Create Final Version
-      await this.createVersion(tenantId, reportId, {
-          content,
-          signatureHash,
-          type: 'signed_final'
-      });
-
-      // 2. Update Main Doc
-      // NOTE: We do NOT use auth context here as this runs client side. 
-      // Security rules must enforce request.auth.uid matches signedBy if we were passing it.
-      // But ideally this should be a cloud function to enforce signer identity.
-      // For MVP V1, assuming client trust or subsequent validation.
-      
-      await updateDoc(reportRef, {
-          status: 'signed',
-          signedAt: serverTimestamp(),
-          signatureHash,
-          locked: true
-      });
-  },
-
-  async exportReport(tenantId: string, reportId: string, options: { redactionLevel: 'none' | 'parent'; format: 'pdf' }) {
+  
+  // Added for Phase 39: PDF Export
+  async exportReport(tenantId: string, reportId: string, options: { redactionLevel: string; format: string }): Promise<{ downloadUrl: string }> {
       const exportFn = httpsCallable(functions, 'exportReport');
-      const result = await exportFn({ tenantId, reportId, ...options });
-      return result.data as { downloadUrl: string, exportId: string };
+      const result = await exportFn({
+          tenantId,
+          reportId,
+          ...options
+      });
+      return result.data as { downloadUrl: string };
   }
 };

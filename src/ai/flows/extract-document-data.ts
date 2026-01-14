@@ -7,6 +7,7 @@ const DocumentExtractionInputSchema = z.object({
   documentText: z.string().describe('The raw text content extracted from the document (OCR result).'),
   category: z.enum([
     'academic_record', 
+    'school_report', // Added alias
     'attendance_log', 
     'iep_document', 
     'lesson_plan', 
@@ -33,7 +34,7 @@ const extractDocumentDataPrompt = ai.definePrompt({
   name: 'extractDocumentDataPrompt',
   input: { schema: DocumentExtractionInputSchema },
   output: { schema: DocumentExtractionOutputSchema },
-  prompt: `You are an expert data extraction assistant for an educational platform.
+  prompt: `You are an expert data extraction assistant for an educational platform (MindKindler).
   
   Document Category: {{category}}
   
@@ -44,7 +45,15 @@ const extractDocumentDataPrompt = ai.definePrompt({
   
   Task: Extract structured information relevant to the category.
   
-  - If 'academic_record': Extract student name, subject, grade/score, date, and comments.
+  - If 'academic_record' or 'school_report': 
+    CRITICAL: Extract the specific REPORT DATE (e.g. "12/01/2024"). If fuzzy (e.g., "Fall 2023"), estimate the date (e.g., 2023-12-01).
+    Identify the Academic Year (e.g., "2023-2024").
+    For each subject row found, extract: 
+      - Subject Name
+      - Grade/Score (normalize to string)
+      - Teacher Comment (full text)
+    Output structure: { "records": [{ "subject": "Math", "grade": "A", "comment": "...", "date": "..." }], "academicYear": "..." }
+
   - If 'attendance_log': Extract student name, date, status (present/absent), and reason.
   - If 'iep_document': Extract diagnosis, goals, accommodations, and next review date.
   - If 'lesson_plan': Extract subject, topic, date, and learning objectives.

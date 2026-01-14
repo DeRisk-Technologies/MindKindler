@@ -16,12 +16,13 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur-md">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-xl">
+            {/* Logo component already contains a Link to / */}
             <Logo />
           </div>
           <nav className="hidden md:flex gap-6 text-sm font-medium text-slate-600">
-            <a href="#features" className="hover:text-primary transition-colors">Features</a>
-            <a href="#compliance" className="hover:text-primary transition-colors">Compliance</a>
-            <a href="#pricing" className="hover:text-primary transition-colors">Pricing</a>
+            <Link href="/features" className="hover:text-primary transition-colors">Features</Link>
+            <Link href="/compliance" className="hover:text-primary transition-colors">Compliance</Link>
+            <Link href="#pricing" className="hover:text-primary transition-colors">Pricing</Link>
           </nav>
           <div className="flex items-center gap-4">
             <Link href="/login">
@@ -74,8 +75,8 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Value Props Grid */}
-        <section id="features" className="py-24 bg-slate-50">
+        {/* Value Props Grid (Teaser) */}
+        <section className="py-24 bg-slate-50">
           <div className="container">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               
@@ -84,9 +85,10 @@ export default function LandingPage() {
                   <BarChart3 className="h-6 w-6 text-blue-600" />
                 </div>
                 <h3 className="text-xl font-bold mb-3">Psychometric Analysis</h3>
-                <p className="text-slate-600 leading-relaxed">
+                <p className="text-slate-600 leading-relaxed mb-4">
                   Visualize WISC-V scores with 95% Confidence Intervals. Detect learning difficulties like Dyslexia via automated discrepancy analysis.
                 </p>
+                <Link href="/features" className="text-blue-600 font-semibold text-sm hover:underline">Explore Clinical Tools &rarr;</Link>
               </div>
 
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
@@ -94,9 +96,10 @@ export default function LandingPage() {
                   <Zap className="h-6 w-6 text-indigo-600" />
                 </div>
                 <h3 className="text-xl font-bold mb-3">AI Report Writer</h3>
-                <p className="text-slate-600 leading-relaxed">
+                <p className="text-slate-600 leading-relaxed mb-4">
                   Draft statutory reports (EHCP) in seconds. Our RAG engine respects legal constraints, ensuring no medical diagnoses are hallucinated.
                 </p>
+                <Link href="/features" className="text-indigo-600 font-semibold text-sm hover:underline">See AI Engine &rarr;</Link>
               </div>
 
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
@@ -104,11 +107,18 @@ export default function LandingPage() {
                   <ShieldCheck className="h-6 w-6 text-emerald-600" />
                 </div>
                 <h3 className="text-xl font-bold mb-3">Statutory Compliance</h3>
-                <p className="text-slate-600 leading-relaxed">
+                <p className="text-slate-600 leading-relaxed mb-4">
                   Built-in workflows for EYFS 2025 "First Day Calling" and Safer Recruitment (Single Central Record) vetting.
                 </p>
+                <Link href="/compliance" className="text-emerald-600 font-semibold text-sm hover:underline">View Compliance Standards &rarr;</Link>
               </div>
 
+            </div>
+            
+            <div className="text-center mt-12">
+               <Link href="/features">
+                  <Button variant="outline" size="lg">Explore Full Platform Capabilities</Button>
+               </Link>
             </div>
           </div>
         </section>
@@ -137,14 +147,10 @@ export default function LandingPage() {
                           <span className="text-slate-500">Track DBS Checks and Prohibition Orders in a compliant register.</span>
                        </div>
                     </li>
-                    <li className="flex items-start gap-3">
-                       <CheckCircle2 className="h-6 w-6 text-green-500 mt-0.5" />
-                       <div>
-                          <span className="font-semibold block text-slate-900">Graduated Approach</span>
-                          <span className="text-slate-500">Workflows that enforce the Assess-Plan-Do-Review cycle.</span>
-                       </div>
-                    </li>
                  </ul>
+                 <div className="mt-8">
+                    <Link href="/compliance"><Button variant="link" className="px-0 text-indigo-600">Read Compliance Statement &rarr;</Button></Link>
+                 </div>
               </div>
               <div className="lg:w-1/2 relative">
                  <div className="absolute inset-0 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-2xl transform rotate-3 scale-105 opacity-10"></div>
@@ -153,16 +159,6 @@ export default function LandingPage() {
                    alt="Dashboard Preview" 
                    className="rounded-2xl shadow-2xl border border-slate-200 relative z-10 bg-slate-50" 
                  />
-                 {/* Floating Badge */}
-                 <div className="absolute -bottom-6 -left-6 bg-white p-4 rounded-xl shadow-lg border border-slate-100 z-20 flex items-center gap-3">
-                    <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center">
-                       <ShieldCheck className="h-6 w-6 text-green-600" />
-                    </div>
-                    <div>
-                       <div className="text-xs text-slate-500 uppercase font-bold tracking-wide">Status</div>
-                       <div className="font-bold text-slate-900">HCPC Verified</div>
-                    </div>
-                 </div>
               </div>
            </div>
         </section>
@@ -188,7 +184,12 @@ export default function LandingPage() {
 
       <footer className="py-8 bg-white border-t text-center text-sm text-slate-500">
          <div className="container">
-            <p>&copy; 2024 MindKindler. All rights reserved. Built for the future of education.</p>
+            <p>&copy; 2026 MindKindler. A DeRisk Technologies Product. All rights reserved.</p>
+            <div className="mt-2 flex items-center justify-center gap-2">
+                <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-400 border-slate-200">MindKindler Pilot v1.0</Badge>
+                <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-400 border-slate-200">Build Completed Jan 2026</Badge>
+                <Badge variant="outline" className="text-[10px] bg-green-50 text-green-600 border-green-100 flex items-center gap-1"><Globe className="h-3 w-3"/> Sovereign AI Enabled</Badge>
+            </div>
          </div>
       </footer>
     </div>

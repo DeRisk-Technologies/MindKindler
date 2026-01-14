@@ -1,3 +1,5 @@
+// src/app/dashboard/training/library/page.tsx
+
 "use client";
 
 import { useFirestoreCollection } from "@/hooks/use-firestore";
@@ -15,7 +17,8 @@ import { addDoc, collection } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { retrieveContext } from "@/ai/knowledge/retrieve";
+// REMOVE SERVER IMPORT
+// import { retrieveContext } from "@/ai/knowledge/retrieve";
 
 export default function TrainingLibraryPage() {
     const { data: modules, loading } = useFirestoreCollection<TrainingModule>("trainingModules", "createdAt", "desc");
@@ -41,18 +44,19 @@ export default function TrainingLibraryPage() {
         if (!title) return;
         setDrafting(true);
         try {
-            // 1. Retrieve Evidence
-            const context = await retrieveContext(title, { verifiedOnly: true, includeEvidence: true });
+            // FIX: Removed server-side call.
+            // In Pilot, we mock this. In Prod, this should call a Cloud Function 'generateTrainingContent'.
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
             
-            // 2. Generate Content (Mock)
+            // 2. Generate Content (Mock for Pilot Stability)
             const draftBlocks = [
                 { type: 'text', content: `Introduction to ${title}. This module covers key concepts based on verified guidelines.` },
-                { type: 'bullets', content: "Key Principle 1\nKey Principle 2\nKey Principle 3" },
-                { type: 'qa', content: "Q: Why is this important?\nA: It ensures compliance and better outcomes." }
+                { type: 'bullets', content: "Key Principle 1: Understanding the Context\nKey Principle 2: Identifying Needs\nKey Principle 3: Effective Support Strategies" },
+                { type: 'qa', content: "Q: Why is this important?\nA: It ensures compliance and better outcomes for students." }
             ];
 
             setAiContent(draftBlocks);
-            setAiCitations(context); // Attach citations
+            setAiCitations([]); // Mock citations empty for now
             toast({ title: "Draft Generated", description: "Review content and publish." });
         } catch (e) {
             toast({ title: "Error", variant: "destructive" });
@@ -77,7 +81,7 @@ export default function TrainingLibraryPage() {
                 verified: false,
                 createdByUserId: auth.currentUser?.uid || "unknown",
                 tags: [],
-                status: "published", // Publish immediately for v1
+                status: "published", 
                 createdAt: new Date().toISOString()
             };
             await addDoc(collection(db, "trainingModules"), moduleData);

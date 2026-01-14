@@ -8,38 +8,37 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { Loader2, Globe, ShieldCheck, Download, CheckCircle, AlertTriangle, Building2, RefreshCw, ChevronRight } from 'lucide-react';
+import { Loader2, Globe, ShieldCheck, Download, CheckCircle, AlertTriangle, Building2, RefreshCw, ChevronRight, Info } from 'lucide-react';
 import { installPack } from '@/marketplace/installer';
 import Link from 'next/link';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
-// Mock Catalog (In prod, fetch from API)
-import ukPack from "@/marketplace/catalog/uk_la_pack.json";
-import { MarketplaceManifest } from '@/marketplace/types';
+// Logic Hooks
+import { useMarketplaceUpdates } from '@/hooks/use-marketplace-updates';
 import { doc, getDoc } from 'firebase/firestore'; 
 import { db } from '@/lib/firebase'; 
+import { MarketplaceManifest } from '@/marketplace/types';
+
+// Catalog Imports
+import ukPack from "@/marketplace/catalog/uk_la_pack.json";
+import usPack from "@/marketplace/catalog/us_district_pack.json";
+import gulfPack from "@/marketplace/catalog/gulf_pack.json";
 
 const CATALOG: Record<string, any> = {
-    'uk_la_pack': ukPack
+    'uk_la_pack': ukPack,
+    'us_district_pack': usPack,
+    'gulf_pack': gulfPack
 };
 
-const catalogDisplay = [
-    {
-        id: 'uk_la_pack',
-        name: 'UK Local Authority Standard',
-        description: 'Complete compliance suite for UK Schools (EYFS 2025, KCSIE). Includes First Day Calling workflow, WISC-V Norms, and Single Central Record (SCR).',
-        version: '2.3.0', // Updated version to match latest file
-        region: 'UK',
-        tags: ['Statutory', 'Safety', 'Analytics']
-    },
-    {
-        id: 'us_district_pack',
-        name: 'US District Standard (FERPA)',
-        description: 'FERPA-compliant safeguarding, IDEA workflows for IEPs, and Woodcock-Johnson IV norms.',
-        version: '1.0.0',
-        region: 'US',
-        tags: ['Statutory', 'Legal']
-    }
-];
+// Transform Catalog to Display Array
+const catalogDisplay = Object.values(CATALOG).map((pack: any) => ({
+    id: pack.id,
+    name: pack.name,
+    description: pack.description,
+    version: pack.version,
+    region: pack.regionTags[0] || 'Global',
+    tags: pack.capabilities?.digitalForms ? ['Statutory', 'Forms', 'Compliance'] : ['Statutory', 'Compliance']
+}));
 
 export default function MarketplacePage() {
     const { user } = useAuth();
@@ -48,6 +47,9 @@ export default function MarketplacePage() {
     const [installed, setInstalled] = useState<Record<string, boolean>>({});
     const [loadingState, setLoadingState] = useState(true);
     const [targetTenantId, setTargetTenantId] = useState<string | null>(null);
+
+    // Lifecycle Hook
+    const { updatesAvailable, newModulesAvailable, loading: updatesLoading } = useMarketplaceUpdates();
 
     // Fetch Installed Status on Mount
     useEffect(() => {
@@ -124,6 +126,42 @@ export default function MarketplacePage() {
                 )}
             </div>
 
+            {/* Lifecycle Alerts */}
+            {updatesAvailable.length > 0 && (
+                <Alert className="bg-amber-50 border-amber-200 text-amber-900">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertTitle>Updates Available</AlertTitle>
+                    <AlertDescription className="mt-1">
+                        New compliance standards released for: 
+                        <ul className="list-disc pl-5 mt-1 space-y-1 text-xs">
+                            {updatesAvailable.map(u => (
+                                <li key={u.manifest.id}>
+                                    <strong>{u.manifest.name}</strong> (v{u.installedVersion} → v{u.latestVersion})
+                                    {u.changelog && <span className="block text-slate-500 italic">Change: {u.changelog}</span>}
+                                </li>
+                            ))}
+                        </ul>
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {newModulesAvailable.length > 0 && (
+                <Alert className="bg-blue-50 border-blue-200 text-blue-900">
+                    <Info className="h-4 w-4 text-blue-600" />
+                    <AlertTitle>New Regional Modules</AlertTitle>
+                    <AlertDescription>
+                        We detected you are in the <strong>{user?.region?.toUpperCase()}</strong> region. You might be interested in:
+                        <div className="flex gap-2 mt-2">
+                            {newModulesAvailable.map(m => (
+                                <Badge key={m.manifest.id} variant="secondary" className="cursor-pointer hover:bg-blue-200" onClick={() => handleInstall(m.manifest.id)}>
+                                    Install {m.manifest.name}
+                                </Badge>
+                            ))}
+                        </div>
+                    </AlertDescription>
+                </Alert>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {catalogDisplay.map(pack => (
                     <Card key={pack.id} className="flex flex-col hover:shadow-lg transition-shadow">
@@ -144,11 +182,14 @@ export default function MarketplacePage() {
                         </CardHeader>
                         <CardContent className="flex-grow">
                             <div className="flex flex-wrap gap-2 mt-2">
-                                {pack.tags.map(tag => (
+                                {pack.tags.map((tag: string) => (
                                     <span key={tag} className="text-[10px] uppercase font-bold bg-slate-100 px-2 py-1 rounded text-slate-600">
                                         {tag}
                                     </span>
                                 ))}
+                            </div>
+                            <div className="mt-4 text-xs text-slate-400">
+                                Version: {pack.version}
                             </div>
                         </CardContent>
                         <CardFooter className="pt-4 border-t bg-slate-50 gap-2">

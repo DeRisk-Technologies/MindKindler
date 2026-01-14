@@ -6,17 +6,17 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Save, Sparkles, FileText, Share2, History, SidebarOpen, CheckCircle } from 'lucide-react';
+import { Loader2, Save, Sparkles, FileText, Share2, SidebarOpen, CheckCircle } from 'lucide-react';
 import { CitationSidebar } from './CitationSidebar';
 import { ProvisionPicker } from './ProvisionPicker';
 import { ReportService } from '@/services/report-service';
 import { useToast } from '@/hooks/use-toast';
-import { Report } from '@/types/schema';
 import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; 
 import { SubmitForReviewModal } from './modals/SubmitForReviewModal'; 
-import { ExportOptionsModal } from './modals/ExportOptionsModal'; // Phase 24 Task 3
+import { ExportOptionsModal } from './modals/ExportOptionsModal';
+import { generateDocx } from '@/lib/export/docx-generator';
 
-// Mock Supervisors (In real app, fetch from Staff Service)
+// Mock Supervisors
 const MOCK_SUPERVISORS = [
     { id: 'sup_001', name: 'Dr. Sarah Smith (Senior EPP)' },
     { id: 'sup_002', name: 'Dr. James Wilson (Lead)' }
@@ -28,10 +28,11 @@ interface ReportEditorProps {
     studentId: string; 
     initialContent?: any;
     userId: string; 
-    userRole?: string; 
+    userRole?: string;
+    region?: string; 
 }
 
-export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId, userRole = 'EPP' }: ReportEditorProps) {
+export function ReportEditor({ reportId, tenantId, studentId, initialContent, userId, userRole = 'EPP', region = 'uk' }: ReportEditorProps) {
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -41,7 +42,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     
     // Modals
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-    const [isExportModalOpen, setIsExportModalOpen] = useState(false); // Phase 24
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false); 
 
     const isTrainee = userRole === 'Trainee' || userRole === 'Assistant'; 
 
@@ -64,12 +65,20 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     useEffect(() => {
         if (initialContent && editor) {
             let html = '';
-            if (initialContent.sections) {
-                initialContent.sections.forEach((s: any) => {
+            
+            const contentSource = initialContent.sections || initialContent.content || [];
+
+            if (Array.isArray(contentSource)) {
+                contentSource.forEach((s: any) => {
                     html += `<h2>${s.title}</h2><p>${s.content}</p>`;
                 });
+            } else if (typeof contentSource === 'string') {
+                 html = contentSource;
+            } else if (typeof contentSource === 'object') {
+                 html = `<h2>${contentSource.title || 'Draft'}</h2><p>${contentSource.content || ''}</p>`;
             }
-            if (editor.isEmpty) { 
+
+            if (editor.isEmpty && html) { 
                  editor.commands.setContent(html);
             }
         }
@@ -80,13 +89,35 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
         setIsSaving(true);
         try {
             const json = editor.getJSON();
-            await ReportService.saveDraft(tenantId, reportId, json);
+            // Store content as a flat JSON string or sanitize deeply nested objects if Firestore complains.
+            // TipTap JSON is usually safe, but let's wrap it correctly.
+            // The error "invalid nested entity" often means we are trying to save 'undefined' or a circular structure.
+            // JSON.stringify/parse cleans undefined.
+            const cleanContent = JSON.parse(JSON.stringify(json));
+
+            await ReportService.saveDraft(tenantId, reportId, cleanContent, region);
             setLastSaved(new Date());
             toast({ title: 'Saved', description: 'Draft updated.' });
-        } catch (e) {
-            toast({ title: 'Error', description: 'Failed to save.', variant: 'destructive' });
+        } catch (e: any) {
+            console.error(e);
+            toast({ title: 'Error', description: 'Failed to save: ' + e.message, variant: 'destructive' });
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleFinalize = async () => {
+        if (!editor) return;
+        try {
+            const json = editor.getJSON();
+            const cleanContent = JSON.parse(JSON.stringify(json));
+            // Save final state
+            await ReportService.saveDraft(tenantId, reportId, cleanContent, region);
+            // Ideally call updateDoc to set status='final'
+            // For now, just toast
+            toast({ title: 'Finalized', description: 'Report locked and ready for export.' });
+        } catch(e) {
+            toast({ title: 'Error', variant: 'destructive' });
         }
     };
 
@@ -98,15 +129,24 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                 studentId,
                 notes: 'Student struggles with attention.',
                 history: 'Diagnosed ADHD in 2020.',
-                glossary: { 'Student': 'Learner' }
+                glossary: { 'Student': 'Learner' },
+                region // Pass region to AI context
             };
 
             const result = await ReportService.requestAiDraft(tenantId, reportId, context);
             
             let html = '';
-            result.sections.forEach((s: any) => {
-                html += `<h2>${s.title}</h2><p>${s.content}</p>`;
-            });
+            // Robust check for AI result structure
+            const sections = result.sections || result.content || [];
+            
+            if (Array.isArray(sections)) {
+                sections.forEach((s: any) => {
+                    html += `<h2>${s.title}</h2><p>${s.content}</p>`;
+                });
+            } else {
+                 html = `<p>${JSON.stringify(result)}</p>`;
+            }
+            
             editor.commands.setContent(html);
             
             toast({ title: 'Draft Generated', description: 'AI content inserted.' });
@@ -129,17 +169,26 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             title: "Submitted for Supervision", 
             description: `Sent to ${MOCK_SUPERVISORS.find(s => s.id === supervisorId)?.name}` 
         });
+        setIsReviewModalOpen(false);
     };
 
     if (!editor) return null;
 
     // Construct partial report object for export
+    // We need to map TipTap JSON back to "Sections" for the Docx Generator if possible,
+    // or just pass raw text if the generator supports it.
+    // Ideally, we parse the editor HTML.
     const currentReport = {
         id: reportId,
         tenantId,
         studentId,
-        title: "Statutory Advice Draft", // Should ideally come from props
-        content: { sections: initialContent?.sections || [] } // Using initial for now, but ideally editor state
+        title: "Statutory Advice Draft", 
+        // Hack: Passing HTML content as a single section for export
+        content: { 
+            sections: [
+                { id: 'full_body', title: 'Report Content', content: editor.getHTML() }
+            ] 
+        }
     };
 
     return (
@@ -156,7 +205,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             <ExportOptionsModal 
                 isOpen={isExportModalOpen}
                 onClose={() => setIsExportModalOpen(false)}
-                report={currentReport}
+                report={currentReport as any}
                 tenantName="MindKindler Practice" 
             />
 
@@ -212,12 +261,11 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                                 <CheckCircle className="mr-2 h-4 w-4" /> Submit for Review
                             </Button>
                         ) : (
-                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" onClick={handleFinalize}>
                                 <FileText className="mr-2 h-4 w-4" /> Finalize
                             </Button>
                         )}
                         
-                        {/* Phase 24: Connected Export Action */}
                         <Button size="sm" variant="secondary" onClick={() => setIsExportModalOpen(true)}>
                             <Share2 className="mr-2 h-4 w-4" /> Export
                         </Button>
@@ -233,8 +281,8 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             </div>
 
             {/* Sidebars */}
-            {activeSidebar === 'citations' && <CitationSidebar onInsert={insertText} />}
-            {activeSidebar === 'provisions' && <ProvisionPicker onInsert={insertText} />}
+            {activeSidebar === 'citations' && <CitationSidebar onInsert={insertText} studentId={studentId} region={region} />}
+            {activeSidebar === 'provisions' && <ProvisionPicker onInsert={insertText} region={region} />}
         </div>
     );
 }

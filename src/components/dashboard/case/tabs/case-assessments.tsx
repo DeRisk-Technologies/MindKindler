@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Case, Assessment } from "@/types/schema";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,37 +18,50 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Plus, Search, BrainCircuit, Mic } from "lucide-react";
+import { useFirestoreCollection } from "@/hooks/use-firestore";
+import { useAuth } from "@/hooks/use-auth";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { getRegionalDb } from "@/lib/firebase";
 
 interface CaseAssessmentsProps {
   caseData: Case;
 }
 
 export function CaseAssessments({ caseData }: CaseAssessmentsProps) {
-  // Mock assessments data
-  const [assessments, setAssessments] = useState<Assessment[]>([
-    {
-      id: "1",
-      caseId: caseData.id,
-      studentId: caseData.studentId || "std_1",
-      date: "2023-10-15",
-      type: "ADHD Screening (Vanderbilt)",
-      status: "completed",
-      score: 18,
-      outcome: "High Risk",
-      notes: "Teacher report indicates significant attention issues."
-    },
-    {
-      id: "2",
-      caseId: caseData.id,
-      studentId: caseData.studentId || "std_1",
-      date: "2023-10-20",
-      type: "Dyslexia Screening",
-      status: "draft",
-      notes: "Pending completion of reading task."
-    }
-  ]);
+    const { user } = useAuth();
+    const [assessments, setAssessments] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
 
-  const [searchQuery, setSearchQuery] = useState("");
+    // Fetch REAL assessments from regional DB
+    useEffect(() => {
+        if (!user || !caseData.studentId) return;
+        
+        async function fetchAssessments() {
+            setLoading(true);
+            try {
+                const db = getRegionalDb(user?.region);
+                const q = query(
+                    collection(db, 'assessment_results'), 
+                    where('studentId', '==', caseData.studentId)
+                );
+                
+                const snap = await getDocs(q);
+                const results = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // Sort by date desc locally since compound queries can be tricky without index
+                results.sort((a: any, b: any) => new Date(b.completedAt || b.date).getTime() - new Date(a.completedAt || a.date).getTime());
+                
+                setAssessments(results);
+            } catch (e) {
+                console.error("Failed to fetch assessments", e);
+            } finally {
+                setLoading(false);
+            }
+        }
+        
+        fetchAssessments();
+    }, [user, caseData.studentId]);
 
   return (
     <div className="space-y-4">
@@ -120,19 +133,23 @@ export function CaseAssessments({ caseData }: CaseAssessmentsProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {assessments.map((assessment) => (
+              {assessments.length === 0 ? (
+                  <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground h-24">No assessments recorded yet.</TableCell>
+                  </TableRow>
+              ) : assessments.map((assessment) => (
                 <TableRow key={assessment.id}>
-                  <TableCell>{new Date(assessment.date).toLocaleDateString()}</TableCell>
-                  <TableCell className="font-medium">{assessment.type}</TableCell>
+                  <TableCell>{new Date(assessment.completedAt || assessment.date).toLocaleDateString()}</TableCell>
+                  <TableCell className="font-medium">{assessment.templateId || assessment.type}</TableCell>
                   <TableCell>
-                    <Badge variant={assessment.status === 'completed' ? 'default' : 'secondary'}>
+                    <Badge variant={assessment.status === 'graded' || assessment.status === 'completed' ? 'default' : 'secondary'}>
                       {assessment.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {assessment.status === 'completed' ? (
+                    {(assessment.status === 'graded' || assessment.status === 'completed') ? (
                       <div className="flex flex-col">
-                        <span>Score: {assessment.score}</span>
+                        <span>Score: {assessment.totalScore || assessment.score}</span>
                         {assessment.outcome && (
                           <span className={assessment.outcome.includes('High') ? 'text-red-500 font-bold text-xs' : 'text-muted-foreground text-xs'}>
                             {assessment.outcome}
@@ -147,11 +164,6 @@ export function CaseAssessments({ caseData }: CaseAssessmentsProps) {
                     <Button variant="ghost" size="icon" title="View Details">
                       <FileText className="h-4 w-4" />
                     </Button>
-                    {assessment.status === 'completed' && (
-                      <Button variant="ghost" size="icon" title="AI Analysis">
-                        <BrainCircuit className="h-4 w-4 text-purple-500" />
-                      </Button>
-                    )}
                   </TableCell>
                 </TableRow>
               ))}

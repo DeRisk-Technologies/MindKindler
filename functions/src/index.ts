@@ -39,18 +39,33 @@ export const gradeOpenText = onCall(callOptions, async (req) => {
 });
 
 // --- Admin & Data Maintenance ---
-import { clearDemoDataHandler } from "./admin/clearData";
-import { seedDemoDataHandler } from "./admin/seedData";
 import { setupUserProfileHandler } from "./admin/userManagement";
 import { anonymizeDataHandler } from "./admin/dataMaintenance";
+import { provisionTenantDataHandler } from "./admin/provisioning";
+import { checkSystemHealthHandler } from "./admin/healthCheck";
 
-export const clearDemoData = onCall(callOptions, clearDemoDataHandler);
-export const seedDemoData = onCall(callOptions, seedDemoDataHandler);
 export const setupUserProfile = onCall(callOptions, setupUserProfileHandler);
 export const anonymizeTrainingData = onSchedule({
     schedule: "0 0 1 * *", 
     region
 }, anonymizeDataHandler);
+
+// Unified Provisioning Engine (Phase 32)
+export const provisionTenantData = onCall(callOptions, provisionTenantDataHandler);
+
+// System Diagnostics (Phase 35)
+export const checkSystemHealth = onCall(callOptions, checkSystemHealthHandler);
+
+// Legacy Adapters (For backward compatibility with existing clients)
+export const seedDemoData = onCall(callOptions, async (req) => {
+    req.data = { ...req.data, action: 'seed_pilot_uk' };
+    return provisionTenantDataHandler(req);
+});
+
+export const clearDemoData = onCall(callOptions, async (req) => {
+    req.data = { ...req.data, action: 'clear_all', confirmation: true };
+    return provisionTenantDataHandler(req);
+});
 
 // --- Grading & Assessment ---
 import { gradeSubmissionHandler, detectAnomaliesHandler } from "./assessments/grading";
@@ -83,7 +98,6 @@ export const sendDailyReminders = onSchedule({
 import { onAlertCreated } from "./case/autoCreateFromAlerts";
 import { slaEscalator } from "./case/slaEscalator";
 
-// Renaming v2 functions to avoid collision with v1 names during upgrade
 export const autoCreateCaseFromAlertV2 = onAlertCreated; 
 export const caseSlaEscalatorV2 = slaEscalator;
 
@@ -114,7 +128,6 @@ export const onCommunityThreadCreated = onThreadCreated;
 // --- Meeting Compliance ---
 import { securelyCreateMeeting as secureMeetingHandler, fetchAndPurgeRecordings as purgeHandler } from './integrations/meeting-compliance';
 
-// Renaming to avoid collision during upgrade
 export const securelyCreateMeetingV2 = secureMeetingHandler;
 export const meetingComplianceWorkerV2 = purgeHandler;
 

@@ -84,7 +84,7 @@ export async function askSessionQuestionAction(question: string, fullTranscript:
      ${JSON.stringify(studentContext).slice(0, 1000)}...
 
      TRANSCRIPT:
-     ${fullTranscript.slice(0, 10000)}...
+     ${fullTranscript.slice(0, 20000)}... 
 
      QUESTION: ${question}
 
@@ -92,10 +92,19 @@ export async function askSessionQuestionAction(question: string, fullTranscript:
      `;
 
      try {
-         const { text } = await ai.generate({ model: FEATURE_MODEL_DEFAULTS.consultationInsights, prompt });
+         // Use explicit config to override defaults (often too short for Q&A)
+         const { text } = await ai.generate({ 
+             model: FEATURE_MODEL_DEFAULTS.consultationInsights, 
+             prompt,
+             config: {
+                 maxOutputTokens: 2048,
+                 temperature: 0.4
+             }
+         });
          return text;
-     } catch (e) {
-         return "Error analyzing session data.";
+     } catch (e: any) {
+         console.error("Q&A Error:", e);
+         return `Error analyzing session: ${e.message || "Unknown AI error"}`;
      }
 }
 

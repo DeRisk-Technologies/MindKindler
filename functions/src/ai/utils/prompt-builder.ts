@@ -1,11 +1,10 @@
-// src/ai/utils/prompt-builder.ts
-
-import { GlossaryDoc } from "../../types/schema";
+// functions/src/ai/utils/prompt-builder.ts
 
 export interface AIContext {
     locale: string;
     languageLabel: string; // e.g., "English (UK)", "French"
     glossary?: Record<string, string>;
+    reportType?: 'statutory' | 'consultation' | 'referral';
 }
 
 export const buildSystemPrompt = (baseInstruction: string, context: AIContext): string => {
@@ -25,10 +24,26 @@ export const buildSystemPrompt = (baseInstruction: string, context: AIContext): 
         });
     }
 
-    // Dummy usage of GlossaryDoc to satisfy import if needed, or remove import if strictly unused.
-    // For now, let's just make sure it's exported or used in a type.
-    const _dummy: GlossaryDoc | null = null; 
-    if (_dummy) console.log("GlossaryDoc loaded");
+    // 3. Advanced Synthesis Rules (Phase 33: Deep Synthesis)
+    // Triggers only for UK Statutory Reports (Appendix K) to ensure Triangulation
+    const isUK = context.languageLabel.includes('UK') || context.locale === 'en-GB'; 
+    
+    if (isUK && context.reportType === 'statutory') {
+        prompt += `\n### UK Statutory Reporting Standards (Appendix K)\n`;
+        prompt += `You must structure the report to explicitly triangulate data sources:\n`;
+        
+        prompt += `\n[SECTION A: BACKGROUND & VIEWS]\n`;
+        prompt += `- Incorporate details from the 'PARENT DATA' (One Page Profile) regarding early history, home behavior, and strengths.\n`;
+        prompt += `- Ensure the "Voice of the Child" is prominent.\n`;
+        
+        prompt += `\n[SECTION B: EDUCATIONAL NEEDS]\n`;
+        prompt += `- CONTRAST the 'Clinical Assessment Data' (Psychometrics) with the 'SCHOOL DATA' (Teacher View).\n`;
+        prompt += `- CRITICAL: If psychometric scores are average but Teacher reports 'struggling' (or vice-versa), explicitly highlight this discrepancy as a specific area for investigation (e.g., "Performance discrepancy suggests potential masking or environmental barriers").\n`;
+        
+        prompt += `\n[SECTION F: PROVISION]\n`;
+        prompt += `- If the 'SCHOOL DATA' lists 'Current Interventions', summarize their reported impact (or lack thereof) to justify new recommendations.\n`;
+        prompt += `- Ensure provisions are specific and quantified (e.g., "Weekly small group support" rather than "Support").\n`;
+    }
 
     return prompt;
 };

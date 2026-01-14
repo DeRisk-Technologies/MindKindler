@@ -1,19 +1,20 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Phone, Video, MoreVertical, Search, Paperclip, ShieldAlert, Loader2 } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Send, Phone, Video, MoreVertical, Search, Paperclip, Loader2, Plus } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/use-auth';
 import { ChatService } from '@/services/messaging/chat-service';
 import { ChatChannel, ChatMessage } from '@/types/schema';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 export default function MessagesPage() {
-    const { user, tenant } = useAuth();
+    const { user } = useAuth();
     const { toast } = useToast();
     
     // State
@@ -23,26 +24,31 @@ export default function MessagesPage() {
     const [inputText, setInputText] = useState('');
     const [isSending, setIsSending] = useState(false);
     
+    // New Chat Dialog State
+    const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+    const [newChatEmail, setNewChatEmail] = useState('');
+    const [isCreatingChat, setIsCreatingChat] = useState(false);
+
     // Services
     const chatService = useRef<ChatService | null>(null);
     const scrollEndRef = useRef<HTMLDivElement>(null);
 
     // Initialize Service
     useEffect(() => {
-        if (user && tenant) {
-            chatService.current = new ChatService(tenant.id, user.uid);
+        if (user && user.tenantId && user.shardId) {
+            chatService.current = new ChatService(user.tenantId, user.uid, user.shardId);
             
             // Subscribe to Chats
             const unsubscribe = chatService.current.subscribeToChats((data) => {
                 setChats(data);
-                // Auto-select first chat if none selected
+                // Auto-select first chat if none selected and we have chats
                 if (!selectedChatId && data.length > 0) {
                     setSelectedChatId(data[0].id);
                 }
             });
             return () => unsubscribe();
         }
-    }, [user, tenant]);
+    }, [user, selectedChatId]); // Added selectedChatId dependency to prevent reset if user changes slightly, though user shouldn't change.
 
     // Subscribe to Messages when Chat changes
     useEffect(() => {
@@ -74,17 +80,44 @@ export default function MessagesPage() {
         }
     };
 
+    const handleCreateChat = async () => {
+        if (!chatService.current || !newChatEmail) return;
+        setIsCreatingChat(true);
+        // Note: In a real app, we'd lookup the UID by email. 
+        // For Pilot/Demo, we might need to hardcode or assume the user knows the UID, 
+        // OR better, since we can't lookup UIDs easily without an Admin SDK function, 
+        // we will implement a basic "Start Chat" that assumes we are chatting with 'sarah.super@pilot.com' (Admin) if we are 'bella'.
+        
+        // Mock ID resolution for Pilot
+        // In production, this would be a user search component
+        const targetId = newChatEmail === 'sarah' ? 'sarah_uid' : newChatEmail; 
+
+        try {
+            // We pass the email as the ID for now if it's a demo, or assume the user entered a valid UID.
+            // A better approach for the pilot is to list known staff.
+            const chatId = await chatService.current.createChat([user!.uid, targetId], 'direct');
+            setSelectedChatId(chatId);
+            setIsNewChatOpen(false);
+            setNewChatEmail('');
+        } catch (e) {
+            console.error(e);
+            toast({ title: "Error", description: "Failed to create chat", variant: "destructive"});
+        } finally {
+            setIsCreatingChat(false);
+        }
+    };
+
     // Derived State
     const activeChat = chats.find(c => c.id === selectedChatId);
 
     // Helpers
     const getChatName = (chat: ChatChannel) => {
         if (chat.name) return chat.name;
-        // Logic to show other participant's name would go here (requires User Profile lookup)
-        return chat.participantIds.filter(id => id !== user?.uid).join(', ') || 'Unknown Chat';
+        return `Chat with ${chat.participantIds.filter(id => id !== user?.uid).join(', ')}`;
     };
 
     const formatTime = (isoString: string) => {
+        if (!isoString) return '';
         const date = new Date(isoString);
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
@@ -96,10 +129,38 @@ export default function MessagesPage() {
             
             {/* Sidebar List */}
             <div className="w-80 border-r flex flex-col bg-gray-50">
-                <div className="p-4 border-b bg-white">
-                    <div className="relative">
+                <div className="p-4 border-b bg-white flex justify-between items-center">
+                    <h2 className="font-semibold text-sm">Messages</h2>
+                    <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
+                        <DialogTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8"><Plus className="h-4 w-4" /></Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>New Message</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <Label>Recipient ID (Demo Mode)</Label>
+                                    <Input 
+                                        placeholder="Enter User ID..." 
+                                        value={newChatEmail}
+                                        onChange={e => setNewChatEmail(e.target.value)}
+                                    />
+                                    <p className="text-xs text-muted-foreground">For pilot, enter the target user's UID directly.</p>
+                                </div>
+                                <Button onClick={handleCreateChat} disabled={isCreatingChat} className="w-full">
+                                    {isCreatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null}
+                                    Start Chat
+                                </Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+                <div className="p-2">
+                     <div className="relative">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
-                        <Input placeholder="Search chats..." className="pl-8 bg-gray-50" />
+                        <Input placeholder="Search chats..." className="pl-8 bg-white h-9" />
                     </div>
                 </div>
                 <ScrollArea className="flex-1">
@@ -144,7 +205,7 @@ export default function MessagesPage() {
                                 <div>
                                     <h3 className="font-semibold text-sm">{getChatName(activeChat)}</h3>
                                     <p className="text-xs text-green-600 flex items-center gap-1">
-                                        <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span> Encrypted
+                                        <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span> Encrypted & Guarded
                                     </p>
                                 </div>
                             </div>

@@ -115,14 +115,31 @@ export async function generateInterventionPlanAction(context: PlanningContext): 
     try {
         const { text } = await ai.generate({ 
             model: FEATURE_MODEL_DEFAULTS.consultationInsights, 
-            prompt 
+            prompt,
+            config: {
+                maxOutputTokens: 2048, // Increased from default 512 to prevent truncation
+                temperature: 0.2
+            }
         });
         
         // 4. Parse & Enrich
-        const jsonMatch = text.match(/\[[\s\S]*\]/);
-        if (!jsonMatch) throw new Error("No JSON found in response");
-        
-        const plans: PlannedIntervention[] = JSON.parse(jsonMatch[0]);
+        let plans: PlannedIntervention[] = [];
+        try {
+            // Robust Parsing: Find first '[' and last ']'
+            const start = text.indexOf('[');
+            const end = text.lastIndexOf(']');
+            if (start !== -1 && end !== -1) {
+                const jsonStr = text.substring(start, end + 1);
+                plans = JSON.parse(jsonStr);
+            } else {
+                throw new Error("No JSON array structure found");
+            }
+        } catch (e) {
+            console.error("JSON Parse Error on Intervention Plan:", text);
+            // Fallback: If it's valid JSON but not an array, maybe wrapped?
+            // For now, return empty but log strict error
+            throw new Error("Failed to parse intervention plan");
+        }
         
         // Add IDs
         return plans.map(p => ({

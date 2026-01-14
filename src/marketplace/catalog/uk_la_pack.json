@@ -2,7 +2,12 @@
   "id": "uk_la_pack",
   "name": "UK Local Authority Standard (EYFS 2025)",
   "description": "Statutory compliance pack including First Day Calling, WISC-V norms, and EHCP templates.",
-  "version": "2.4.0",
+  "version": "1.1.0",
+  "releaseDate": "2024-06-01",
+  "changelog": "Added One Page Profile, refined Neuro questionnaire, and included DfE 2025 Attendance Codes (C2).",
+  "price": 29.99,
+  "stripePriceId": "price_1PkWy2L8X9f2k1jL5s8z9x0v",
+  "trialDays": 14,
   "regionTags": [
     "UK",
     "Europe"
@@ -10,6 +15,152 @@
   "actions": [],
   "capabilities": {
     "countryCode": "UK",
+    "digitalForms": [
+      {
+        "id": "uk_school_contribution",
+        "title": "School Contribution to Statutory Assessment",
+        "description": "Standard form for SENCOs to report attainment and provisions (Appendix A).",
+        "sections": [
+          {
+            "id": "attainment",
+            "title": "Current Attainment",
+            "fields": [
+              { "id": "reading_age", "label": "Reading Age", "type": "number", "required": true },
+              { "id": "spelling_age", "label": "Spelling Age", "type": "number", "required": true },
+              { "id": "maths_level", "label": "Maths Level (NC)", "type": "string", "required": true }
+            ]
+          },
+          {
+            "id": "attendance",
+            "title": "Attendance History",
+            "fields": [
+              { "id": "att_percent", "label": "Current Attendance %", "type": "number", "required": true },
+              { "id": "att_code_count", "label": "Unauthorized Absences (Code O/G/U)", "type": "number", "required": false },
+              { 
+                "id": "primary_absence_reason", 
+                "label": "Primary Reason for Absence (DfE 2025)", 
+                "type": "select", 
+                "options": ["I (Illness)", "M (Medical)", "C2 (Part-time Timetable)", "G (Family Holiday)", "O (Unauthorised)"],
+                "required": false 
+              },
+              { "id": "lates", "label": "Number of Lates (Code L)", "type": "number", "required": false }
+            ]
+          },
+          {
+            "id": "behavior",
+            "title": "Behavior Log",
+            "fields": [
+              { "id": "exclusions", "label": "Fixed Term Exclusions (Days)", "type": "number", "required": false },
+              { "id": "isolations", "label": "Internal Isolations (Count)", "type": "number", "required": false },
+              { "id": "triggers", "label": "Known Triggers", "type": "textarea", "required": false }
+            ]
+          },
+          {
+            "id": "provisions",
+            "title": "Current Provisions (Wave 2/3)",
+            "fields": [
+              { "id": "interventions_list", "label": "List current interventions and impact", "type": "textarea", "required": true },
+              { "id": "support_hours", "label": "Weekly Support Hours (LSA)", "type": "number", "required": true }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nhs_neuro_questionnaire",
+        "title": "Neurodevelopmental Screening (NICE Guidelines)",
+        "description": "Pre-assessment screening for ADHD/ASD traits.",
+        "sections": [
+          {
+            "id": "social",
+            "title": "Social Interaction",
+            "fields": [
+              { 
+                "id": "q_peers", 
+                "label": "Interaction with peers (e.g., turn-taking, sharing).", 
+                "type": "likert", 
+                "options": ["Age Appropriate", "Mild Concern", "Significant Concern"],
+                "required": true 
+              },
+              { 
+                "id": "q_cues", 
+                "label": "Understanding of non-verbal cues and sarcasm.", 
+                "type": "likert", 
+                "options": ["Age Appropriate", "Mild Concern", "Significant Concern"],
+                "required": true 
+              }
+            ]
+          },
+          {
+            "id": "attention",
+            "title": "Attention & Concentration",
+            "fields": [
+              { 
+                "id": "q1_focus", 
+                "label": "Difficulty sustaining attention in tasks or play activities.", 
+                "type": "likert", 
+                "options": ["Never", "Rarely", "Sometimes", "Often", "Very Often"],
+                "required": true 
+              },
+              { 
+                "id": "q2_instructions", 
+                "label": "Does not seem to listen when spoken to directly.", 
+                "type": "likert", 
+                "options": ["Never", "Rarely", "Sometimes", "Often", "Very Often"],
+                "required": true 
+              }
+            ]
+          },
+          {
+            "id": "impulsivity",
+            "title": "Hyperactivity & Impulsivity",
+            "fields": [
+              { 
+                "id": "q3_fidget", 
+                "label": "Fidgets with or taps hands or feet or squirms in seat.", 
+                "type": "likert", 
+                "options": ["Never", "Rarely", "Sometimes", "Often", "Very Often"],
+                "required": true 
+              },
+              { 
+                "id": "q4_interrupt", 
+                "label": "Interrupts or intrudes on others.", 
+                "type": "likert", 
+                "options": ["Never", "Rarely", "Sometimes", "Often", "Very Often"],
+                "required": true 
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "uk_one_page_profile",
+        "title": "The One Page Profile",
+        "description": "Person-Centered 'Voice of the Child' capture.",
+        "sections": [
+          {
+            "id": "appreciation",
+            "title": "What people appreciate about me",
+            "fields": [
+              { "id": "strengths", "label": "Positive qualities and strengths", "type": "textarea", "required": true }
+            ]
+          },
+          {
+            "id": "important",
+            "title": "What is important to me",
+            "fields": [
+              { "id": "interests", "label": "Hobbies, people, and things that matter", "type": "textarea", "required": true }
+            ]
+          },
+          {
+            "id": "support",
+            "title": "How to support me",
+            "fields": [
+              { "id": "strategies", "label": "What helps me learn and stay calm?", "type": "textarea", "required": true }
+            ]
+          }
+        ]
+      }
+    ],
     "statutory_timeline": {
       "process_name": "EHCP Needs Assessment",
       "total_weeks": 20,
@@ -176,6 +327,19 @@
           "Intervention Plan (Home/School/Community)"
         ],
         "tags": ["clinical", "complex", "safeguarding"]
+      },
+      {
+        "id": "uk_ehcp_drafting",
+        "title": "EHCP Drafting Assistant",
+        "description": "Guides the structuring of Section B and F for EHCPs.",
+        "system_prompt": "You are assisting in drafting an EHCP. Ensure strict alignment between Needs (Section B) and Provision (Section F). Use 'must' for provision.",
+        "required_sections": [
+          "Cognition & Learning",
+          "Communication & Interaction",
+          "SEMH",
+          "Sensory & Physical"
+        ],
+        "tags": ["statutory", "ehcp"]
       }
     ],
     "psychometricConfig": {

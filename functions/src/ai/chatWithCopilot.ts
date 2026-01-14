@@ -2,6 +2,7 @@
 
 import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
+import { getFirestore } from "firebase-admin/firestore";
 import { logAuditEvent } from '../student360/audit/audit-logger';
 import { retrieveContext } from "./knowledge/retrieve"; // Import real retrieval logic
 import { VertexAI } from '@google-cloud/vertexai';
@@ -10,7 +11,7 @@ import { VertexAI } from '@google-cloud/vertexai';
 const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
 const location = 'europe-west3';
 const vertex_ai = new VertexAI({ project: project, location: location });
-const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-1.5-flash-001' });
+const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 interface ChatRequest {
     sessionId?: string;
@@ -31,9 +32,14 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
     const { sessionId, message, contextMode, contextId } = request.data;
     const uid = request.auth.uid;
     const tenantId = request.auth.token.tenantId || 'default';
+    const region = request.auth.token.region || 'uk'; 
 
-    // 1. Create or Fetch Session
-    const db = admin.firestore();
+    // 1. Resolve Shard (Regional Data Plane)
+    // AI Sessions contain sensitive context, so they must be stored in the tenant's region.
+    const shardId = region === 'default' ? 'default' : `mindkindler-${region}`;
+    const db = shardId === 'default' ? admin.firestore() : getFirestore(admin.app(), shardId);
+
+    // 2. Create or Fetch Session
     let currentSessionId = sessionId;
     
     if (!currentSessionId) {
@@ -48,20 +54,20 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         currentSessionId = sessionRef.id;
     }
 
-    // 2. Persist User Message
+    // 3. Persist User Message
     await db.collection('bot_sessions').doc(currentSessionId).collection('messages').add({
         role: 'user',
         content: message,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // 3. Guardian Pre-Check (Safety)
+    // 4. Guardian Pre-Check (Safety)
     const lowerMsg = message.toLowerCase();
     if (lowerMsg.includes('hack') || lowerMsg.includes('leak')) {
         throw new HttpsError('permission-denied', 'Safety Violation: Query blocked by Guardian.');
     }
 
-    // 4. RAG Retrieval (Real Implementation)
+    // 5. RAG Retrieval (Real Implementation)
     let contextText = "";
     let citations: Citation[] = [];
     
@@ -83,7 +89,7 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         // Fallback to no context
     }
 
-    // 5. LLM Generation with Grounding
+    // 6. LLM Generation with Grounding
     const systemPrompt = `
         You are MindKindler Copilot, an AI assistant for Educational Psychologists.
         Use the provided context to answer the user's question accurately.
@@ -108,7 +114,7 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         responseText = "I'm having trouble connecting to my brain right now. Please try again.";
     }
 
-    // 6. Persist Bot Response
+    // 7. Persist Bot Response
     const responseRef = await db.collection('bot_sessions').doc(currentSessionId).collection('messages').add({
         role: 'assistant',
         content: responseText,
@@ -117,7 +123,9 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // 7. Log Provenance
+    // 8. Log Provenance
+    // Note: auditLogger should also handle sharding, but usually writes to a central or mirrored log.
+    // Assuming auditLogger handles its own DB connection or uses default.
     await logAuditEvent({
         tenantId,
         action: 'ai_generate',

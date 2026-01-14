@@ -1,22 +1,102 @@
 {
     "id": "gulf_pack",
-    "name": "Gulf Region Compliance",
-    "description": "Data residency and cultural sensitivity rules.",
-    "version": "1.0.0",
-    "regionTags": ["Gulf", "Middle East"],
+    "name": "Gulf Region Compliance (KHDA/ADEK)",
+    "description": "Compliance pack for UAE/Gulf regions, focusing on 'People of Determination' frameworks and strict data residency.",
+    "version": "1.1.0",
+    "regionTags": ["Gulf", "Middle East", "UAE"],
     "actions": [
         {
             "type": "createPolicyRule",
             "payload": {
                 "title": "Data Residency Check",
-                "description": "Ensure data remains in region.",
+                "description": "Ensure data remains in the Gulf region (Azure UAE North/Central).",
                 "severity": "critical",
                 "mode": "enforce",
+                "blockActions": true,
                 "triggerEvent": "document.upload",
                 "triggerCondition": "missing_metadata",
-                "remediation": "Tag with jurisdiction.",
+                "remediation": "Tag document with 'UAE-RESIDENT' classification.",
                 "jurisdiction": "UAE"
             }
         }
-    ]
+    ],
+    "capabilities": {
+        "countryCode": "UAE",
+        "provisionBankRef": "uae_khda_provision_bank",
+        "statutory_timeline": {
+            "process_name": "Inclusion Support Team (IST) Referral",
+            "total_weeks": 4, 
+            "stages": [
+                {
+                    "week_start": 0,
+                    "week_end": 1,
+                    "name": "Teacher Observation",
+                    "actor": "Class Teacher",
+                    "deadline_action": "submit_concern_form"
+                },
+                {
+                    "week_start": 1,
+                    "week_end": 3,
+                    "name": "IST Review & Observation",
+                    "actor": "Head of Inclusion",
+                    "deadline_action": "classroom_observation"
+                },
+                {
+                    "week_start": 3,
+                    "week_end": 4,
+                    "name": "Action Plan Formulation",
+                    "actor": "IST & Parents",
+                    "deadline_action": "sign_action_plan"
+                }
+            ],
+            "rules": []
+        },
+        "schemaExtensions": {
+            "student": [
+                {
+                    "fieldName": "uae_emirates_id",
+                    "label": "Emirates ID",
+                    "type": "string",
+                    "validationRegex": "^784-[0-9]{4}-[0-9]{7}-[0-9]$",
+                    "required": true,
+                    "encrypt": true
+                },
+                {
+                    "fieldName": "uae_arabic_proficiency",
+                    "label": "Arabic Proficiency",
+                    "type": "enum",
+                    "options": ["Native", "Advanced", "Intermediate", "Beginner", "None"],
+                    "required": false,
+                    "encrypt": false
+                }
+            ],
+            "school": [],
+            "staff": []
+        },
+        "complianceWorkflows": [],
+        "psychometricConfig": {
+            "standardScoreMean": 100,
+            "standardScoreSD": 15,
+            "deviationThresholds": {
+                "mild": 85,
+                "significant": 70
+            },
+            "confidenceInterval": 95,
+            "discrepancySignificance": 15 
+        },
+        "statutoryReports": [
+            {
+                "id": "uae_inclusion_report",
+                "name": "Psychological Assessment Report",
+                "sections": [
+                    { "id": "referral", "title": "Reason for Referral", "promptId": "uae_referral" },
+                    { "id": "background", "title": "Developmental History", "promptId": "uae_background" },
+                    { "id": "cognitive", "title": "Cognitive Profile", "promptId": "uae_cog" },
+                    { "id": "recommendations", "title": "Recommendations for School/Home", "promptId": "uae_recs" }
+                ],
+                "constraints": []
+            }
+        ],
+        "interventionLogic": []
+    }
 }

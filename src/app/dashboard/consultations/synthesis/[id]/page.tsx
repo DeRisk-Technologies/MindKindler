@@ -96,20 +96,45 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
         fetchData();
     }, [id, user, toast]);
 
-    const handleComplete = async (synthesizedData: SynthesisResult) => {
+    const handleSave = async (synthesizedData: SynthesisResult) => {
         if (!user) return;
-
         try {
-            console.log(`[Synthesis] Saving outcome to shard: ${activeShard}`);
+            console.log(`[Synthesis] Saving progress to shard: ${activeShard}`);
             const db = getRegionalDb(activeShard);
             const sessionRef = doc(db, 'consultation_sessions', id);
             
             await updateDoc(sessionRef, {
-                status: 'synthesized',
+                // Persist the outcome state without changing status to 'synthesized' (which implies completion)
+                outcome: {
+                    clinicalOpinions: synthesizedData.confirmedOpinions,
+                    manualClinicalNotes: synthesizedData.manualClinicalNotes,
+                    interventionPlan: synthesizedData.plannedInterventions,
+                    referrals: synthesizedData.referrals,
+                    finalTranscript: synthesizedData.editedTranscript
+                },
+                lastSavedAt: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error("Failed to save synthesis", error);
+            throw error;
+        }
+    };
+
+    const handleComplete = async (synthesizedData: SynthesisResult) => {
+        if (!user) return;
+
+        try {
+            console.log(`[Synthesis] Completing session in shard: ${activeShard}`);
+            const db = getRegionalDb(activeShard);
+            const sessionRef = doc(db, 'consultation_sessions', id);
+            
+            await updateDoc(sessionRef, {
+                status: 'synthesized', // Mark as complete/ready for report
                 synthesizedAt: new Date().toISOString(),
                 outcome: {
                     clinicalOpinions: synthesizedData.confirmedOpinions,
-                    manualClinicalNotes: synthesizedData.manualClinicalNotes, // Save manual notes
+                    manualClinicalNotes: synthesizedData.manualClinicalNotes, 
                     interventionPlan: synthesizedData.plannedInterventions,
                     referrals: synthesizedData.referrals,
                     finalTranscript: synthesizedData.editedTranscript
@@ -142,15 +167,38 @@ export default function ConsultationSynthesisPage({ params }: { params: Promise<
 
     if (!sessionData) return <div>Data unavailable</div>;
 
-    // TODO: Ideally, pass savedOutcome to PostSessionSynthesis to pre-fill form
-    // For now, insights are already using savedOutcome.clinicalOpinions if available (line 89)
-
+    // Separate manual notes from promoted evidence if possible, or just pass them as manual notes
+    // In PostSessionSynthesis, manualClinicalNotes combines both on save. 
+    // On restore, we might want to pass them to 'initialManualNotes' or 'initialPromotedEvidence'.
+    // Since we can't easily distinguish them without structure, we'll pass them to 'initialPromotedEvidence' 
+    // if they look like promoted text, or just dump them all in one bucket.
+    // Ideally, the saved outcome should separate them. 
+    // For now, let's pass savedOutcome.manualClinicalNotes to initialManualNotes.
+    
+    // Actually, looking at the code in PostSessionSynthesis:
+    // manualClinicalNotes: [...manualOpinions, ...promotedEvidence]
+    // It flattens them. 
+    // So when we reload, they will all appear in the "Manual Notes" section if we pass them to initialManualNotes.
+    // That's acceptable for now, or we can try to guess.
+    
     return (
         <PostSessionSynthesis 
             sessionId={id}
-            transcript={sessionData.savedOutcome?.finalTranscript || sessionData.transcript} // Prefer edited transcript
-            initialInsights={sessionData.insights}
+            transcript={sessionData.savedOutcome?.finalTranscript || sessionData.transcript}
+            initialInsights={sessionData.insights} // Use fresh insights or saved ones? 
+            // Ideally: sessionData.savedOutcome?.clinicalOpinions || sessionData.insights
+            // Note: fetchData sets insights to `sData.outcome?.clinicalOpinions || sData.insights`.
+            // So `sessionData.insights` is already the best source.
+            
             student={sessionData.student}
+            
+            // Restore State
+            initialPlannedInterventions={sessionData.savedOutcome?.interventionPlan}
+            initialReferrals={sessionData.savedOutcome?.referrals}
+            // Since we flattened notes, let's just put them in manual notes for safety so they aren't lost.
+            initialManualNotes={sessionData.savedOutcome?.manualClinicalNotes}
+            
+            onSave={handleSave}
             onComplete={handleComplete}
         />
     );

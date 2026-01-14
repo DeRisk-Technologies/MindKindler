@@ -38,21 +38,17 @@ service cloud.firestore {
     // --- 2. SCHEDULING & MESSAGING ---
     match /appointments/{appointmentId} { allow read, write: if isTenantScoped(); }
     
-    // Notifications are user-centric, not always tenant-centric (e.g. system alerts)
     match /notifications/{notifId} { 
       allow read, write: if isAuthenticated() && (resource == null || resource.data.recipientUserId == request.auth.uid);
     }
     
-    // Chat participants check is safer than tenantId for cross-tenant comms
     match /chats/{chatId} {
         allow read, write: if isAuthenticated() && (resource == null || request.auth.uid in resource.data.participantIds);
         match /messages/{messageId} { allow read, write: if isAuthenticated(); }
     }
-    // Fallback for generic messages if used
     match /messages/{messageId} { allow read, write: if isAuthenticated(); }
 
     // --- 3. CLINICAL DATA (Root Level) ---
-    // Enforce Strict Tenant Isolation
     match /students/{document=**} { allow read, write: if isTenantScoped(); } 
     match /cases/{document=**} { allow read, write: if isTenantScoped(); }
     match /reports/{document=**} { allow read, write: if isTenantScoped(); }
@@ -60,7 +56,6 @@ service cloud.firestore {
     match /assessment_results/{id} { allow read, write: if isTenantScoped(); }
     match /assessment_assignments/{id} { allow read, write: if isTenantScoped(); }
 
-    // Templates might be shared (Global) or Tenant Specific
     match /assessment_templates/{id} { 
       allow read: if isAuthenticated(); 
       allow write: if isSystemAdmin();
@@ -81,13 +76,17 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
     
+    // Schools: STRICT Tenant Scoped
     match /schools/{id} { 
-        allow read, write: if isAuthenticated();
-        match /staff/{staffId} { allow read, write: if isAuthenticated(); }
+        allow read, write: if isTenantScoped();
+        match /staff/{staffId} { allow read, write: if isTenantScoped(); }
+    }
+    
+    match /districts/{id} {
+        allow read, write: if isTenantScoped();
     }
     
     // --- 5. ENTERPRISE TENANTS (Nested) ---
-    // Explicit tenant sub-collection protection
     match /tenants/{tenantId} {
       allow read, write: if isSystemAdmin() || (isAuthenticated() && request.auth.token.tenantId == tenantId);
       match /{allSubcollections=**} { 
@@ -101,7 +100,7 @@ service cloud.firestore {
     
     match /knowledgeDocuments/{docId} { 
       allow read: if isAuthenticated(); 
-      allow write: if isSystemAdmin(); 
+      allow write: if isAuthenticated(); 
     }
     
     match /uploaded_documents/{docId} { allow read, write: if isTenantScoped(); }

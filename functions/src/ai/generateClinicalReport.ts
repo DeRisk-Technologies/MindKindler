@@ -6,10 +6,25 @@ import { getFirestore } from "firebase-admin/firestore";
 import { saveAiProvenance } from "./utils/provenance";
 import { z } from "zod";
 import { buildSystemPrompt } from "./utils/prompt-builder";
-import { getGenkitInstance } from "./utils/model-selector"; 
+import { VertexAI } from '@google-cloud/vertexai';
+import { logAuditEvent } from "../services/audit";
+import { formatConsultationHistory } from "./utils/consultation-formatter";
+import { checkAndIncrementUsage } from "../billing/usage"; 
+import { reportMeteredUsage } from "../billing/usage-reporter"; // IMPORTED
 
 if (!admin.apps.length) admin.initializeApp();
 
+// ... (Rest of imports and configs)
+const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
+const location = 'europe-west3';
+const vertex_ai = new VertexAI({ project: project, location: location });
+
+const generativeModel = vertex_ai.getGenerativeModel({ 
+    model: 'gemini-2.5-flash',
+    generationConfig: { responseMimeType: "application/json" } 
+});
+
+// ... (Schemas)
 const EditorSectionSchema = z.object({
     id: z.string(),
     title: z.string(),
@@ -41,11 +56,28 @@ export const handler = async (request: CallableRequest<any>) => {
         sessionContext  
     } = request.data;
     
+    // --- STEP 1: BILLING & USAGE CHECK ---
+    // This must happen before ANY expensive AI call.
+    try {
+        await checkAndIncrementUsage(tenantId, 'report_generation');
+        
+        // Report to Stripe (Metered Billing)
+        // Fire and forget (don't block latency)
+        reportMeteredUsage(tenantId, 10, 'ai_credits').catch(console.error);
+
+    } catch (e: any) {
+        console.warn(`[Billing] Usage limit exceeded for tenant ${tenantId}`);
+        throw new HttpsError('resource-exhausted', e.message);
+    }
+    
     const userId = request.auth.uid;
     const userRole = request.auth.token.role || 'EPP';
     const region = request.auth.token.region || 'uk';
     const dbId = REGIONAL_DB_MAPPING[region] || REGIONAL_DB_MAPPING['default'];
     
+    console.log(`[GenerateReport] Starting for Tenant: ${tenantId}, Student: ${studentId}, Region: ${region}, DB: ${dbId}, Model: gemini-2.5-flash`);
+
+    // ... (Rest of the function remains identical)
     // Security Check
     if (request.auth.token.tenantId && request.auth.token.tenantId !== tenantId) {
          if (request.auth.token.role !== 'global_admin') {
@@ -55,139 +87,212 @@ export const handler = async (request: CallableRequest<any>) => {
 
     const startTime = Date.now();
     let studentData: any = studentContext; 
+    let regionalDb: FirebaseFirestore.Firestore;
 
-    // --- 1. DATA RESOLUTION (With Fallback) ---
-    if (!studentData) {
-        try {
-            const regionalDb = getFirestore(admin.app(), dbId);
+    try {
+        regionalDb = getFirestore(admin.app(), dbId);
+    } catch (e) {
+        console.warn(`[GenerateReport] Failed to get named DB ${dbId}, falling back to default.`);
+        regionalDb = admin.firestore(); 
+    }
+
+    // --- 1. FETCH DATA (Student & Consultations) ---
+    let formattedEvidence = "No consultation history available.";
+    
+    try {
+        if (!studentData) {
+            console.log(`[GenerateReport] Fetching student data from ${dbId}...`);
             const docSnap = await regionalDb.collection('students').doc(studentId).get();
             if (docSnap.exists) {
-                const fetchedData = docSnap.data();
-                if (fetchedData?.tenantId !== tenantId) throw new HttpsError('permission-denied', 'Student record does not belong to your practice.');
-                studentData = fetchedData;
+                studentData = docSnap.data();
             } else {
                 studentData = { identity: { firstName: { value: "Student" } } };
             }
-        } catch (e: any) {
-            console.error(`[GenerateReport] Fetch error:`, e);
-            if (e.code === 'permission-denied') throw e;
-            studentData = { identity: { firstName: { value: "Student" } } };
         }
+
+        // FETCH CONSULTATION HISTORY
+        console.log(`[GenerateReport] Fetching consultation_sessions for student ${studentId}...`);
+        const consultsSnap = await regionalDb.collection('consultation_sessions')
+            .where('studentId', '==', studentId)
+            .orderBy('createdAt', 'desc') // Ensure latest first
+            .limit(3) // Increased from 1 to 3 to get more context
+            .get();
+
+        const consultationData = consultsSnap.docs.map(doc => doc.data());
+        console.log(`[GenerateReport] Found ${consultationData.length} sessions.`);
+        
+        if (consultationData.length > 0) {
+            formattedEvidence = formatConsultationHistory(consultationData);
+        } else if (sessionContext) {
+            formattedEvidence = formatConsultationHistory([sessionContext]);
+        }
+
+    } catch (e: any) {
+        console.error(`[GenerateReport] Data Fetch Error:`, e);
     }
 
-    // --- 2. AI CONFIGURATION ---
-    await getGenkitInstance('consultationReport'); 
+    // --- 2. FETCH SCHOOL/PARENT FORMS & ASSESSMENTS (Assessment Results) ---
+    let schoolViews = "";
+    let parentViews = "";
+    let assessmentData = "";
 
-    // --- 3. CONSTRUCT ENHANCED PROMPT ---
+    try {
+        const contribSnap = await regionalDb.collection('assessment_results')
+            .where('studentId', '==', studentId)
+            .limit(10) 
+            .get();
+
+        contribSnap.forEach(doc => {
+            const data = doc.data();
+            const template = data.templateId || data.type; 
+            
+            // Format Content: If responses is object, jsonify it.
+            let content = "";
+            if (data.responses) {
+                 content = JSON.stringify(data.responses);
+            } else if (data.totalScore) {
+                 content = `Score: ${data.totalScore}`;
+                 if(data.category) content += ` (Category: ${data.category})`;
+            }
+
+            if (['uk_school_contribution', 'nhs_neuro_questionnaire'].includes(template)) {
+                schoolViews += `\n[Form: ${template}]: ${content}`;
+            } else if (['uk_one_page_profile'].includes(template)) {
+                parentViews += `\n[Form: ${template}]: ${content}`;
+            } else {
+                // General Assessments (WISC-V, etc.)
+                assessmentData += `\n[Assessment: ${template}]: ${content}`;
+            }
+        });
+    } catch (e) {
+        console.warn("[GenerateReport] Failed to fetch forms:", e);
+    }
+
+    // --- 3. CONSTRUCT PROMPT ---
     const constraints = contextPackId === 'uk_la_pack' 
         ? ["No Medical Diagnosis (Statutory)", "Use Tentative Language (appears, seems)", "Evidence-Based Claims Only"]
         : [];
 
-    const firstName = studentData.identity?.firstName?.value || "Student";
-    const lastName = studentData.identity?.lastName?.value || "";
-
-    // Extract Detailed Context from Session
-    let contextBlock = "";
-    if (sessionContext) {
-        const outcome = sessionContext.outcome || {};
-        
-        // Comprehensive inputs
-        const transcript = outcome.finalTranscript || sessionContext.transcript || "None";
-        const opinions = outcome.clinicalOpinions ? JSON.stringify(outcome.clinicalOpinions) : "None";
-        const manualNotes = outcome.manualClinicalNotes ? JSON.stringify(outcome.manualClinicalNotes) : "None";
-        const plan = outcome.interventionPlan ? JSON.stringify(outcome.interventionPlan) : "None";
-        const mode = sessionContext.mode || "Standard";
-
-        contextBlock = `
-        ### CONSULTATION CONTEXT
-        - Mode: ${mode}
-        
-        ### EVIDENCE
-        1. TRANSCRIPT SUMMARY: "${transcript.slice(0, 4000)}..."
-        2. CONFIRMED CLINICAL OPINIONS: ${opinions}
-        3. MANUAL EPP NOTES: ${manualNotes}
-        4. FINAL INTERVENTION PLAN: ${plan}
-        `;
-    }
-
-    const safeTemplateId = (templateId || "").toString();
+    const firstName = studentData?.identity?.firstName?.value || "Student";
+    const lastName = studentData?.identity?.lastName?.value || "";
+    const safeTemplateId = (templateId || "generic_report").toString();
     const isReferral = safeTemplateId.toLowerCase().includes('referral');
-    const docType = isReferral ? "Referral Letter/Clinical Note" : "Formal Statutory Report";
+    const docType = isReferral ? "Referral Letter" : "Statutory Report";
 
-    const baseInstruction = `You are an expert Educational Psychologist acting as a ${userRole} in ${region.toUpperCase()}.
-    Task: Draft a ${docType} (Template: ${safeTemplateId}) for student "${firstName} ${lastName}".
+    const baseInstruction = `You are an expert Educational Psychologist acting as a ${userRole} in the UK.
+    Task: Write a professional ${docType} for ${firstName} ${lastName}.
     
-    INSTRUCTIONS:
-    1. SYNTHESIZE the Student Profile with the Consultation Evidence.
-    2. REFERENCE specific clinical opinions (both AI-detected and Manual Notes) to justify sections.
-    3. INCORPORATE the Intervention Plan into the recommendations section.
-    4. ADOPT the tone appropriate for the Consultation Mode (e.g., Person-Centered vs Complex).
+    ### EVIDENCE SOURCE 1: CONSULTATION TRANSCRIPTS & INSIGHTS
+    ${formattedEvidence}
+
+    ### EVIDENCE SOURCE 2: SCHOOL & PARENT VIEWS
+    School Views: ${schoolViews || "No formal school contribution forms found."}
+    Parent Views: ${parentViews || "No formal parent forms found."}
+
+    ### EVIDENCE SOURCE 3: CLINICAL ASSESSMENTS & DATA
+    ${assessmentData || "No standardized assessments recorded."}
+
+    ### INSTRUCTIONS:
+    1. **Format**: Use professional HTML formatting. 
+       - Use <ul><li> for lists.
+       - Use <p> for paragraphs.
+       - Do NOT use Markdown (no **bold**, no # headings). Use <strong> and <h3> tags inside the content string if needed, but the JSON structure handles main section titles.
     
-    CRITICAL CONSTRAINTS:
-    ${constraints.map(c => `- ${c}`).join('\n')}
+    2. **Section A (Views)**: 
+       - Quote the "STUDENT VOICE" from consultations directly.
+       - If School/Parent views are missing, explicitly state: "Formal views from school/parents were not available at the time of drafting, however, themes from the consultation indicate..." and synthesize indirect views if available in the transcript.
     
-    Output Format: strictly valid JSON matching { sections: [{ id, title, content }] }.`;
+    3. **Section B (Needs)**: 
+       - Use the "THEMES" (Clinical Insights) to identify needs.
+       - Integrate WISC-V or other assessment scores if present in Source 3.
+    
+    4. **Section F (Provision)**: 
+       - Use "AGREED INTERVENTIONS" to populate recommendations.
+       - Be specific and quantifiable (e.g. "Weekly sessions of 30 mins").
 
-    const systemPrompt = buildSystemPrompt(baseInstruction, { locale: 'en-GB', languageLabel: 'English (UK)', glossary: {} });
+    5. **RISK**: If student mentioned self-harm (see quotes), flag it immediately in a dedicated section or heavily emphasized note.
 
-    const dataBlock = `
-    ### STUDENT PROFILE
-    Name: ${firstName} ${lastName}
-    Profile: ${JSON.stringify(studentData).slice(0, 1500)}
+    Constraints: ${constraints.join(', ')}
+    
+    Output JSON Schema:
+    {
+      "sections": [
+        { "id": "section_a", "title": "Section A: Student & Family Views", "content": "HTML string..." },
+        { "id": "section_b", "title": "Section B: Special Educational Needs", "content": "HTML string..." },
+        { "id": "section_f", "title": "Section F: Recommended Provision", "content": "HTML string..." }
+        ... more sections as appropriate for the template ...
+      ]
+    }`;
 
-    ${contextBlock}
-    `;
+    const systemPrompt = buildSystemPrompt(baseInstruction, { 
+        locale: 'en-GB', 
+        languageLabel: 'English (UK)', 
+        reportType: isReferral ? 'referral' : 'statutory' 
+    });
 
-    const fullPrompt = `${systemPrompt}\n\n${dataBlock}\n\nGenerate the JSON report structure now based on the provided EVIDENCE.`;
+    const fullPrompt = `${systemPrompt}\n\nSTUDENT BIO: ${JSON.stringify(studentData?.identity)}`;
+    console.log(`[GenerateReport] Prompt prepared. Length: ${fullPrompt.length}`);
 
-    // --- 4. GENERATION ---
+    // --- 4. GENERATION (REAL AI) ---
     let result;
     try {
-        // PROD AI CALL Logic (Mock for consistency until Genkit V2 fully wired)
-        const mockResponse = JSON.stringify({
-            sections: [
-                { 
-                    id: "section_a", 
-                    title: isReferral ? "Reason for Referral" : "Section A: Views of Child", 
-                    content: sessionContext 
-                        ? `During the ${sessionContext.mode || 'standard'} consultation, ${firstName} shared their views. Key themes included: ${contextBlock.includes('transcript') ? "discussions recorded in transcript" : "perspectives noted"}.`
-                        : "The child's views were gathered through standard assessment."
-                },
-                { 
-                    id: "section_b", 
-                    title: isReferral ? "Clinical Observations" : "Section B: Special Educational Needs", 
-                    content: `Based on assessment and ${sessionContext?.outcome?.clinicalOpinions?.length || 0} confirmed clinical observations, ${firstName} presents needs in the following areas. Manual notes indicate: ${sessionContext?.outcome?.manualClinicalNotes?.join(', ') || "No additional notes"}.` 
-                },
-                { 
-                    id: "section_f", 
-                    title: isReferral ? "Recommendations" : "Section F: Provision", 
-                    content: sessionContext?.outcome?.interventionPlan 
-                        ? "Specific interventions recommended based on the agreed plan: " + sessionContext.outcome.interventionPlan.map((p: any) => p.programName).join(", ") + "."
-                        : "Standard provision is recommended."
-                }
-            ]
+        console.log(`[GenerateReport] Calling Vertex AI (gemini-2.5-flash)...`);
+        const response = await generativeModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: fullPrompt }] }]
         });
         
-        result = { text: mockResponse, parsed: JSON.parse(mockResponse) };
-        ClinicalReportOutputSchema.parse(result.parsed);
+        const candidate = response.response.candidates?.[0];
+        let text = candidate?.content?.parts?.[0]?.text || "";
+        
+        // Sanitize JSON
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        console.log(`[GenerateReport] AI Response received. Length: ${text.length}`);
+        
+        let parsed;
+        try {
+            parsed = JSON.parse(text);
+            // Schema check
+            ClinicalReportOutputSchema.parse(parsed);
+        } catch (e) {
+            console.warn("JSON Parse or Schema Validation Failed, falling back to raw text.", e);
+            parsed = { sections: [{ id: "raw", title: "Draft", content: text }] };
+        }
+        
+        result = { text, parsed };
+
+        await logAuditEvent({
+            tenantId,
+            action: 'GENERATE_REPORT',
+            actorId: userId,
+            resourceType: 'student', 
+            resourceId: studentId,
+            metadata: { 
+                templateId: safeTemplateId, 
+                docType: docType
+            }
+        });
 
     } catch (err: any) {
         console.error("AI Generation Error", err);
         throw new HttpsError('internal', "AI Generation Failed: " + err.message);
     }
 
-    // --- 5. AUDIT ---
-    await saveAiProvenance({
-        tenantId: tenantId || 'global',
-        studentId: studentId,
-        flowName: 'generateClinicalReport',
-        prompt: fullPrompt,
-        model: 'gemini-1.5-pro',
-        responseText: result.text,
-        parsedOutput: result.parsed,
-        latencyMs: Date.now() - startTime,
-        createdBy: userId
-    });
+    try {
+        await saveAiProvenance({
+            tenantId: tenantId || 'global',
+            studentId: studentId,
+            flowName: 'generateClinicalReport',
+            prompt: fullPrompt,
+            model: 'gemini-2.5-flash',
+            responseText: result.text,
+            parsedOutput: result.parsed,
+            latencyMs: Date.now() - startTime,
+            createdBy: userId
+        });
+    } catch (e) {
+        console.warn("Provenance Save Failed", e);
+    }
 
     return result.parsed;
 };

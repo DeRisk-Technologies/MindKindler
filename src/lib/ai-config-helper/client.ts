@@ -24,6 +24,6 @@ export async function getModelForFeature(featureKey: string): Promise<string> {
         
         return defaultModel;
     } catch (e) {
-        return FEATURE_MODEL_DEFAULTS[featureKey] || 'googleai/gemini-1.5-flash';
+        return FEATURE_MODEL_DEFAULTS[featureKey] || 'googleai/gemini-2.0-flash';
     }
 }

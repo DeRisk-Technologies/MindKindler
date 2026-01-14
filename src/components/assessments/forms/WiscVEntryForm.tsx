@@ -30,10 +30,30 @@ export function WiscVEntryForm({ studentId, onComplete }: WiscVEntryFormProps) {
 
     const handleSubmit = async () => {
         if (!user) return;
+        
+        // Validation: Ensure all fields are numbers
+        const safeParse = (val: string) => {
+            const num = parseInt(val);
+            return isNaN(num) ? 0 : num;
+        };
+
+        const vci = safeParse(scores.VCI);
+        const vsi = safeParse(scores.VSI);
+        const fri = safeParse(scores.FRI);
+        const wmi = safeParse(scores.WMI);
+        const psi = safeParse(scores.PSI);
+
+        if (vci === 0 && vsi === 0) {
+            toast({ title: "Invalid Scores", description: "Please enter at least one valid score.", variant: "destructive" });
+            return;
+        }
+
         setIsSaving(true);
         
         try {
-            const db = getRegionalDb(user.region || 'uk');
+            // Default to UK if region missing (Pilot safety)
+            const region = user.region || 'uk';
+            const db = getRegionalDb(region);
             
             // 1. Create Assessment Result Record
             await addDoc(collection(db, 'assessment_results'), {
@@ -41,24 +61,30 @@ export function WiscVEntryForm({ studentId, onComplete }: WiscVEntryFormProps) {
                 templateId: 'WISC-V',
                 category: 'Cognitive',
                 responses: {
-                    'Verbal Comprehension (VCI)': parseInt(scores.VCI),
-                    'Visual Spatial (VSI)': parseInt(scores.VSI),
-                    'Fluid Reasoning (FRI)': parseInt(scores.FRI),
-                    'Working Memory (WMI)': parseInt(scores.WMI),
-                    'Processing Speed (PSI)': parseInt(scores.PSI)
+                    'Verbal Comprehension (VCI)': vci,
+                    'Visual Spatial (VSI)': vsi,
+                    'Fluid Reasoning (FRI)': fri,
+                    'Working Memory (WMI)': wmi,
+                    'Processing Speed (PSI)': psi
                 },
-                totalScore: Math.round((parseInt(scores.VCI) + parseInt(scores.VSI) + parseInt(scores.FRI) + parseInt(scores.WMI) + parseInt(scores.PSI)) / 5), // Approx FSIQ
+                // Calc approximate total if not full
+                totalScore: Math.round((vci + vsi + fri + wmi + psi) / 5), 
                 completedAt: new Date().toISOString(),
                 status: 'graded',
-                tenantId: user.tenantId
+                tenantId: user.tenantId || 'default' // Ensure tenantId is never undefined
             });
 
             toast({ title: "Assessment Saved", description: "WISC-V scores recorded." });
             setScores({ VCI: "", VSI: "", FRI: "", WMI: "", PSI: "" }); // Reset
             onComplete?.();
-        } catch (e) {
-            console.error(e);
-            toast({ title: "Error", description: "Failed to save assessment.", variant: "destructive" });
+        } catch (e: any) {
+            console.error("WISC-V Save Error:", e);
+            // Show more detailed error if permission denied
+            if (e.code === 'permission-denied') {
+                toast({ title: "Permission Denied", description: "You do not have write access to this region.", variant: "destructive" });
+            } else {
+                toast({ title: "Error", description: "Failed to save assessment. Check console.", variant: "destructive" });
+            }
         } finally {
             setIsSaving(false);
         }

@@ -1,12 +1,13 @@
+// src/components/dashboard/case/ai-copilot-float.tsx
+
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sparkles, Send, X, Bot, FileText, Minimize2, Maximize2 } from 'lucide-react';
+import { Sparkles, Send, X, Bot, FileText, Minimize2, Maximize2, BookmarkPlus } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
@@ -22,9 +23,10 @@ interface CopilotMessage {
 interface CopilotFloatProps {
     contextMode?: 'general' | 'student' | 'case';
     contextId?: string;
+    onPromoteToContext?: (text: string) => void; // Phase 35: Integration
 }
 
-export function CopilotFloat({ contextMode = 'general', contextId }: CopilotFloatProps) {
+export function CopilotFloat({ contextMode = 'general', contextId, onPromoteToContext }: CopilotFloatProps) {
     const { user } = useAuth();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
@@ -84,6 +86,17 @@ export function CopilotFloat({ contextMode = 'general', contextId }: CopilotFloa
         }
     };
 
+    const handlePromote = (text: string) => {
+        if (onPromoteToContext) {
+            onPromoteToContext(text);
+            toast({ title: "Added to Context", description: "This insight will be used for report generation." });
+        } else {
+            // Fallback: Copy to clipboard
+            navigator.clipboard.writeText(text);
+            toast({ title: "Copied", description: "Copied to clipboard (No context handler linked)." });
+        }
+    };
+
     if (!isOpen) {
         return (
             <Button 
@@ -123,12 +136,26 @@ export function CopilotFloat({ contextMode = 'general', contextId }: CopilotFloa
                         <div className="space-y-4">
                             {messages.map((msg) => (
                                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm shadow-sm ${
+                                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm shadow-sm group relative ${
                                         msg.role === 'user' 
                                             ? 'bg-indigo-600 text-white rounded-tr-none' 
                                             : 'bg-white text-gray-800 border rounded-tl-none'
                                     }`}>
                                         <p>{msg.text}</p>
+                                        
+                                        {/* Promote Button (Only for Assistant) */}
+                                        {msg.role === 'assistant' && (
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="absolute -right-8 top-0 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity bg-white border shadow-sm hover:bg-indigo-50"
+                                                onClick={() => handlePromote(msg.text)}
+                                                title="Use as Input"
+                                            >
+                                                <BookmarkPlus className="h-3 w-3 text-indigo-600" />
+                                            </Button>
+                                        )}
+
                                         {msg.citations && msg.citations.length > 0 && (
                                             <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
                                                 {msg.citations.map((cit, idx) => (

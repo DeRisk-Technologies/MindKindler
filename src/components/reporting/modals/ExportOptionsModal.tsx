@@ -8,10 +8,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { FileText, Lock, FileType, Loader2 } from 'lucide-react';
+import { FileText, Lock, FileType, Loader2, Share2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { DocxGenerator } from '@/lib/export/docx-generator';
-import { ReportService } from '@/services/report-service'; // Assumed exist for PDF
+import { ReportService } from '@/services/report-service';
+import { AuditService } from '@/services/audit/audit-logger';
+import { useAuth } from '@/hooks/use-auth';
 
 interface ExportOptionsModalProps {
     isOpen: boolean;
@@ -22,6 +24,7 @@ interface ExportOptionsModalProps {
 
 export function ExportOptionsModal({ isOpen, onClose, report, tenantName }: ExportOptionsModalProps) {
     const { toast } = useToast();
+    const { user } = useAuth();
     const [format, setFormat] = useState<'pdf' | 'docx'>('pdf');
     const [isExporting, setIsExporting] = useState(false);
 
@@ -42,6 +45,18 @@ export function ExportOptionsModal({ isOpen, onClose, report, tenantName }: Expo
                 window.open(downloadUrl, '_blank');
                 toast({ title: "Export Complete", description: "PDF opened in new tab." });
             }
+
+            // Audit Log
+            if (user) {
+                await AuditService.log(report.tenantId, {
+                    action: 'EXPORT_DOCX',
+                    actorId: user.uid,
+                    resourceType: 'report',
+                    resourceId: report.id,
+                    metadata: { format, title: report.title }
+                });
+            }
+
             onClose();
         } catch (e) {
             console.error(e);

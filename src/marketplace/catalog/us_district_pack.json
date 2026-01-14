@@ -1,24 +1,134 @@
 {
     "id": "us_district_pack",
-    "name": "US District Compliance Pack",
-    "description": "FERPA-aligned rules and safety protocols for US School Districts.",
-    "version": "1.0.0",
+    "name": "US District Compliance Pack (IDEA/FERPA)",
+    "description": "Full IDEA compliance suite including 60-day eligibility timeline, FERPA safeguards, and district-level reporting.",
+    "version": "1.1.0",
     "regionTags": ["US", "North America"],
     "actions": [
         {
             "type": "createPolicyRule",
             "payload": {
                 "title": "FERPA: Consent Check",
-                "description": "Ensure parental consent is on file before assessment.",
+                "description": "Ensure parental consent (Part B) is on file before assessment.",
                 "severity": "critical",
                 "mode": "enforce",
                 "blockActions": true,
-                "appliesToActions": ["assessment.finalize"],
-                "triggerEvent": "assessment.finalize",
+                "appliesToActions": ["assessment.start", "assessment.finalize"],
+                "triggerEvent": "assessment.start",
                 "triggerCondition": "missing_consent",
-                "remediation": "Obtain signed consent form.",
+                "remediation": "Obtain signed Consent to Evaluate form.",
                 "jurisdiction": "US"
             }
         }
-    ]
+    ],
+    "capabilities": {
+        "countryCode": "US",
+        "provisionBankRef": "us_idea_provision_bank",
+        "statutory_timeline": {
+            "process_name": "Special Education Eligibility",
+            "total_weeks": 8.5, 
+            "stages": [
+                {
+                    "week_start": 0,
+                    "week_end": 2,
+                    "name": "Referral & Consent",
+                    "actor": "School Psychologist",
+                    "deadline_action": "obtain_consent"
+                },
+                {
+                    "week_start": 2,
+                    "week_end": 8,
+                    "name": "Evaluation (60 Days)",
+                    "actor": "Multidisciplinary Team",
+                    "deadline_action": "hold_eligibility_meeting"
+                },
+                {
+                    "week_start": 8,
+                    "week_end": 8.5,
+                    "name": "IEP Development (30 Days post-eligibility)",
+                    "actor": "Case Manager",
+                    "deadline_action": "finalize_iep"
+                }
+            ],
+            "rules": [
+                {
+                    "condition": "current_day > 50 AND status != 'meeting_scheduled'",
+                    "action": "trigger_alert",
+                    "alert_level": "critical",
+                    "message": "IDEA Breach Risk: 60-Day Evaluation deadline approaching."
+                }
+            ]
+        },
+        "schemaExtensions": {
+            "student": [
+                {
+                    "fieldName": "us_state_id",
+                    "label": "State Student ID (SSID)",
+                    "type": "string",
+                    "required": true,
+                    "encrypt": false
+                },
+                {
+                    "fieldName": "us_race_ethnicity",
+                    "label": "Race/Ethnicity",
+                    "type": "enum",
+                    "options": ["Hispanic/Latino", "American Indian", "Asian", "Black", "White", "Multi-Racial"],
+                    "required": true,
+                    "encrypt": false
+                },
+                {
+                    "fieldName": "us_ell_status",
+                    "label": "English Language Learner (ELL)",
+                    "type": "boolean",
+                    "required": false,
+                    "encrypt": false
+                }
+            ],
+            "school": [],
+            "staff": []
+        },
+        "complianceWorkflows": [],
+        "psychometricConfig": {
+            "standardScoreMean": 100,
+            "standardScoreSD": 15,
+            "deviationThresholds": {
+                "mild": 85,
+                "significant": 70
+            },
+            "confidenceInterval": 90,
+            "discrepancySignificance": 22 
+        },
+        "statutoryReports": [
+            {
+                "id": "us_psychoeducational_report",
+                "name": "Psychoeducational Evaluation",
+                "sections": [
+                    { "id": "reason_referral", "title": "Reason for Referral", "promptId": "us_referral" },
+                    { "id": "background", "title": "Background Information", "promptId": "us_background" },
+                    { "id": "observations", "title": "Behavioral Observations", "promptId": "us_obs" },
+                    { "id": "assessment_results", "title": "Assessment Results", "promptId": "us_results" },
+                    { "id": "summary", "title": "Summary & Recommendations", "promptId": "us_summary" }
+                ],
+                "constraints": []
+            }
+        ],
+        "interventionLogic": [
+            {
+                "id": "us_wilson_reading",
+                "domain": "VCI",
+                "threshold": 80,
+                "programName": "Wilson Reading System",
+                "description": "Structured literacy for students with decoding deficits.",
+                "evidenceLevel": "gold"
+            },
+            {
+                "id": "us_check_in_out",
+                "domain": "WMI",
+                "threshold": 90,
+                "programName": "Check-In/Check-Out (CICO)",
+                "description": "Tier 2 behavioral intervention.",
+                "evidenceLevel": "silver"
+            }
+        ]
+    }
 }

@@ -46,7 +46,11 @@ import {
   Building,
   Plug,
   UserCircle,
-  Palette // Added Icon
+  Palette,
+  Map as MapIcon,
+  Activity,
+  BarChart3,
+  LineChart
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
@@ -139,7 +143,7 @@ export function DashboardSidebar() {
                <SidebarMenuItem>
                    <SidebarMenuButton asChild isActive={isActive("/dashboard/assessments/mobile")} tooltip="Observation Mode">
                        <Link href="/dashboard/assessments/mobile">
-                           <Eye className="text-emerald-600" /><span>Observation Mode (iPad)</span>
+                           <Eye className="text-emerald-600" /><span>Observation Mode (mobile)</span>
                        </Link>
                    </SidebarMenuButton>
                </SidebarMenuItem>
@@ -180,13 +184,20 @@ export function DashboardSidebar() {
         </SidebarGroup>
 
         {/* 2. PRACTICE MANAGEMENT */}
-        {isPracticeOwner && !isSuperAdmin && (
+        {isPracticeOwner && (
             <SidebarGroup>
                 <SidebarGroupLabel>My Practice</SidebarGroupLabel>
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild isActive={isActive("/dashboard/practice/schools")} tooltip="My Clients">
-                            <Link href="/dashboard/practice/schools">
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/enterprise/analytics")} tooltip="District Command">
+                            <Link href="/dashboard/enterprise/analytics">
+                                <LineChart className="text-blue-600" /><span>Command Center</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/schools")} tooltip="My Clients">
+                            <Link href="/dashboard/schools">
                                 <Building className="text-indigo-600" /><span>Client Schools</span>
                             </Link>
                         </SidebarMenuButton>
@@ -195,6 +206,13 @@ export function DashboardSidebar() {
                         <SidebarMenuButton asChild isActive={isActive("/dashboard/practice/team")} tooltip="My Team">
                             <Link href="/dashboard/practice/team">
                                 <Briefcase className="text-indigo-600" /><span>Practice Team</span>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/schools?tab=map")} tooltip="Coverage Map">
+                            <Link href="/dashboard/schools?tab=map">
+                                <MapIcon className="text-indigo-600" /><span>Coverage Map</span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -336,8 +354,8 @@ export function DashboardSidebar() {
                     )}
                     
                     <SidebarMenuItem>
-                        <SidebarMenuButton asChild isActive={isActive("/dashboard/training/library")} tooltip="Academy">
-                            <Link href="/dashboard/training/library"><GraduationCap /><span>Training Academy</span></Link>
+                        <SidebarMenuButton asChild isActive={isActive("/dashboard/training/my-learning")} tooltip="Academy">
+                            <Link href="/dashboard/training/my-learning"><GraduationCap /><span>Training Academy</span></Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
@@ -413,6 +431,16 @@ export function DashboardSidebar() {
                             </CollapsibleTrigger>
                             <CollapsibleContent>
                                 <SidebarMenuSub>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/pilot-metrics")}>
+                                            <Link href="/dashboard/admin/pilot-metrics"><BarChart3 className="h-4 w-4 mr-2"/><span>Pilot Telemetry</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                    <SidebarMenuSubItem>
+                                        <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/diagnostics")}>
+                                            <Link href="/dashboard/admin/diagnostics"><Activity className="h-4 w-4 mr-2"/><span>System Diagnostics</span></Link>
+                                        </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
                                     <SidebarMenuSubItem>
                                         <SidebarMenuSubButton asChild isActive={isActive("/dashboard/admin/tenants")}>
                                             <Link href="/dashboard/admin/tenants"><List className="h-4 w-4 mr-2"/><span>All Tenants</span></Link>
