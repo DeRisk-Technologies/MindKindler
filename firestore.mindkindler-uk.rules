@@ -3,7 +3,6 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     // --- Helper Functions ---
-    
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -14,34 +13,39 @@ service cloud.firestore {
       );
     }
 
-    function isTenantMatch() {
-      return (
-        // Check 'tenantId' field if it exists
-        (
-          resource.data.get('tenantId', '') == request.auth.token.tenantId
-        ) ||
-        // OR Check 'managedByTenantId' field if it exists
-        (
-          resource.data.get('managedByTenantId', '') == request.auth.token.tenantId
+    // STRICT TENANT CHECK (Robust & Syntax Correct)
+    function isTenantScoped() {
+      let userTenant = request.auth.token.tenantId;
+      
+      // Determine Operation Type
+      let isReadOrDelete = (request.method == 'get' || request.method == 'list' || request.method == 'delete');
+      let isCreate = (request.method == 'create');
+      let isUpdate = (request.method == 'update');
+      
+      // Check Existing Resource (safely handle null resource for create)
+      let existingMatch = resource != null && (
+          resource.data.get('tenantId', '') == userTenant || 
+          resource.data.get('managedByTenantId', '') == userTenant
+      );
+      
+      // Check New Resource (safely handle null request.resource for delete)
+      let newMatch = request.resource != null && (
+          request.resource.data.get('tenantId', '') == userTenant || 
+          request.resource.data.get('managedByTenantId', '') == userTenant
+      );
+
+      return isSystemAdmin() || (
+        isAuthenticated() && (
+          (isReadOrDelete && existingMatch) ||
+          (isCreate && newMatch) ||
+          (isUpdate && existingMatch && newMatch)
         )
       );
     }
 
-    // Combined Check for Read/Write
+    // Combined Check
     function isAuthorized() {
-      return isAuthenticated() && (
-        isSystemAdmin() || 
-        (
-          // For Writes (Create/Update): Check New Data
-          (request.method == 'create' || request.method == 'update') ? 
-            (
-              request.resource.data.get('tenantId', '') == request.auth.token.tenantId ||
-              request.resource.data.get('managedByTenantId', '') == request.auth.token.tenantId
-            ) : 
-          // For Reads/Delete: Check Existing Data
-            isTenantMatch()
-        )
-      );
+        return isTenantScoped();
     }
 
     // --- 1. CORE USER & ROUTING ---
