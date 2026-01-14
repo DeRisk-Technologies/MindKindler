@@ -14,9 +14,10 @@ interface InstallPackButtonProps {
     item: any;
     tenantId: string;
     userId: string;
+    region?: string;
 }
 
-export function InstallPackButton({ item, tenantId, userId }: InstallPackButtonProps) {
+export function InstallPackButton({ item, tenantId, userId, region = 'uk' }: InstallPackButtonProps) {
     const [loading, setLoading] = useState(false);
     const router = useRouter();
     const { toast } = useToast();
@@ -42,7 +43,7 @@ export function InstallPackButton({ item, tenantId, userId }: InstallPackButtonP
         setLoading(true);
         try {
             // 1. Try to install (Server Action)
-            const result = await installMarketplacePack(tenantId, item.id, userId);
+            const result = await installMarketplacePack(tenantId, item.id, userId, region);
 
             if (result.success) {
                 toast({ title: "Success", description: "Pack installed!" });
@@ -53,7 +54,6 @@ export function InstallPackButton({ item, tenantId, userId }: InstallPackButtonP
                 
                 const createCheckout = httpsCallable(functions, 'createStripeCheckoutV2');
                 
-                // Use success page URL with session_id placeholder
                 const baseUrl = window.location.origin;
                 const successUrl = `${baseUrl}/dashboard/marketplace/success?session_id={CHECKOUT_SESSION_ID}&packId=${item.id}`;
                 const cancelUrl = window.location.href;

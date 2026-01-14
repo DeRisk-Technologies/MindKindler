@@ -144,9 +144,10 @@ service cloud.firestore {
     match /trainingCompletions/{id} { allow read, write: if isAuthenticated(); } 
     match /certificates/{id} { allow read, write: if isAuthenticated(); }
     
-    match /marketplaceItems/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
-    match /marketplaceReviews/{id} { allow read, write: if isAuthenticated(); }
-    match /marketplacePurchases/{id} { allow read, write: if isAuthorized(); }
+    // FIXED: CamelCase to Snake_Case mismatch
+    match /marketplace_items/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /marketplace_reviews/{id} { allow read, write: if isAuthenticated(); }
+    match /marketplace_purchases/{id} { allow read, write: if isAuthorized(); }
     
     match /partners/{id} { allow read, write: if isAuthenticated(); }
     match /partnerStatements/{id} { allow read, write: if isAuthenticated(); }

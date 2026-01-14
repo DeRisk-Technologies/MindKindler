@@ -10,8 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ShieldCheck, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { InstallPackButton } from "@/components/marketplace/InstallPackButton";
+import { doc, getDoc } from 'firebase/firestore'; 
+import { getRegionalDb } from '@/lib/firebase'; 
 
-// Mock Catalog Lookup
+// Mock Catalog Lookup (Static Fallback)
 import ukPack from "@/marketplace/catalog/uk_la_pack.json";
 
 export default function ItemDetailPage({ params }: { params: Promise<{ itemId: string }> }) {
@@ -23,22 +25,40 @@ export default function ItemDetailPage({ params }: { params: Promise<{ itemId: s
 
     // Initial Load
     useEffect(() => {
-        // Simulate fetch
-        if (itemId === 'uk_la_pack') {
-            setItem(ukPack);
-        } else {
-            // Mock other packs
-            setItem({
-                id: itemId,
-                name: 'Premium Autism Suite',
-                description: 'Complete ADOS-2 workflow and report templates.',
-                version: '2.0',
-                price: 49.00,
-                trialDays: 7,
-                stripePriceId: 'price_mock_autism'
-            });
+        if (!user) return;
+
+        async function load() {
+            // 1. Try Dynamic Fetch (Regional)
+            try {
+                const db = getRegionalDb(user.region);
+                const snap = await getDoc(doc(db, 'marketplace_items', itemId));
+                if (snap.exists()) {
+                    const data = snap.data();
+                    setItem({ ...data, region: user.region }); // Inject region for button
+                    return;
+                }
+            } catch (e) {
+                console.error("Dynamic fetch failed", e);
+            }
+
+            // 2. Fallback Static
+            if (itemId === 'uk_la_pack') {
+                setItem({ ...ukPack, region: 'uk' });
+            } else {
+                // Mock legacy fallback
+                setItem({
+                    id: itemId,
+                    name: 'Unknown Pack',
+                    description: 'Pack details not found.',
+                    version: '0.0',
+                    price: 0,
+                    trialDays: 0,
+                    region: user.region || 'uk'
+                });
+            }
         }
-    }, [itemId]);
+        load();
+    }, [itemId, user]);
 
     if (!item) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin"/></div>;
 
@@ -51,7 +71,7 @@ export default function ItemDetailPage({ params }: { params: Promise<{ itemId: s
                 <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft className="h-5 w-5"/></Button>
                 <div>
                     <h1 className="text-3xl font-bold flex items-center gap-2">
-                        {item.name} <ShieldCheck className="h-6 w-6 text-green-600"/>
+                        {item.name || item.title} <ShieldCheck className="h-6 w-6 text-green-600"/>
                     </h1>
                     <div className="flex gap-2 mt-2">
                         <Badge variant="outline">v{item.version}</Badge>
@@ -90,7 +110,14 @@ export default function ItemDetailPage({ params }: { params: Promise<{ itemId: s
                             </div>
 
                             {/* Client Component handling Stripe Logic */}
-                            {user && <InstallPackButton item={item} tenantId={user.tenantId} userId={user.uid} />}
+                            {user && (
+                                <InstallPackButton 
+                                    item={item} 
+                                    tenantId={user.tenantId} 
+                                    userId={user.uid} 
+                                    region={user.region} // Pass region
+                                />
+                            )}
                             
                             <p className="text-xs text-center text-muted-foreground">
                                 {isFree ? "Instant installation." : "Secure payment via Stripe."}

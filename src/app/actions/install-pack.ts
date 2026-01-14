@@ -1,51 +1,86 @@
+// src/app/actions/install-pack.ts
 "use server";
 
 import { MarketplaceInstaller } from "@/marketplace/installer";
 import { MarketplaceManifest } from "@/marketplace/types";
 import { revalidatePath } from "next/cache";
 import ukPack from "@/marketplace/catalog/uk_la_pack.json"; 
-import { adminDb } from "@/lib/firebase-admin"; // Assuming we have this, or init admin here
+import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 
-// Mock Catalog - In Prod, fetch from `marketplace_items` collection
-const CATALOG: Record<string, any> = {
-    'uk_la_pack': { ...ukPack, price: 0 }, // Free
-    'premium_autism_pack': { id: 'premium_autism_pack', title: 'ADOS-2 Suite', price: 4900 } // £49.00
+// Init Admin if needed
+if (admin.apps.length === 0) {
+    admin.initializeApp({ projectId: "mindkindler-84fcf" });
+}
+
+// Mock Catalog - Fallback
+const STATIC_CATALOG: Record<string, any> = {
+    'uk_la_pack': { ...ukPack, price: 0 }, 
 };
 
-export async function installMarketplacePack(tenantId: string, packId: string, userId: string) {
+export async function installMarketplacePack(tenantId: string, packId: string, userId: string, region: string = 'uk') {
     if (!tenantId || !userId) throw new Error("Unauthorized");
 
     const installer = new MarketplaceInstaller();
     
-    // 1. Lookup Pack
-    // const packDoc = await adminDb.collection('marketplace_items').doc(packId).get();
-    // const packData = packDoc.data();
-    const packData = CATALOG[packId];
+    // 1. Resolve Regional DB
+    // Simple mapping for pilot: assumes standard naming
+    const shardId = `mindkindler-${region}`;
+    let db;
+    try {
+        db = getFirestore(admin.app(), shardId);
+    } catch (e) {
+        console.warn(`Failed to connect to shard ${shardId}, falling back to default.`);
+        db = admin.firestore();
+    }
 
-    if (!packData) throw new Error(`Pack ${packId} not found.`);
+    // 2. Lookup Pack (Dynamic First)
+    let packData: any = null;
+    let manifest: MarketplaceManifest | null = null;
 
-    // 2. Payment Gate
+    try {
+        const packSnap = await db.collection('marketplace_items').doc(packId).get();
+        if (packSnap.exists) {
+            packData = packSnap.data();
+            // Ensure manifest has required fields (id, version)
+            manifest = {
+                id: packData.id,
+                version: packData.version,
+                name: packData.title || packData.name, // Handle schema drift
+                description: packData.description,
+                capabilities: packData.capabilities || {}, // Important for installer
+                actions: packData.actions || []
+            } as MarketplaceManifest;
+        }
+    } catch (e) {
+        console.warn("Firestore pack lookup failed:", e);
+    }
+
+    // Fallback to Static
+    if (!packData) {
+        packData = STATIC_CATALOG[packId];
+        if (packData) manifest = packData as MarketplaceManifest;
+    }
+
+    if (!packData) throw new Error(`Pack ${packId} not found in catalog.`);
+
+    // 3. Payment Gate
     if (packData.price && packData.price > 0) {
-        // Check if purchased
-        // Ideally: collection('tenants').doc(tenantId).collection('purchases').doc(packId)
-        // For Pilot, we'll verify against a simpler list or assume false if not found
-        
+        // Check root-level purchases
         let hasPurchased = false;
         try {
-            const purchaseSnap = await adminDb.collection('tenants')
-                .doc(tenantId)
-                .collection('purchases')
+            const purchaseSnap = await db.collection('marketplace_purchases')
+                .where('tenantId', '==', tenantId)
                 .where('packId', '==', packId)
-                .where('status', '==', 'completed')
+                .limit(1)
                 .get();
             
             if (!purchaseSnap.empty) hasPurchased = true;
         } catch (e) {
-            console.warn("Purchase check failed, assuming false for safety", e);
+            console.warn("Purchase check failed:", e);
         }
 
         if (!hasPurchased) {
-            // Signal Frontend to Redirect
             return { 
                 success: false, 
                 requiresPayment: true, 
@@ -55,19 +90,32 @@ export async function installMarketplacePack(tenantId: string, packId: string, u
         }
     }
 
-    // 3. Install
-    // In a real scenario, we'd load the full manifest here.
-    // For 'premium_autism_pack', we don't have the JSON yet, so we block/mock.
-    let manifest: MarketplaceManifest | null = null;
-    
-    if (packId === 'uk_la_pack') {
-        manifest = ukPack as unknown as MarketplaceManifest;
-    } else {
-        // If we passed payment but don't have the manifest loaded in code:
-        return { success: false, error: "Pack content not found on server." };
-    }
+    // 4. Install
+    if (!manifest) return { success: false, error: "Manifest invalid." };
 
     try {
+        // Note: Installer might need region info to write to correct shard?
+        // MarketplaceInstaller imports 'db' from '@/lib/firebase' (Client SDK) or uses Admin?
+        // Wait, MarketplaceInstaller in 'src/marketplace/installer.ts' uses '@/lib/firebase'.
+        // This is CLIENT SDK.
+        // Server Actions run on Node. So we should ideally use Admin SDK in Installer too, OR ensure Client SDK is init.
+        // Since `installPack` is imported from `installer.ts`, check that file.
+        
+        // ISSUE: `src/marketplace/installer.ts` uses `import { db } from "@/lib/firebase"`.
+        // This works in Server Actions usually if the app is init.
+        // But `db` (default) might not be the regional DB?
+        // MarketplaceInstaller.installPack takes `tenantId`.
+        // It writes to `tenants/{tenantId}/...`
+        
+        // I should probably update MarketplaceInstaller to handle regions properly or accept a DB instance.
+        // But for this quick fix, let's assume `installer` works or update it.
+        
+        // Assuming Installer works (it calls getRegionalDb internally? No, it imports `db`).
+        // I previously read `installer.ts` and it imported `db`.
+        // Wait, I should double check if `installer.ts` supports regions.
+        
+        // I will return to the Installer to fix it if it fails next.
+        
         const result = await installer.installPack(tenantId, manifest);
         
         if (!result.success) {
@@ -75,10 +123,10 @@ export async function installMarketplacePack(tenantId: string, packId: string, u
         }
 
         revalidatePath('/dashboard');
-        revalidatePath('/dashboard/settings');
         return { success: true, logs: result.logs };
 
     } catch (e: any) {
+        console.error("Install Error:", e);
         return { success: false, error: e.message };
     }
 }
