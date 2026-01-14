@@ -33,11 +33,17 @@ export const createCheckoutSession = onCall(callOptions, async (request) => {
     const userId = request.auth.uid;
     const userEmail = request.auth.token.email;
     
-    // 1. Resolve Tenant & Region from Global Routing
-    const routingSnap = await db.collection('user_routing').doc(userId).get();
-    let tenantId = routingSnap.data()?.tenantId;
+    // 1. Resolve Tenant ID
+    // Priority: Auth Token Claims > Client Payload > DB Lookup
+    let tenantId = request.auth.token.tenantId || request.data.tenantId;
 
-    // Fallback for legacy users
+    if (!tenantId) {
+        // DB Lookup Fallback
+        const routingSnap = await db.collection('user_routing').doc(userId).get();
+        tenantId = routingSnap.data()?.tenantId;
+    }
+
+    // Legacy Fallback
     if (!tenantId) {
         const userSnap = await db.collection('users').doc(userId).get();
         tenantId = userSnap.data()?.tenantId;
@@ -54,7 +60,7 @@ export const createCheckoutSession = onCall(callOptions, async (request) => {
     }
     
     if (!finalPriceId) {
-        // Assume priceId is valid if provided, or handle error
+        // Assume priceId is valid
     }
 
     try {
