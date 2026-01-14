@@ -125,9 +125,9 @@ async function provisionIndependentEpp(input: EppInput) {
 // Change these values to create your specific user
 const NEW_USER = {
     email: "testuser17@example.com", // Change this
-    password: "Test54321!",
-    firstName: "Jummai",
-    lastName: "Saleh",
+    password: "Password123!",
+    firstName: "Helena",
+    lastName: "Independent",
     region: "uk"
 };
 

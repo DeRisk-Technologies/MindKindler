@@ -192,6 +192,14 @@
         { "fieldPath": "tenantId", "order": "ASCENDING" },
         { "fieldPath": "issuedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "districts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

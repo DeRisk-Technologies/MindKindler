@@ -60,10 +60,10 @@ export function useFirestoreCollection<T = DocumentData>(
 
       if (hasTenant && !isSuperAdmin && !isGlobalCollection) {
           // If options.filter already handles tenantId, skip to avoid conflict
-          if (!options?.filter || (options.filter.field !== 'tenantId' && options.filter.field !== 'managedByTenantId')) {
-               // Dynamic Tenant Field: Support schemas using 'managedByTenantId' instead of 'tenantId'
-               const tenantField = ['schools', 'districts'].includes(collectionName) ? 'managedByTenantId' : 'tenantId';
-               constraints.push(where(tenantField, '==', user.tenantId));
+          if (!options?.filter || options.filter.field !== 'tenantId') {
+               // Standardize on 'tenantId'. 
+               // If your schema uses 'managedByTenantId', you must migrate data or pass it in options.filter explicitly.
+               constraints.push(where('tenantId', '==', user.tenantId));
           }
       }
       
@@ -74,12 +74,7 @@ export function useFirestoreCollection<T = DocumentData>(
 
       // 3. Sorting
       // Note: If filtering by tenantId, Firestore requires a composite index: (tenantId ASC, sortField DESC)
-      // FIX: Only sort by createdAt if we aren't filtering by managedByTenantId OR if we have the index.
-      // For pilot, removing sort on schools/districts to avoid "Index Required" blocking.
-      const skipSort = ['schools', 'districts'].includes(collectionName);
-      if (!skipSort) {
-          constraints.push(orderBy(sortField, direction));
-      }
+      constraints.push(orderBy(sortField, direction));
 
       const q = query(collection(targetDb, collectionName), ...constraints);
 
@@ -93,7 +88,6 @@ export function useFirestoreCollection<T = DocumentData>(
       }, (err) => {
         if (err.code === 'permission-denied') {
              console.warn(`[Permission Denied] Reading ${collectionName} from ${effectiveShard}. User Tenant: ${user?.tenantId}`);
-             // If denied, we return empty list but keep error state
              setData([]); 
         } else if (err.code === 'failed-precondition') {
              // Often implies missing index
@@ -116,6 +110,7 @@ export function useFirestoreCollection<T = DocumentData>(
   return { data, loading, error, refresh };
 }
 
+// ... rest of file (useFirestoreDocument, etc.) same as before ...
 export function useFirestoreDocument<T = DocumentData>(
     collectionName: string, 
     docId: string,
