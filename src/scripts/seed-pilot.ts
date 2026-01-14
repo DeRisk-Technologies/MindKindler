@@ -171,6 +171,91 @@ async function seed() {
         });
     }
 
+    // 5. PHASE 43: COMMERCIAL & INTELLIGENCE INJECTIONS
+    console.log("- Seeding Phase 43 Data (Marketplace, Telemetry, Requests)...");
+
+    // 5a. Marketplace Items
+    const packRef1 = targetDb.collection("marketplace_items").doc("pack_uk_statutory");
+    batch.set(packRef1, {
+        id: "pack_uk_statutory",
+        title: "UK Statutory Essentials",
+        description: "Core compliance templates for EHCP Advice.",
+        type: "provision_bank",
+        version: "1.0",
+        price: 0,
+        currency: "GBP",
+        regionTags: ["UK"],
+        createdAt: new Date().toISOString()
+    });
+
+    const packRef2 = targetDb.collection("marketplace_items").doc("pack_sensory_adv");
+    batch.set(packRef2, {
+        id: "pack_sensory_adv",
+        title: "Advanced Sensory Processing",
+        description: "Specialized module for Ayres Sensory Integration analysis.",
+        type: "training_module",
+        version: "1.0",
+        price: 49.99,
+        currency: "GBP",
+        stripePriceId: "price_mock_sensory",
+        trialDays: 7,
+        regionTags: ["UK", "US"],
+        createdAt: new Date().toISOString()
+    });
+
+    // 5b. Telemetry Data (Triggers Gap Scanner for Sarah)
+    for(let j=0; j<5; j++) {
+        const telRef = targetDb.collection("telemetry_report_edits").doc();
+        batch.set(telRef, {
+            reportId: `report_old_${j}`,
+            tenantId,
+            userId: "pilot_user_sarah",
+            sectionId: "sensory_needs",
+            aiVersion: "The student has standard sensory needs.",
+            finalVersion: "The student exhibits SIGNIFICANT hyper-sensitivity to auditory stimuli (over 80db) requiring ear defenders.",
+            editDistance: 45 + j, // 45-50%
+            timestamp: new Date(Date.now() - (j * 86400000)).toISOString() // Past 5 days
+        });
+    }
+
+    // 5c. External Request (Magic Link Demo)
+    // Note: Writing to both collections to support generic and specific flows in the Pilot
+    const requestId = "demo_request_1";
+    const requestToken = "demo_token_123";
+    const requestExpiry = new Date(Date.now() + 7 * 86400000).toISOString();
+
+    const contribRef = targetDb.collection("contribution_requests").doc(requestId);
+    batch.set(contribRef, {
+        id: requestId,
+        tenantId,
+        studentId: "pilot_charlie_0",
+        studentName: "Charlie Complex",
+        recipientEmail: "parent@example.com",
+        recipientRole: "Parent",
+        type: "parent_view",
+        token: requestToken,
+        expiresAt: requestExpiry,
+        status: "sent",
+        createdAt: new Date().toISOString(),
+        createdBy: "pilot_user_sarah"
+    });
+
+    // Mirror for 'external_requests' (Consent flow uses this collection)
+    const extRef = targetDb.collection("external_requests").doc(requestId);
+    batch.set(extRef, {
+        id: requestId,
+        tenantId,
+        studentId: "pilot_charlie_0",
+        caseId: "case_charlie_0",
+        recipientEmail: "parent@example.com",
+        recipientRole: "Parent",
+        type: "parent_view",
+        token: requestToken,
+        expiresAt: requestExpiry,
+        status: "sent",
+        auditLog: { sentAt: new Date().toISOString() }
+    });
+
     console.log("- Committing Batch...");
     await batch.commit();
     console.log("✅ Super-Seed Successful. You can now login.");

@@ -15,6 +15,11 @@ import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestoreCollection } from '@/hooks/use-firestore';
 import { useRouter, useSearchParams } from 'next/navigation'; 
+import { useCompliance } from "@/hooks/use-compliance";
+import { 
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
 
 // FALLBACK UK TEMPLATES
 const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
@@ -44,6 +49,7 @@ function ReportBuilderContent() {
     const router = useRouter();
     const { toast } = useToast();
     const searchParams = useSearchParams(); 
+    const { checkConsent } = useCompliance();
     
     const sourceSessionId = searchParams.get('sourceSessionId');
     const paramTemplateId = searchParams.get('templateId');
@@ -51,6 +57,7 @@ function ReportBuilderContent() {
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [justFinished, setJustFinished] = useState(false);
+    const [complianceError, setComplianceError] = useState<string | null>(null);
     
     const [templates, setTemplates] = useState<StatutoryReportTemplate[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>(paramTemplateId || '');
@@ -127,7 +134,6 @@ function ReportBuilderContent() {
         return {
             identity: {
                 firstName: { value: student.identity?.firstName?.value || "Student" },
-                // Use Initial for Last Name
                 lastName: { value: student.identity?.lastName?.value ? student.identity.lastName.value.charAt(0) + "." : "" },
                 age: age, 
                 gender: { value: student.identity?.gender?.value || "Not specified" }
@@ -138,14 +144,21 @@ function ReportBuilderContent() {
             },
             health: {
                 conditions: { value: student.health?.conditions?.value || [] }
-            },
-            // Explicitly exclude: nationalId, upn, address, contact info, parents
+            }
         };
     };
 
     const handleGenerate = async () => {
         if (!selectedTemplateId || !selectedStudentId || !activeTemplate || !user) return;
+        
+        // --- COMPLIANCE GATE ---
         setGenerating(true);
+        const compliance = await checkConsent(selectedStudentId);
+        if (!compliance.allowed) {
+            setComplianceError(compliance.reason || "Legal Consent Missing");
+            setGenerating(false);
+            return;
+        }
 
         try {
             // 1. Resolve Region
@@ -201,7 +214,6 @@ function ReportBuilderContent() {
             // Check if responseData has content or sections
             let contentToSave = responseData.sections || responseData.content || [];
             if (!contentToSave || contentToSave.length === 0) {
-                 // Fallback: If AI returned raw text instead of JSON sections, wrap it.
                  if (responseData.text || (responseData.parsed && responseData.parsed.text)) {
                      contentToSave = { 
                          sections: [
@@ -214,7 +226,6 @@ function ReportBuilderContent() {
                      };
                  } else {
                      console.warn("AI returned empty content", responseData);
-                     // Proceeding to save but user might see blank report
                  }
             }
             
@@ -231,7 +242,7 @@ function ReportBuilderContent() {
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 createdBy: user?.uid, 
-                content: contentToSave, // Use robust content
+                content: contentToSave, 
                 summary: responseData.summary || "",
                 type: 'statutory'
             };
@@ -330,11 +341,36 @@ function ReportBuilderContent() {
                             disabled={!selectedTemplateId || !selectedStudentId || generating} 
                             className="w-[200px] bg-indigo-600 hover:bg-indigo-700"
                         >
-                            {generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Drafting...</> : 'Generate Draft'}
+                            {generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking...</> : 'Generate Draft'}
                         </Button>
                     </CardFooter>
                 </Card>
             )}
+
+            {/* COMPLIANCE ALERT MODAL */}
+            <AlertDialog open={!!complianceError} onOpenChange={() => setComplianceError(null)}>
+                <AlertDialogContent className="border-l-4 border-l-red-500">
+                    <AlertDialogHeader>
+                        <div className="flex items-center gap-2 text-red-600">
+                            <ShieldCheck className="h-6 w-6" />
+                            <AlertDialogTitle>Compliance Block: Consent Required</AlertDialogTitle>
+                        </div>
+                        <AlertDialogDescription className="text-slate-700">
+                            <strong>{complianceError}.</strong><br/><br/>
+                            You cannot generate a Statutory Advice draft until a parent or guardian has signed the legal consent form. This is to ensure GDPR and HIPAA compliance.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Dismiss</AlertDialogCancel>
+                        <AlertDialogAction 
+                            className="bg-indigo-600 hover:bg-indigo-700"
+                            onClick={() => router.push(`/dashboard/cases/new?studentId=${selectedStudentId}&tab=requests`)}
+                        >
+                            Send Consent Request
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

@@ -147,3 +147,7 @@ export const stripeWebhookV2 = webhookHandler;
 // --- GovIntel ---
 import { aggregateGovStats as aggregateGovStatsHandler } from './govintel/aggregation';
 export const aggregateGovStatsV2 = aggregateGovStatsHandler;
+
+// --- Phase 41: External Data Ingestion ---
+import { processExternalContributionHandler } from './ingestion/processExternalContribution';
+export const processExternalContribution = processExternalContributionHandler;
