@@ -155,7 +155,7 @@ export function PostSessionSynthesis({
 
             const plans = await generateInterventionPlanAction(context);
             if (!plans || plans.length === 0) {
-                 toast({ title: "No Plans Generated", description: "AI returned no matches. Try adding more notes.", variant: "warning" });
+                 toast({ title: "No Plans Generated", description: "AI returned no matches. Try adding more notes." });
             } else {
                  setPlannedInterventions(plans);
                  toast({ title: "Plan Generated", description: `Created ${plans.length} targeted interventions.` });
