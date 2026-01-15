@@ -21,7 +21,6 @@ const PLAN_PRICE_MAP: Record<string, string> = {
 
 const MOCK_PRICE_MAP: Record<string, string> = {
     'price_mock_sensory': 'price_1SplQwEyUMirDdEkPK2neuJ0',
-    // Add other mocks here as needed
 };
 
 /**
@@ -225,6 +224,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
     console.log(`✅ Checkout completed for Tenant: ${tenantId}, Pack: ${packId || 'Subscription'}`);
 
+    // Use set with merge: true to avoid "No document to update" errors if the tenant doc 
+    // hasn't been fully provisioned in the default DB yet.
+    
     if (packId) {
         // It's a Marketplace Pack installation
         const installedRef = db.collection('tenants').doc(tenantId).collection('installed_packs').doc(packId);
@@ -236,10 +238,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
             subscriptionId: session.subscription
         }, { merge: true });
         
-        // Also update main tenant doc to reflect active add-ons if needed
-        await db.collection('tenants').doc(tenantId).update({
-            [`modules.${packId}`]: true
-        });
+        // Update main tenant doc (safe write)
+        await db.collection('tenants').doc(tenantId).set({
+            modules: {
+                [packId]: true
+            }
+        }, { merge: true });
 
     } else {
         // It's a Core Platform Subscription
@@ -266,10 +270,12 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
     const tenantId = subscription.metadata?.tenantId;
 
     if (tenantId) {
-        await db.collection('tenants').doc(tenantId).update({
-            'subscription.status': 'active',
-            'subscription.lastPayment': new Date().toISOString()
-        });
+        await db.collection('tenants').doc(tenantId).set({
+            subscription: {
+                status: 'active',
+                lastPayment: new Date().toISOString()
+            }
+        }, { merge: true });
     }
 }
 
@@ -283,19 +289,23 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
     const tenantId = subscription.metadata?.tenantId;
 
     if (tenantId) {
-        await db.collection('tenants').doc(tenantId).update({
-            'subscription.status': 'past_due',
-            'subscription.paymentFailure': new Date().toISOString()
-        });
+        await db.collection('tenants').doc(tenantId).set({
+            subscription: {
+                status: 'past_due',
+                paymentFailure: new Date().toISOString()
+            }
+        }, { merge: true });
     }
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     const tenantId = subscription.metadata?.tenantId;
     if (tenantId) {
-        await db.collection('tenants').doc(tenantId).update({
-            'subscription.status': 'canceled',
-            'subscription.canceledAt': new Date().toISOString()
-        });
+        await db.collection('tenants').doc(tenantId).set({
+            subscription: {
+                status: 'canceled',
+                canceledAt: new Date().toISOString()
+            }
+        }, { merge: true });
     }
 }
