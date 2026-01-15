@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { doc, getDoc, addDoc, collection } from 'firebase/firestore'; 
 import { db, functions, getRegionalDb, db as globalDb } from '@/lib/firebase';
 import { StatutoryReportTemplate } from '@/marketplace/types';
-import { Loader2, FileText, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Loader2, FileText, ShieldCheck, CheckCircle2, LockKeyhole } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@/hooks/use-toast';
@@ -148,16 +148,21 @@ function ReportBuilderContent() {
         };
     };
 
-    const handleGenerate = async () => {
+    const handleGenerate = async (forceOverride = false) => {
         if (!selectedTemplateId || !selectedStudentId || !activeTemplate || !user) return;
         
         // --- COMPLIANCE GATE ---
         setGenerating(true);
-        const compliance = await checkConsent(selectedStudentId);
-        if (!compliance.allowed) {
-            setComplianceError(compliance.reason || "Legal Consent Missing");
-            setGenerating(false);
-            return;
+        
+        if (!forceOverride) {
+            const compliance = await checkConsent(selectedStudentId);
+            if (!compliance.allowed) {
+                setComplianceError(compliance.reason || "Legal Consent Missing");
+                setGenerating(false);
+                return;
+            }
+        } else {
+            console.log("Compliance Override Active: User certified manual consent.");
         }
 
         try {
@@ -244,7 +249,8 @@ function ReportBuilderContent() {
                 createdBy: user?.uid, 
                 content: contentToSave, 
                 summary: responseData.summary || "",
-                type: 'statutory'
+                type: 'statutory',
+                complianceOverride: forceOverride // Audit the override
             };
 
             const reportRef = await addDoc(collection(targetDb, 'reports'), newReport);
@@ -337,7 +343,7 @@ function ReportBuilderContent() {
                     </CardContent>
                     <CardFooter className="flex justify-end border-t bg-slate-50 p-4">
                         <Button 
-                            onClick={handleGenerate} 
+                            onClick={() => handleGenerate(false)} 
                             disabled={!selectedTemplateId || !selectedStudentId || generating} 
                             className="w-[200px] bg-indigo-600 hover:bg-indigo-700"
                         >
@@ -349,7 +355,7 @@ function ReportBuilderContent() {
 
             {/* COMPLIANCE ALERT MODAL */}
             <AlertDialog open={!!complianceError} onOpenChange={() => setComplianceError(null)}>
-                <AlertDialogContent className="border-l-4 border-l-red-500">
+                <AlertDialogContent className="border-l-4 border-l-red-500 max-w-lg">
                     <AlertDialogHeader>
                         <div className="flex items-center gap-2 text-red-600">
                             <ShieldCheck className="h-6 w-6" />
@@ -360,14 +366,29 @@ function ReportBuilderContent() {
                             You cannot generate a Statutory Advice draft until a parent or guardian has signed the legal consent form. This is to ensure GDPR and HIPAA compliance.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Dismiss</AlertDialogCancel>
-                        <AlertDialogAction 
-                            className="bg-indigo-600 hover:bg-indigo-700"
-                            onClick={() => router.push(`/dashboard/cases/new?studentId=${selectedStudentId}&tab=requests`)}
-                        >
-                            Send Consent Request
-                        </AlertDialogAction>
+                    <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                        <div className="flex-1 flex justify-start">
+                            <Button 
+                                variant="outline" 
+                                className="text-amber-700 border-amber-200 hover:bg-amber-50 hover:text-amber-800"
+                                onClick={() => {
+                                    setComplianceError(null);
+                                    handleGenerate(true);
+                                }}
+                            >
+                                <LockKeyhole className="h-3 w-3 mr-2"/>
+                                Override (I have sighted consent)
+                            </Button>
+                        </div>
+                        <div className="flex gap-2">
+                            <AlertDialogCancel>Dismiss</AlertDialogCancel>
+                            <AlertDialogAction 
+                                className="bg-indigo-600 hover:bg-indigo-700"
+                                onClick={() => router.push(`/dashboard/cases/new?studentId=${selectedStudentId}&tab=requests`)}
+                            >
+                                Send Request
+                            </AlertDialogAction>
+                        </div>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

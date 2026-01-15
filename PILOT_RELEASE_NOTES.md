@@ -11,14 +11,14 @@
 To prepare the environment for a fresh pilot demonstration, execute the following commands in your terminal:
 
 ```bash
-# 1. Reset Database & Seed Mock Data (Commercial & Telemetry included)
+# 1. Reset Database & Seed Mock Data (Commercial, Telemetry, & Safeguarding scenarios included)
 npm run pilot:reset
 
 # 2. Launch the Platform (Requires Environment Keys)
 npm run pilot:start
 ```
 
-*Note: The system will perform a Pre-Flight Check (`pilot:check`) to ensure all API keys (`STRIPE`, `OPENAI/GEMINI`, `FIREBASE`) are present before starting.*
+*Note: The system will perform a Pre-Flight Check (`pilot:check`) to ensure all API keys (`STRIPE`, `OPENAI/GEMINI`, `FIREBASE`, `SENDGRID`) are present before starting.*
 
 ---
 
@@ -36,50 +36,77 @@ Access the dashboard at: `http://localhost:9002`
 
 Follow these scripts to demonstrate the core value propositions of MindKindler.
 
-### A. The Commercial Path (Monetization)
-*Showcase the ability to upsell clinical tools directly within the workflow.*
+### Scenario A: The "Red Button" (Safeguarding Escalation)
+**Goal:** Demonstrate clinical safety and immediate response.
 
-1.  Navigate to **Marketplace** (Sidebar).
-2.  Locate the **"Advanced Sensory Processing"** pack (Price: £49.99).
-3.  Click **"Subscribe for £49.99/mo"**.
-4.  Observe the redirection to the **Stripe Secure Checkout** (simulated).
-5.  Upon success, you will be redirected to the **Success Page** with a confetti celebration.
-6.  The pack is now **Installed** and ready for use in reports.
+1.  **Login** as Dr. Sarah.
+2.  **Navigate** to the **Cases** list.
+3.  **Search** for "Sammy Safeguard" (Pre-seeded high-risk case).
+4.  **Enter Consultation:** Click "Start Session" or "Resume" on Sammy's active session.
+5.  **Trigger:** In the **Post-Session Synthesis** view, click the red **"⚠️ REPORT URGENT RISK"** button in the header.
+6.  **Modal:**
+    *   Observe the "Critical Safeguarding Protocol" modal.
+    *   Select "Mother" and "Social Services" from the pre-populated contacts list.
+    *   Select "Send Evidence Email".
+    *   Add a clinical note: "Disclosed intent to self-harm tonight."
+    *   Click **"CONFIRM ESCALATION"**.
+7.  **Verify:**
+    *   Toast notification: "Safeguarding Protocol Initiated".
+    *   **Governance Check:** Go to **Dashboard > Intelligence > Safeguarding**.
+    *   Confirm the new "Crisis Audit Log" entry appears at the top (Red/Immediate).
+    *   Click "Review" to see the full audit trail and immutable logs.
 
-### B. The Intelligence Path (Gap Scanner)
-*Showcase the AI's ability to learn from the human expert.*
+### Scenario B: AI Risk Detection ("Safety Drill")
+**Goal:** Demonstrate the AI's ability to catch risks automatically.
 
-1.  Navigate to **Dashboard (Home)**.
-2.  Look for the **"Recommended Training"** widget.
-3.  You will see a recommendation: **"Advanced Sensory Processing"**.
-    *   *Why?* The seed script injected 5 historic reports where Dr. Sarah significantly rewrote the AI's "Sensory" draft (>45% edit distance).
-4.  Clicking this links directly to the Marketplace item, closing the continuous learning loop.
+1.  **Navigate** to **Consultations**.
+2.  **Open** the draft session for "Riley Risk" (Pre-seeded).
+3.  **Action:** The AI engine scans the transcript immediately.
+4.  **Observation:**
+    *   Notice the "Risk Detected" alert banner or badge (if implemented in UI).
+    *   Or, in the **Post-Session Synthesis**, look for the "Safeguarding" tab or section highlighting the keywords: *"ending it all"*.
+5.  **Resolution:** Use the "Red Button" workflow to escalate this AI-detected risk.
 
-### C. The Triangulation Path (External Portal)
-*Showcase the secure, magic-link workflow for gathering evidence.*
+### Scenario C: Commercial Marketplace (Installing a Pack)
+**Goal:** Demonstrate monetization and extensibility.
 
-1.  **EPP View:**
-    *   Go to **Cases > Charlie Complex**.
-    *   Click the **"Evidence Bank"** tab.
-    *   Use the **Request Widget** to send a "Parent View" request to `parent@example.com`.
-2.  **Parent View (Simulation):**
-    *   Open an **Incognito Window**.
-    *   Paste the Demo Link: `http://localhost:9002/portal/contribute/demo_request_1?token=demo_token_123`
-    *   Fill out the **"All About Me"** form (Strengths, Aspirations).
-    *   Click **Submit**.
-3.  **The Result:**
-    *   Return to the EPP Dashboard (Charlie Complex).
-    *   Refresh the page.
-    *   The **"Family Voice Panel"** now displays the live data you just submitted.
-    *   The **"Statutory Output"** generator will now automatically include this data ("Source 2: Parent Views").
+1.  **Navigate** to **Marketplace**.
+2.  **Find Pack:** Locate the **"Advanced Sensory Processing"** pack (£49.99).
+3.  **Install:** Click "Subscribe / Start Trial".
+4.  **Stripe Flow:**
+    *   The system redirects to the Stripe Checkout (Mock/Test mode).
+    *   Enter test card details (4242 4242...).
+    *   Complete purchase.
+5.  **Verify:**
+    *   Redirects back to "Success" page.
+    *   Go to **Dashboard > Marketplace > Installed**.
+    *   Verify "Advanced Sensory Processing" is listed as **Active**.
+
+### Scenario D: The "Magic Link" (Parental Contribution)
+**Goal:** Demonstrate secure external data gathering.
+
+1.  **Navigate** to **Cases** > **Charlie Complex**.
+2.  **Action:** Click "Request Contribution" > "Parent View".
+3.  **Send:** Confirm email to "parent@example.com".
+4.  **Simulate:**
+    *   Check the terminal logs (if `PILOT_SAFE_MODE=true`) to see the intercepted email with the Magic Link.
+    *   *Or* copy the link from the "External Requests" audit log in Firestore/UI.
+5.  **Access:** Open the link in an Incognito window.
+6.  **Submit:** Fill out the secure form as a parent and submit.
+7.  **Result:** Refresh Dr. Sarah's dashboard to see the "New Evidence" alert on Charlie's case.
 
 ---
 
-## 4. Known Issues & Workarounds
+## 4. Manual Test Checklist (Pre-Demo)
 
-*   **PDF Export:** If PDF generation is slow locally, ensure the Cloud Functions emulator has enough memory allocated (`2GB`).
-*   **Emails:** Emails are currently logged to the console/terminal instead of being sent via SMTP in this dev environment. Check your terminal for "Magic Link Generated" logs.
+Before the live demo, verify these systems are green:
+
+- [ ] **Email Safety:** `PILOT_SAFE_MODE=true` is set.
+- [ ] **Stripe Keys:** `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are configured.
+- [ ] **Cloud Functions:** `processEmailQueueV2`, `createStripeCheckoutV2`, and `stripeWebhookV2` are deployed.
+- [ ] **Seed Data:** `Sammy Safeguard` and `Riley Risk` appear in the student list.
+- [ ] **Governance:** The Safeguarding Dashboard loads without errors.
 
 ---
 
-**End of Release Notes**
+*Confidential - For Internal Pilot Use Only*
