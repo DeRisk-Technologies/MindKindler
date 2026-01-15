@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { ProvisionSpec, NeedCategory } from '../../types/report';
-import { Card } from '../../components/ui/card';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { Textarea } from '../../components/ui/textarea';
+import { ProvisionSpec, NeedCategory } from '@/types/report';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Plus, Wand2, Trash2 } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface ProvisionTableEditorProps {
     initialPlan: ProvisionSpec[];
@@ -21,7 +21,7 @@ export function ProvisionTableEditor({ initialPlan, onSave }: ProvisionTableEdit
 
     const addRow = (category: NeedCategory) => {
         const newRow: ProvisionSpec = {
-            id: \`new-\${Date.now()}\`,
+            id: `new-${Date.now()}`,
             areaOfNeed: category,
             outcome: '',
             provision: '',

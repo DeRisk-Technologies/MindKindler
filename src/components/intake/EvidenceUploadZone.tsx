@@ -1,11 +1,11 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone'; // Assuming react-dropzone is installed or mocked
 import { Upload, FileText, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
-import { Card } from '../../components/ui/card';
-import { Progress } from '../../components/ui/progress';
-import { cn } from '../../lib/utils';
-import { ClerkAgent } from '../../lib/ai/clerk-agent';
-import { EvidenceItem, IngestionAnalysis } from '../../types/evidence';
+import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
+import { ClerkAgent } from '@/lib/ai/clerk-agent';
+import { EvidenceItem, IngestionAnalysis } from '@/types/evidence';
 
 interface EvidenceUploadZoneProps {
     onAnalysisComplete: (files: EvidenceItem[], analysis: IngestionAnalysis[]) => void;
@@ -56,7 +56,7 @@ export function EvidenceUploadZone({ onAnalysisComplete }: EvidenceUploadZonePro
                 caseId: 'current-case',
                 tenantId: 'tenant-1',
                 filename: upload.file.name,
-                storagePath: \`/uploads/\${upload.file.name}\`,
+                storagePath: `/uploads/${upload.file.name}`,
                 uploadDate: new Date().toISOString(),
                 category: analysis.suggestedCategory,
                 extractionStatus: 'processed',

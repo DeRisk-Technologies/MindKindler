@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { IngestionAnalysis, ExtractedStakeholder } from '../../types/evidence';
-import { Stakeholder, StakeholderRole } from '../../types/case';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Badge } from '../../components/ui/badge';
+import { IngestionAnalysis, ExtractedStakeholder } from '@/types/evidence';
+import { Stakeholder, StakeholderRole } from '@/types/case';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { UserPlus, Trash2, Check, User } from 'lucide-react';
 
 interface StakeholderMapperProps {
@@ -25,7 +25,7 @@ export function StakeholderMapper({ analyses, onConfirm }: StakeholderMapperProp
                 // Deduplicate simple check (by name)
                 if (!extracted.find(e => e.name === person.name)) {
                     extracted.push({
-                        id: \`temp-\${idx}-\${Math.random()}\`,
+                        id: `temp-${idx}-${Math.random()}`,
                         name: person.name,
                         role: mapRole(person.role),
                         contactInfo: {
@@ -64,7 +64,7 @@ export function StakeholderMapper({ analyses, onConfirm }: StakeholderMapperProp
 
     const addManual = () => {
         setCandidates(prev => [...prev, {
-            id: \`manual-\${Date.now()}\`,
+            id: `manual-${Date.now()}`,
             name: '',
             role: 'class_teacher',
             contactInfo: { email: '' },

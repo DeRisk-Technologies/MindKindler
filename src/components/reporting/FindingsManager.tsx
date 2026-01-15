@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Finding, NeedCategory } from '../../types/report';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Textarea } from '../../components/ui/textarea';
+import { Finding, NeedCategory } from '@/types/report';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { Check, X, Edit2, AlertTriangle, FileText } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 interface FindingsManagerProps {
     initialFindings: Finding[];
@@ -25,7 +25,7 @@ export function FindingsManager({ initialFindings, onSave }: FindingsManagerProp
         // In a real app, we might add a status field to the Finding type. 
         // Here we'll simulate "Rejection" by removing it from the list or visually dimming.
         // For this demo: Toggle specific state or remove.
-        console.log(\`Set \${id} to \${status}\`);
+        console.log(`Set ${id} to ${status}`);
         // Mock: If approved, maybe turn border green?
     };
 
