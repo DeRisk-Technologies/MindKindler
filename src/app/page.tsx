@@ -4,7 +4,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Globe, ShieldCheck, CheckCircle2, GraduationCap, BarChart3, Lock, Zap } from "lucide-react";
+import { ArrowRight, Globe, ShieldCheck, CheckCircle2, GraduationCap, BarChart3, Lock, Zap, AlertTriangle, Activity } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 
@@ -123,8 +123,51 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Feature Highlight: UK Pack */}
+        {/* Feature Highlight: Clinical Safety */}
         <section className="py-24 bg-white border-y border-slate-100">
+           <div className="container flex flex-col lg:flex-row-reverse items-center gap-16">
+              <div className="lg:w-1/2">
+                 <Badge className="mb-4 bg-red-100 text-red-800 hover:bg-red-100 border-red-200">Clinical Safety First</Badge>
+                 <h2 className="text-3xl md:text-4xl font-bold mb-6 text-slate-900">Safeguarding built into every session.</h2>
+                 <p className="text-lg text-slate-600 mb-8">
+                    MindKindler's AI actively monitors consultation transcripts for risk indicators (self-harm, abuse). With one click, EPPs can initiate the Escalation Protocol.
+                 </p>
+                 <ul className="space-y-4">
+                    <li className="flex items-start gap-3">
+                       <AlertTriangle className="h-6 w-6 text-red-500 mt-0.5" />
+                       <div>
+                          <span className="font-semibold block text-slate-900">Immediate Risk Detection</span>
+                          <span className="text-slate-500">Real-time alerts during live consultations or synthesis.</span>
+                       </div>
+                    </li>
+                    <li className="flex items-start gap-3">
+                       <Activity className="h-6 w-6 text-red-500 mt-0.5" />
+                       <div>
+                          <span className="font-semibold block text-slate-900">The "Red Button" Protocol</span>
+                          <span className="text-slate-500">Instantly notify Parents, SENCOs, and Social Services with a secure audit trail.</span>
+                       </div>
+                    </li>
+                 </ul>
+              </div>
+              <div className="lg:w-1/2 relative">
+                 <div className="absolute inset-0 bg-gradient-to-bl from-red-500 to-orange-500 rounded-2xl transform -rotate-3 scale-105 opacity-10"></div>
+                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xl relative z-10">
+                    {/* Simulated Modal Preview */}
+                    <div className="border-l-4 border-red-500 pl-4 mb-4">
+                        <h3 className="text-lg font-bold text-red-600 flex items-center gap-2"><AlertTriangle className="h-5 w-5"/> CRITICAL SAFEGUARDING ALERT</h3>
+                        <p className="text-sm text-slate-500">Risk detected: 'Self-Harm' keywords found in transcript.</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <div className="h-10 bg-red-600 rounded w-1/2"></div>
+                        <div className="h-10 bg-slate-100 rounded w-1/2"></div>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </section>
+
+        {/* Feature Highlight: UK Pack */}
+        <section className="py-24 bg-slate-50 border-y border-slate-100">
            <div className="container flex flex-col lg:flex-row items-center gap-16">
               <div className="lg:w-1/2">
                  <Badge className="mb-4 bg-indigo-100 text-indigo-800 hover:bg-indigo-100">Marketplace Exclusive</Badge>

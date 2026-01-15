@@ -99,6 +99,17 @@ export function DashboardSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
             
+            {/* SAFEGUARDING SHORTCUT (High Visibility) */}
+            {isClinician && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isActive("/dashboard/intelligence/safeguarding")} tooltip="Safeguarding">
+                    <Link href="/dashboard/intelligence/safeguarding" className="text-red-700 hover:text-red-800 bg-red-50 hover:bg-red-100 border-l-2 border-red-500">
+                        <ShieldAlert /><span>Safeguarding</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+            )}
+            
             {isClinician && (
                 <Collapsible defaultOpen={true} className="group/collapsible">
                 <SidebarMenuItem>
