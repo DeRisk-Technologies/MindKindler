@@ -76,18 +76,6 @@ export async function installMarketplacePack(tenantId: string, packId: string, u
              description: 'Auto-generated for Pilot',
              capabilities: { countryCode: region.toUpperCase(), psychometricConfig: {} } 
          } as any;
-         
-         // If it's the sensory pack specifically, add price info so we can charge for it!
-         if (packId === 'pack_sensory_adv') {
-             // We can't easily add price to manifest here if it's already past the payment check,
-             // but `installMarketplacePack` returns `requiresPayment`.
-             // If we synthesized it, we need to know its price.
-             // But usually `installMarketplacePack` is called *before* payment to check if payment is needed.
-             // If packData was null, we synthesized it.
-             
-             // BUT, for `pack_sensory_adv`, it was likely found in Firestore (step above), so `packData` is NOT null.
-             // The issue was just missing capabilities, which I fixed in the Firestore block above.
-         }
     }
 
     if (!manifest) throw new Error(`Pack ${packId} not found in catalog.`);
@@ -99,6 +87,10 @@ export async function installMarketplacePack(tenantId: string, packId: string, u
 
     if (price && price > 0) {
         // Check root-level purchases
+        // NOTE: We check using Admin SDK (server-side check)
+        // Purchases might be in regional DB or default DB.
+        // Assuming current DB context (regional) is where purchases are stored or replicated.
+        
         let hasPurchased = false;
         try {
             const purchaseSnap = await db.collection('marketplace_purchases')
@@ -110,6 +102,22 @@ export async function installMarketplacePack(tenantId: string, packId: string, u
             if (!purchaseSnap.empty) hasPurchased = true;
         } catch (e) {
             console.warn("Purchase check failed:", e);
+        }
+
+        // --- NEW: Double check in default DB if not found in regional ---
+        // Sometimes purchases are written to default DB by webhooks/actions
+        if (!hasPurchased) {
+             try {
+                const globalDb = admin.firestore();
+                const purchaseSnapGlobal = await globalDb.collection('marketplace_purchases')
+                    .where('tenantId', '==', tenantId)
+                    .where('packId', '==', packId)
+                    .limit(1)
+                    .get();
+                if (!purchaseSnapGlobal.empty) hasPurchased = true;
+             } catch (e) {
+                 console.warn("Global purchase check failed:", e);
+             }
         }
 
         if (!hasPurchased) {

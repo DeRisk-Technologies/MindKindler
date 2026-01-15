@@ -231,6 +231,7 @@ export interface HistoricalAttendanceSummary {
     id: string;
     studentId: string;
     academicYear: string;
+    term: string;
     totalDays: number;
     daysPresent: number;
     daysAbsent: number;
@@ -985,7 +986,7 @@ export interface InstalledPack {
     tenantId: string;
     packId: string;
     version: string;
-    status: 'installed' | 'updating' | 'error';
+    status: 'installed' | 'updating' | 'error' | 'active'; // Added 'active' to match implementation
     installedAt: string;
     installedBy: string;
     configSnapshot?: any;

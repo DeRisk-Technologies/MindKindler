@@ -148,6 +148,7 @@ export class ServerMarketplaceInstaller {
         const installRef = this.db.doc(`tenants/${tenantId}/installed_packs/${manifest.id}`);
         await installRef.set({
             packId: manifest.id, // Ensure ID is present
+            tenantId: tenantId, // CRITICAL for queries filtering by tenantId
             version: manifest.version,
             installedAt: new Date().toISOString(),
             status: 'active'
