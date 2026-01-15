@@ -1,24 +1,91 @@
 "use client";
 
-import React, { useState } from 'react';
-import { ActiveCaseList, CaseSummary } from '../../components/dashboard/ActiveCaseList';
-import { Button } from '../../components/ui/button';
-import { Users } from 'lucide-react';
-
-const MOCK_CASES: CaseSummary[] = [
-    { id: 'c1', studentName: 'Alex Thompson', upn: 'A12345678', status: 'assessment', currentWeek: 8, isOverdue: false, nextAction: 'Review School Advice' },
-    { id: 'c2', studentName: 'Sarah Jenkins', upn: 'B98765432', status: 'drafting', currentWeek: 15, isOverdue: false, nextAction: 'Generate Draft Plan' },
-    { id: 'c3', studentName: 'Michael Chen', upn: 'C45678912', status: 'consultation', currentWeek: 18, isOverdue: false, nextAction: 'Finalize Consultation Log' },
-    { id: 'c4', studentName: 'Emma Watts', upn: 'D78912345', status: 'assessment', currentWeek: 13, isOverdue: true, nextAction: 'Chase Social Care' },
-    { id: 'c5', studentName: 'Liam O\'Connor', upn: 'E15975346', status: 'final', currentWeek: 20, isOverdue: false, nextAction: 'Issue Final Plan' },
-    { id: 'case-a-jeffery', studentName: 'XX Jeffery', upn: 'Z12345678', status: 'drafting', currentWeek: 14, isOverdue: false, nextAction: 'Draft Provision Plan' },
-    { id: 'case-c-smith', studentName: 'Sarah Smith', upn: 'S12345678', status: 'assessment', currentWeek: 22, isOverdue: true, nextAction: 'CRITICAL: Issue Plan' },
-];
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { ActiveCaseList, CaseSummary } from '@/components/dashboard/ActiveCaseList';
+import { Button } from '@/components/ui/button';
+import { Users, Loader2 } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { getRegionalDb } from '@/lib/firebase'; // Assuming we have this helper or access to db
 
 export default function DashboardPage() {
+    const { user, loading } = useAuth();
+    const router = useRouter();
+    const [cases, setCases] = useState<CaseSummary[]>([]);
+    const [dataLoading, setDataLoading] = useState(true);
+
+    useEffect(() => {
+        if (!loading && !user) {
+            router.push('/login');
+        }
+    }, [user, loading, router]);
+
+    useEffect(() => {
+        const fetchCases = async () => {
+            if (!user) return;
+
+            try {
+                // Determine which DB to query (Regional Shard)
+                const db = await getRegionalDb(user.region || 'uk');
+                const casesRef = collection(db, 'cases');
+                
+                // Query: Active cases for this tenant
+                const q = query(
+                    casesRef, 
+                    where('tenantId', '==', user.tenantId),
+                    where('status', '!=', 'archived')
+                );
+
+                const snapshot = await getDocs(q);
+                
+                const loadedCases: CaseSummary[] = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    // Basic mapping, assuming schema match or providing defaults
+                    return {
+                        id: doc.id,
+                        studentName: data.studentName || 'Unknown Student',
+                        upn: data.upn || 'No UPN',
+                        status: data.status || 'assessment',
+                        currentWeek: calculateWeek(data.statutoryTimeline?.requestDate),
+                        isOverdue: data.statutoryTimeline?.isOverdue || false,
+                        nextAction: 'Review file' // Placeholder logic
+                    };
+                });
+
+                setCases(loadedCases);
+            } catch (err) {
+                console.error("Failed to fetch cases:", err);
+            } finally {
+                setDataLoading(false);
+            }
+        };
+
+        if (user) {
+            fetchCases();
+        }
+    }, [user]);
+
+    // Helper for week calculation
+    const calculateWeek = (dateStr?: string) => {
+        if (!dateStr) return 0;
+        const diff = Date.now() - new Date(dateStr).getTime();
+        return Math.floor(diff / (1000 * 60 * 60 * 24 * 7));
+    };
+
+    if (loading || (user && dataLoading)) {
+        return (
+            <div className="flex h-screen items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            </div>
+        );
+    }
+
+    if (!user) return null; // Will redirect
+
     return (
         <div className="space-y-6">
-            <ActiveCaseList cases={MOCK_CASES} />
+            <ActiveCaseList cases={cases} />
         </div>
     );
 }
