@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { Input } from "@/components/ui/input";
 import { useAuth } from '@/hooks/use-auth';
 import { getRegionalDb, db as globalDb } from '@/lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, getDoc, where } from 'firebase/firestore';
 
 export default function ReportsDirectoryPage() {
     const { user } = useAuth();
@@ -45,8 +45,20 @@ export default function ReportsDirectoryPage() {
                 const targetDb = getRegionalDb(region);
                 console.log(`[Reports] Listing from shard: ${region}`);
 
-                // 2. Setup Listener
-                const q = query(collection(targetDb, 'reports'), orderBy('createdAt', 'desc'));
+                // 2. Setup Listener with Security Filter
+                // Ensure query matches security rules (tenant scoping)
+                let q;
+                if (user.tenantId && user.tenantId !== 'default' && user.role !== 'SuperAdmin') {
+                     q = query(
+                         collection(targetDb, 'reports'), 
+                         where('tenantId', '==', user.tenantId),
+                         orderBy('createdAt', 'desc')
+                     );
+                } else {
+                     // Admins or Fallback
+                     q = query(collection(targetDb, 'reports'), orderBy('createdAt', 'desc'));
+                }
+
                 unsubscribe = onSnapshot(q, (snapshot) => {
                     const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                     setReports(data);
@@ -134,7 +146,7 @@ export default function ReportsDirectoryPage() {
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            {report.status === 'final' ? (
+                                            {(report.status === 'final' || report.status === 'signed') ? (
                                                 <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100 flex w-fit gap-1">
                                                     <CheckCircle className="h-3 w-3" /> Finalized
                                                 </Badge>

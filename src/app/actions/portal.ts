@@ -15,7 +15,7 @@ export async function createContributionRequest(
     studentName: string,
     recipientEmail: string, 
     recipientRole: 'Parent' | 'SENCO' | 'Teacher',
-    type: ContributionType,
+    type: ContributionType | 'consent_request', // Expanded type
     userId: string,
     region: string = 'uk'
 ) {
@@ -30,7 +30,7 @@ export async function createContributionRequest(
         studentName,
         recipientEmail,
         recipientRole,
-        type,
+        type: type as ContributionType,
         token, // Stored to verify later
         expiresAt,
         status: 'sent',
@@ -42,10 +42,15 @@ export async function createContributionRequest(
     
     // Construct Magic Link
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const link = `${baseUrl}/portal/contribute/${docRef.id}?token=${token}`;
+    // For consent, we might want a different path, e.g. /portal/consent/[id]
+    // But for now, let's stick to generic /portal/contribute unless we build a dedicated consent page
+    const pagePath = type === 'consent_request' ? 'consent' : 'contribute';
+    const link = `${baseUrl}/portal/${pagePath}/${docRef.id}?token=${token}`;
     
     // Queue Email Notification
-    const templateId = type === 'parent_view' ? 'magic-link-parent' : 'magic-link-school';
+    let templateId = 'magic-link-parent';
+    if (type === 'school_advice') templateId = 'magic-link-school';
+    if (type === 'consent_request') templateId = 'consent-request';
     
     await addDoc(collection(db, 'mail_queue'), {
         to: recipientEmail,
@@ -114,6 +119,9 @@ export async function submitContribution(
     const db = getRegionalDb(region);
 
     // 1. Save Submission
+    // If it is consent, we might want to update the student record directly too?
+    // For now, save submission audit trail.
+    
     const submission: Omit<ContributionSubmission, 'id'> = {
         requestId,
         studentId: request.studentId,
@@ -127,6 +135,17 @@ export async function submitContribution(
     await updateDoc(doc(db, 'contribution_requests', requestId), {
         status: 'submitted'
     });
+    
+    // 3. If Consent, Update Student Record
+    if (request.type === ('consent_request' as any) && submissionData.granted) {
+         const studentRef = doc(db, 'students', request.studentId);
+         // Update consent block on student
+         await updateDoc(studentRef, {
+             'consent.status': 'granted',
+             'consent.grantedAt': new Date().toISOString(),
+             'consent.evidenceId': requestId
+         });
+    }
 
     // 3. Trigger Triangulation / Notification
     console.log(`[Portal] Submission received for ${request.studentId}.`);
