@@ -1,74 +1,119 @@
-# MindKindler UK Pilot: Flight Guide
+# MindKindler UK Statutory OS - Pilot Test Manual
 
-**Version:** 1.0 (Release Candidate)  
-**Date:** 2026-01-09  
-**Audience:** Pilot Educational Psychologists (EPPs)
-
----
-
-## 1. Welcome Aboard
-
-Welcome to the **MindKindler UK Pilot**. You have been granted access to the "CareOS" platform—a specialized environment designed to automate the statutory burden of the 20-week EHCP timeline while enhancing your clinical practice.
-
-For this pilot, you will act as **"Dr. Sarah Super"**, a Principal Educational Psychologist managing a busy caseload.
-
-### Your Credentials
-*   **URL:** [Provided by Deployment Team]
-*   **Email:** `sarah.super@pilot.com`
-*   **Password:** `PilotUK2026!`
-*   **Role:** Principal EPP (Admin Access)
+**Version:** 1.0.0
+**Context:** Verification of the 20-Week EHCP Workflow, Guardian AI, and Reporting Suite.
 
 ---
 
-## 2. Mission Briefing
+## 🚀 Pre-Flight Check: Data Injection
 
-We have prepared 3 specific scenarios to test the core capabilities of the system. Please complete them in order.
+Before testing the UI, we must inject the "Yorkshire Pilot" scenario into the database. This gives you 3 active cases in different stages of the lifecycle.
 
-### Mission 1: The Statutory Deadline (Charlie Complex)
-**Context:** Charlie is a 9-year-old with complex needs. His statutory advice (Appendix K) is **overdue** (Week 18). You need to generate the report immediately.
+**Step 1: Run the Seeder**
+Open your terminal in the project root and run:
+\`\`\`bash
+# If using ts-node
+npx ts-node src/scripts/seed-pilot-data.ts
 
-**Steps:**
-1.  **Navigation:** Go to **Dashboard** -> **My Cases**.
-2.  **Identify Risk:** Find **"Charlie Complex"**. Note the Timeline at the top showing a **Red "Breach Risk"** warning (Week 18/20).
-3.  **Review Evidence:** Click the **"Evidence Bank"** tab. Note that WISC-V scores (Low Working Memory: 72) and a Consultation Transcript are already linked.
-4.  **Draft:** Click the **"Draft Appendix K"** button (or "Start Drafting").
-5.  **Execution:**
-    *   The **Report Builder** opens.
-    *   Click **"Statutory Bank"** in the sidebar. Search for "Memory" and insert a clause about "Memory Aids".
-    *   Click **"AI Draft"** in the toolbar.
-6.  **Success Criteria:** The AI generates "Section B: Needs" that explicitly links Charlie's *transcript* ("I hate reading") with his *low Working Memory score*.
-
-### Mission 2: The Live Session (Sammy Simple)
-**Context:** You are about to walk into a classroom observation for Sammy (Age 6). WiFi is patchy. You need to record observations and a P.A.T.H. session.
-
-**Steps:**
-1.  **Navigation:** Go to **Dashboard** -> **Upcoming Sessions** (or Consultations link).
-2.  **Launch:** Find **"Sammy Simple"** and click **"Join"** (or Resume).
-3.  **Setup:**
-    *   In the **Live Cockpit** (Right Panel), ensure the Methodology is set to **P.A.T.H.**
-    *   See the Stage 1 Prompt: *"The North Star"*.
-4.  **Action:**
-    *   Click the **Mic** button to start recording (Simulated or Real).
-    *   Click the **"+ Tile"** button in the Observation grid. Type **"Hyper-focus"** and Add.
-    *   Click your new "Hyper-focus" tile.
-5.  **Success Criteria:** See the "Observation: Hyper-focus" event appear instantly in the Transcript Stream (Left Panel) with a timestamp.
-
-### Mission 3: Quality Control (Riley Review)
-**Context:** Your trainee, **Bella Beginner**, has drafted a report for Riley. It is pending your signature.
-
-**Steps:**
-1.  **Navigation:** Go to the **Dashboard Home**.
-2.  **Locate Task:** Look for the **"Supervision Queue"** widget (replacing the Compliance widget).
-3.  **Review:** Click **"Review"** on **"Riley Review"**.
-4.  **Decision:**
-    *   Read the draft.
-    *   Click **"Return for Edits"** OR **"Sign & Finalize"**.
-5.  **Success Criteria:** The report status updates, and the item disappears from your active queue.
+# Or if just compiling
+# tsc src/scripts/seed-pilot-data.ts && node src/scripts/seed-pilot-data.js
+\`\`\`
+*Expected Output:* `✅ Seeding Complete! Ready for Pilot Demo.`
 
 ---
 
-## 3. Support
+## 🧪 Test Scenario 1: The "Breach Risk" (Admin View)
 
-If you encounter any "Gremlins" (Bugs), please use the Feedback Widget located in the Report Editor or contact the tech lead directly.
+**Role:** District Admin / Lead EPP
+**Goal:** Identify the critical statutory breach immediately upon login.
 
-**Good luck, Principal.**
+1.  **Navigate to Home:** Go to `http://localhost:3000/`.
+2.  **View:** Ensure you are in **"Admin View"** (Click the toggle bottom-right if needed).
+3.  **Guardian Dashboard:**
+    *   Locate the **"Breach Projections"** card (Top Left). It should be **RED** showing `1/45`.
+    *   Locate the **"Risk Radar"**. You should see a **Critical Priority** alert for "Sibling Risk" (Alex Jeffery).
+4.  **Drill Down:**
+    *   Switch to **"EPP View"** (Bottom right toggle).
+    *   Look at the Case List. Find **"Sarah Smith"**.
+    *   Verify the **Progress Bar** is Red and says **"BREACH"**.
+
+---
+
+## 🧪 Test Scenario 2: The "Intelligent Intake" (New Case)
+
+**Role:** Intake Clerk / EPP
+**Goal:** Onboard a new student using the AI Wizard.
+
+1.  **Start Intake:** Click **"Intake Wizard"** in the sidebar.
+2.  **Step 1: Upload**
+    *   Drag & Drop any PDF (or click the box).
+    *   Watch the **"Scanning..."** animation.
+    *   See the file tagged as "Medical Report" (Mocked AI).
+3.  **Step 2: Verify People**
+    *   See "Jane Doe (Parent)" pre-filled.
+    *   **Action:** Add a new person manually (e.g., "Dr. Who", Role: Pediatrician).
+    *   Click "Confirm Stakeholders".
+4.  **Step 3: Verify Facts**
+    *   See the **Request Date** pre-filled (Today).
+    *   See the **Risk Warning**: "Risk Signals Detected" (from the Seed Logic).
+    *   **Action:** Try to click "Finalize" without checking the box. (Should block you).
+    *   Check the box and click "Finalize".
+5.  **Result:** You should be redirected to the Dashboard for this new case.
+
+---
+
+## 🧪 Test Scenario 3: The "Report Drafting" (Clinical View)
+
+**Role:** Educational Psychologist
+**Goal:** Triangulate evidence and draft Section F for "XX Jeffery".
+
+1.  **Open Case:** From the Case List, click on **"XX Jeffery"**.
+2.  **Check Status:** Verify the Top Stepper shows **"Drafting"** (Blue/Active).
+3.  **Enter Workspace:** Click the **"Drafting Phase"** button (or navigate to `/dashboard/case/case-a-jeffery/drafting`).
+4.  **Tab 1: Evidence Base**
+    *   See the findings categorized (Cognition, Sensory, etc.).
+    *   Notice the **Amber Alert** on the "School Attendance" finding (Contradiction).
+    *   **Action:** Click the **Green Check** to approve the "Hyperlexia" finding.
+5.  **Tab 2: Provision Plan**
+    *   Switch to the "Provision Plan" tab.
+    *   See the **Section F** table.
+    *   **Action:** Click "Add Provision" under Cognition.
+    *   Type: "Weekly Phonics". Frequency: "Daily". Staffing: "TA".
+    *   Click "Save Draft".
+
+---
+
+## 🧪 Test Scenario 4: The "Parent Loop" (Secure Portal)
+
+**Role:** Parent (External)
+**Goal:** Review the draft via a secure link.
+
+1.  **Generate Link:** (Simulated) In your browser, navigate to:
+    `http://localhost:3000/portal/review?token=valid-token-123`
+2.  **Parent View:**
+    *   You should see the "MindKindler Secure Review" header (No Sidebar).
+    *   Read the "Background History".
+    *   **Action:** Click **"Add Comment"** next to Section B.
+    *   Type: "He actually hates loud noises."
+    *   Click "Submit Feedback".
+3.  **Finish:** Click "Submit & Finish" in the top right.
+
+---
+
+## 📦 Marketplace Verification
+
+**Goal:** Confirm the module is "Installed".
+
+1.  Navigate to `/dashboard/marketplace/installed` (if route exists) OR check the console logs during app startup.
+2.  Verify `uk_statutory_os` is listed as active.
+3.  *Note:* The features above (Intake, Guardian, Drafting) *are* the proof of installation.
+
+---
+
+## ✅ Success Criteria
+
+The Pilot is considered successful if:
+1.  **Safety:** The Systemic Risk (Sibling) was flagged in the Guardian View.
+2.  **Compliance:** The Breach Case (Sarah Smith) was visually obvious (Red).
+3.  **Efficiency:** The Report Editor allowed seamless editing of Findings and Provisions.
+4.  **Security:** The Parent Portal allowed feedback without logging in.

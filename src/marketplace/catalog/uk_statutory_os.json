@@ -1,0 +1,88 @@
+{
+  "id": "uk_statutory_os",
+  "name": "MindKindler Statutory OS (UK)",
+  "description": "Complete Operating System for UK EHC Needs Assessments. Includes 20-Week Tracker, AI Clerk, Triangulation Engine, and The Guardian Risk Scanner.",
+  "version": "2.0.0",
+  "releaseDate": "2026-01-15",
+  "publisher": "MindKindler Core",
+  "price": 499.00,
+  "stripePriceId": "price_uk_statutory_os_v2",
+  "subscriptionModel": "per_seat_month",
+  "regionTags": ["UK"],
+  "categories": ["Workflow", "AI", "Compliance"],
+  "dependencies": ["uk_la_pack"],
+  "capabilities": {
+    "featureFlags": [
+      { "key": "enable_statutory_workflow", "label": "20-Week Clock" },
+      { "key": "enable_ai_clerk", "label": "Intelligent Intake" },
+      { "key": "enable_triangulation", "label": "Evidence Triangulation" },
+      { "key": "enable_guardian", "label": "Systemic Risk Scanner" }
+    ],
+    "statutory_timeline": {
+      "standard": "SEND Code of Practice (2015)",
+      "total_weeks": 20,
+      "stages": [
+        { "id": "intake", "week_start": 0, "week_end": 6, "label": "Intake & Decision" },
+        { "id": "assessment", "week_start": 6, "week_end": 12, "label": "Evidence Gathering" },
+        { "id": "drafting", "week_start": 12, "week_end": 16, "label": "Drafting & Synthesis" },
+        { "id": "consultation", "week_start": 16, "week_end": 19, "label": "Consultation" },
+        { "id": "final", "week_start": 19, "week_end": 20, "label": "Finalization" }
+      ],
+      "breach_logic": {
+        "warning_threshold_days": 14,
+        "critical_threshold_days": 0
+      }
+    },
+    "guardian_rules": [
+      {
+        "id": "school_cluster_scan",
+        "description": "Flags >3 cases with similar clinical tags in one school.",
+        "window_days": 90,
+        "threshold_count": 3
+      },
+      {
+        "id": "sibling_risk_scan",
+        "description": "Recursive check for siblings of students with Safeguarding flags.",
+        "action": "proactive_alert"
+      },
+      {
+        "id": "postcode_sector_scan",
+        "description": "Aggregates 'Neglect' or 'Housing' flags by Postcode Sector (e.g., YO10).",
+        "privacy_mode": "sector_aggregation"
+      }
+    ],
+    "reporting_templates": [
+      {
+        "id": "ehcp_section_f_generator",
+        "name": "Provision Architect (Section F)",
+        "ai_model": "provision-architect-v1",
+        "constraints": ["specific", "quantified"]
+      },
+      {
+        "id": "ehcp_triangulation",
+        "name": "Evidence Triangulator",
+        "ai_model": "triangulation-engine-v1",
+        "features": ["contradiction_detection", "source_citation"]
+      }
+    ],
+    "digital_forms": [
+      {
+        "id": "parent_portal_feedback",
+        "name": "Secure Parent Feedback Loop",
+        "security": "magic_link_7day"
+      }
+    ]
+  },
+  "installManifest": {
+    "routes": [
+      "/dashboard/case/:id/intake",
+      "/dashboard/case/:id/drafting",
+      "/guardian"
+    ],
+    "collections": [
+      "cases",
+      "drafts",
+      "analytics_alerts"
+    ]
+  }
+}
