@@ -104,7 +104,7 @@ export const emailService = {
                     to: options.to,
                     from: fromEmail,
                     subject: options.subject,
-                    text: options.text,
+                    text: options.text || '', // Fix: ensure string
                     html: options.html,
                     attachments: options.attachments,
                 });

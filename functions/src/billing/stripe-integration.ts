@@ -244,16 +244,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
-    const subscriptionId = invoice.subscription as string;
+    // Cast to any to access subscription strictly to avoid TS errors on some SDK versions
+    const subscriptionId = (invoice as any).subscription;
+    
     if (!subscriptionId) return;
 
-    // Find tenant by subscription ID
-    // Note: In a large system, we'd query 'stripe_customers' or keep a reverse index.
-    // For now, we search tenants. This is inefficient at scale but works for pilot.
-    // Better: Store tenantId in Subscription metadata.
-    
-    // Ideally, we fetch the subscription from Stripe to get metadata
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    // Retrieve subscription using generic SDK call if needed, or assume ID is valid string
+    // Here we need to fetch from Stripe because invoice object might not contain metadata
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId as string);
     const tenantId = subscription.metadata?.tenantId;
 
     if (tenantId) {
@@ -265,10 +263,12 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-    const subscriptionId = invoice.subscription as string;
+    // Cast to any to access subscription strictly
+    const subscriptionId = (invoice as any).subscription;
+    
     if (!subscriptionId) return;
 
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId as string);
     const tenantId = subscription.metadata?.tenantId;
 
     if (tenantId) {
@@ -276,7 +276,6 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
             'subscription.status': 'past_due',
             'subscription.paymentFailure': new Date().toISOString()
         });
-        // TODO: Trigger email alert via emailService
     }
 }
 
