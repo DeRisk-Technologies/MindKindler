@@ -12,6 +12,44 @@ export type Role =
     'ParentUser' | 
     'GovAnalyst';
 
+// --- Phase 43: Safeguarding & Risk Escalation ---
+
+export type RiskSeverity = 'low' | 'moderate' | 'high' | 'immediate_danger';
+export type EscalationChannel = 'email_only' | 'call_and_email' | 'call_only';
+
+export interface SafeguardingEvent {
+  id: string;
+  studentId: string;
+  caseId: string;
+  consultationId?: string; // If triggered during a session
+  reportedBy: string; // EPP ID
+  timestamp: string;
+  severity: RiskSeverity;
+  category: 'self_harm' | 'suicide_risk' | 'abuse' | 'neglect' | 'other';
+  description: string;
+  
+  // Who was contacted?
+  actionsTaken: {
+    contactId: string;
+    role: 'SENCO' | 'Parent' | 'Safeguarding_Lead' | 'Social_Services';
+    channel: EscalationChannel;
+    status: 'sent' | 'failed' | 'logged_manually';
+    emailContent?: string; // Evidence
+    timestamp: string;
+  }[];
+}
+
+// Extended Contact Interface for scalable emergency contacts
+export interface StudentContact {
+  id: string;
+  name: string;
+  relationship: string; // e.g. "Mother", "SENCO"
+  email: string;
+  phone: string;
+  isEmergencyContact: boolean;
+  hasParentalResponsibility: boolean;
+}
+
 // --- Phase 37: Enterprise & White Labeling ---
 
 export interface TenantBranding {
@@ -986,7 +1024,7 @@ export interface InstalledPack {
     tenantId: string;
     packId: string;
     version: string;
-    status: 'installed' | 'updating' | 'error' | 'active'; // Added 'active' to match implementation
+    status: 'installed' | 'updating' | 'error' | 'active'; 
     installedAt: string;
     installedBy: string;
     configSnapshot?: any;

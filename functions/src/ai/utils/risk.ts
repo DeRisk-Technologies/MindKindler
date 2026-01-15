@@ -14,18 +14,26 @@ export interface RiskCheckResult {
 const RISK_PATTERNS = [
   /suicid(e|al)/i,
   /self[- ]harm/i,
-  /\bcutting\b/i, // Word boundary to avoid "cutting paper" false positives if possible, though context matters
+  /\bcutting\b/i, // Word boundary to avoid "cutting paper" false positives
   /attempted\s+suicide/i,
   /kill\s+myself/i,
+  /end\s+it\s+all/i,
   /want\s+to\s+die/i,
+  /overdose/i,
   /sexually?\s+abus(e|ed|ing)/i,
   /\bmolest(ed|ing)?\b/i,
   /\brape(d)?\b/i,
   /hit\s+me/i,
   /beat\s+me/i,
   /\babuse(d)?\b/i,
+  /scared\s+to\s+go\s+home/i,
   /running\s+away/i,
   /threat\s+to\s+harm/i
+];
+
+export const SAFEGUARDING_KEYWORDS = [
+  "suicide", "kill myself", "end it all", "hurt myself", 
+  "cutting", "overdose", "abuse", "hit me", "scared to go home"
 ];
 
 export function runRiskRegex(text: string): RiskCheckResult {
@@ -43,12 +51,34 @@ export function runRiskRegex(text: string): RiskCheckResult {
     }
   });
 
-  // Additional pass for global matches if needed, but exec finds the first. 
-  // For risk detection, finding ANY is sufficient to trigger escalation.
-  // We return all unique pattern hits.
-
   return {
     found: matches.length > 0,
     matches,
+  };
+}
+
+/**
+ * Enhanced check for immediate safeguarding risks.
+ * Used by the Consultation Cockpit and Report Engine.
+ */
+export function analyzeImmediateRisk(text: string): { isCritical: boolean; matches: string[] } {
+  if (!text) return { isCritical: false, matches: [] };
+  
+  // We use the regex engine for better accuracy (word boundaries) than simple string includes
+  const regexResult = runRiskRegex(text);
+  
+  // Also check the explicit list provided in requirements to be doubly sure
+  const lowerText = text.toLowerCase();
+  const simpleMatches = SAFEGUARDING_KEYWORDS.filter(word => lowerText.includes(word));
+  
+  // Merge results unique
+  const allMatches = Array.from(new Set([
+    ...regexResult.matches.map(m => m.match), 
+    ...simpleMatches
+  ]));
+
+  return {
+    isCritical: allMatches.length > 0,
+    matches: allMatches
   };
 }

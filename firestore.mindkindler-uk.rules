@@ -165,6 +165,10 @@ service cloud.firestore {
     
     match /telemetry_report_edits/{id} { allow read, write: if isAuthorized(); }
     match /mail_queue/{id} { allow read, write: if isAuthorized(); }
+    
+    // --- 9. PHASE 43: SAFEGUARDING ---
+    match /safeguarding_events/{id} { allow read, write: if isAuthorized(); }
+    match /safeguardingIncidents/{id} { allow read, write: if isAuthorized(); } // Legacy support
 
     match /{document=**} { allow read, write: if false; }
   }

@@ -219,7 +219,6 @@ async function seed() {
     }
 
     // 5c. External Request (Magic Link Demo)
-    // Note: Writing to both collections to support generic and specific flows in the Pilot
     const requestId = "demo_request_1";
     const requestToken = "demo_token_123";
     const requestExpiry = new Date(Date.now() + 7 * 86400000).toISOString();
@@ -240,7 +239,6 @@ async function seed() {
         createdBy: "pilot_user_sarah"
     });
 
-    // Mirror for 'external_requests' (Consent flow uses this collection)
     const extRef = targetDb.collection("external_requests").doc(requestId);
     batch.set(extRef, {
         id: requestId,
@@ -254,6 +252,140 @@ async function seed() {
         expiresAt: requestExpiry,
         status: "sent",
         auditLog: { sentAt: new Date().toISOString() }
+    });
+
+    // 6. SAFEGUARDING SCENARIOS (Phase 44)
+    console.log("- Seeding Safeguarding Scenarios...");
+
+    // 6a. Sammy Safeguard (Manual Escalation Test)
+    const sammyRef = targetDb.collection("students").doc("pilot_student_sammy");
+    batch.set(sammyRef, {
+        id: "pilot_student_sammy",
+        tenantId,
+        isSeed: true,
+        identity: {
+            firstName: { value: "Sammy", metadata: { verified: true } },
+            lastName: { value: "Safeguard", metadata: { verified: true } },
+            dateOfBirth: { value: "2012-04-01", metadata: { verified: true } },
+            gender: { value: "Male", metadata: {} }
+        },
+        alerts: [{ type: "high_risk", message: "Self-harm history" }, { type: "medium", message: "Flight risk" }],
+        family: {
+            parents: [
+                {
+                    id: "contact_1",
+                    tenantId,
+                    firstName: "Sarah",
+                    lastName: "Smith",
+                    relationshipType: "Mother",
+                    email: "parent.demo@test.com",
+                    phone: "07700 900001",
+                    hasParentalResponsibility: true,
+                    isEmergencyContact: true,
+                    canPickUp: true,
+                    languages: ["English"],
+                    isPrimaryContact: true,
+                    verificationStatus: "verified_id"
+                },
+                {
+                    id: "contact_2",
+                    tenantId,
+                    firstName: "John",
+                    lastName: "Doe",
+                    relationshipType: "Other", // SENCO usually not in family array, but using Other for demo convenience
+                    email: "senco.demo@school.com",
+                    phone: "0161 123 4567",
+                    hasParentalResponsibility: false,
+                    isEmergencyContact: true,
+                    canPickUp: false,
+                    languages: ["English"],
+                    isPrimaryContact: false,
+                    verificationStatus: "verified_id"
+                },
+                {
+                    id: "contact_3",
+                    tenantId,
+                    firstName: "Social Services",
+                    lastName: "(Emergency Duty)",
+                    relationshipType: "Other",
+                    email: "edt@council.gov.uk",
+                    phone: "999",
+                    hasParentalResponsibility: false,
+                    isEmergencyContact: true,
+                    canPickUp: false,
+                    languages: ["English"],
+                    isPrimaryContact: false,
+                    verificationStatus: "verified_id"
+                }
+            ]
+        },
+        meta: { createdAt: new Date().toISOString(), trustScore: 100 }
+    });
+
+    const sammyCase = targetDb.collection("cases").doc("case_sammy_risk");
+    batch.set(sammyCase, {
+        id: sammyCase.id, tenantId, type: 'student', subjectId: "pilot_student_sammy",
+        title: "Safeguarding Monitoring", status: 'active', priority: 'Critical',
+        createdAt: new Date().toISOString()
+    });
+
+    // 6b. Riley Risk (AI Detection Drill)
+    const rileyRiskRef = targetDb.collection("students").doc("pilot_riley_risk");
+    batch.set(rileyRiskRef, {
+        id: "pilot_riley_risk",
+        tenantId,
+        isSeed: true,
+        identity: {
+            firstName: { value: "Riley", metadata: { verified: true } },
+            lastName: { value: "Risk", metadata: { verified: true } },
+            dateOfBirth: { value: "2010-06-15", metadata: { verified: true } },
+            gender: { value: "Female", metadata: {} }
+        },
+        family: {
+            parents: [
+                {
+                    id: "contact_r1",
+                    tenantId,
+                    firstName: "Risk",
+                    lastName: "Mother",
+                    relationshipType: "Mother",
+                    email: "safe-logging-only@mindkindler.test",
+                    phone: "07700 900000",
+                    hasParentalResponsibility: true,
+                    isEmergencyContact: true,
+                    canPickUp: true,
+                    languages: ["English"],
+                    isPrimaryContact: true,
+                    verificationStatus: "verified_id"
+                }
+            ]
+        },
+        meta: { createdAt: new Date().toISOString(), trustScore: 100 }
+    });
+
+    const rileySession = targetDb.collection("consultation_sessions").doc("session_riley_risk");
+    batch.set(rileySession, {
+        id: rileySession.id, 
+        tenantId, 
+        studentId: "pilot_riley_risk", 
+        date: new Date().toISOString(),
+        mode: "person_centered", 
+        status: "in_progress", 
+        transcript: [
+            {
+                startTime: 0,
+                endTime: 10,
+                speaker: "EPP",
+                text: "How are things at home, Riley?"
+            },
+            {
+                startTime: 12,
+                endTime: 25,
+                speaker: "Riley",
+                text: "Not good. I feel unsafe at home. Sometimes I think about ending it all during the unstructured play time. I'm scared to go home."
+            }
+        ], 
+        createdAt: new Date().toISOString()
     });
 
     console.log("- Committing Batch...");

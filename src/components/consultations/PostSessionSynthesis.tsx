@@ -24,6 +24,7 @@ import { askSessionQuestionAction, AiInsight } from '@/app/actions/consultation'
 import { generateInterventionPlanAction, PlannedIntervention } from '@/app/actions/intervention';
 import { SessionTimeline } from './analysis/SessionTimeline'; 
 import { ReferralGeneratorModal } from '@/components/reporting/modals/ReferralGeneratorModal'; 
+import SafeguardingModal from './SafeguardingModal';
 
 const MOCK_UK_LIBRARY: InterventionLogic[] = [
     { id: "uk_elklan_vci", domain: "VCI", threshold: 85, programName: "ELKLAN Language Builders", description: "Structured oral language support.", evidenceLevel: "gold" },
@@ -90,8 +91,9 @@ export function PostSessionSynthesis({
     const [answer, setAnswer] = useState("");
     const [isAsking, setIsAsking] = useState(false);
 
-    // Referral Modal State
+    // Modal States
     const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
+    const [showSafeguarding, setShowSafeguarding] = useState(false);
 
     // --- Helpers ---
     const sanitizeForServer = (obj: any): any => {
@@ -231,10 +233,19 @@ export function PostSessionSynthesis({
         label: insight.type
     }));
 
+    // Map student contacts for Safeguarding Modal
+    const safeguardingContacts = student?.family?.parents?.map(p => ({
+        id: p.id,
+        name: `${p.firstName} ${p.lastName}`,
+        role: p.relationshipType,
+        email: p.email || '',
+        phone: p.phone || ''
+    })) || [];
+
     return (
         <div className="flex flex-col h-full bg-slate-50 p-6">
             
-            {/* Modal */}
+            {/* Modals */}
             <ReferralGeneratorModal 
                 isOpen={isReferralModalOpen} 
                 onClose={() => setIsReferralModalOpen(false)}
@@ -243,12 +254,28 @@ export function PostSessionSynthesis({
                 context={{ clinicalOpinions, promotedEvidence }}
             />
 
+            <SafeguardingModal 
+                isOpen={showSafeguarding}
+                onClose={() => setShowSafeguarding(false)}
+                studentId={student.id || ''}
+                contacts={safeguardingContacts}
+                detectedRisks={[]} // Can populate from AI check if needed
+            />
+
             <div className="flex justify-between items-center mb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Post-Session Synthesis</h1>
                     <p className="text-slate-500 text-sm">Review timeline, triangulate findings, and plan interventions.</p>
                 </div>
                 <div className="flex gap-2">
+                    <Button 
+                        variant="destructive" 
+                        onClick={() => setShowSafeguarding(true)}
+                        className="animate-pulse shadow-red-500/50 shadow-lg mr-2"
+                    >
+                        <AlertTriangle className="mr-2 h-4 w-4" /> REPORT URGENT RISK
+                    </Button>
+
                     <Button variant="ghost" onClick={() => handleSaveProgress(false)} disabled={isSaving}>
                         <Save className="mr-2 h-4 w-4" /> {isSaving ? "Saving..." : "Save Progress"}
                     </Button>

@@ -93,6 +93,23 @@ const TEMPLATES: Record<string, (data: any) => { subject: string, html: string }
  */
 export const emailService = {
     async send(options: EmailOptions): Promise<boolean> {
+        
+        // --- SAFEGUARD: PILOT MODE ---
+        if (process.env.PILOT_SAFE_MODE === 'true') {
+            const allowedDomains = ['pilot-partner.com', 'mindsuk.com', 'mindkindler.test', 'gmail.com']; // added gmail for testing ease if needed
+            const recipientDomain = options.to.split('@')[1];
+            
+            const isAllowed = allowedDomains.some(d => recipientDomain === d);
+            
+            if (!isAllowed) {
+                console.log(`[PILOT SAFE MODE] Intercepted email to ${options.to}`);
+                console.log(`Subject: ${options.subject}`);
+                console.log(`Content Preview: ${options.text || options.html?.substring(0, 100)}...`);
+                return true; // Pretend success
+            }
+        }
+        // -----------------------------
+
         const sendgridKey = process.env.SENDGRID_API_KEY;
         const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@mindkindler.com'; // Verified Sender
         
