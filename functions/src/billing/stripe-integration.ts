@@ -19,6 +19,11 @@ const PLAN_PRICE_MAP: Record<string, string> = {
     'plan_enterprise': 'price_enterprise_yearly'
 };
 
+const MOCK_PRICE_MAP: Record<string, string> = {
+    'price_mock_sensory': 'price_1SplQwEyUMirDdEkPK2neuJ0',
+    // Add other mocks here as needed
+};
+
 /**
  * createCheckoutSession
  * Supports Plans AND Marketplace Items.
@@ -60,6 +65,12 @@ export const createCheckoutSession = onCall({
     let finalPriceId = priceId;
     if (planId) {
         finalPriceId = PLAN_PRICE_MAP[planId];
+    }
+    
+    // Check Mock Map
+    if (finalPriceId && MOCK_PRICE_MAP[finalPriceId]) {
+        console.log(`[Billing] Swapping mock price ${finalPriceId} for real price ${MOCK_PRICE_MAP[finalPriceId]}`);
+        finalPriceId = MOCK_PRICE_MAP[finalPriceId];
     }
     
     if (!finalPriceId) {
