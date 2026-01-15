@@ -12,10 +12,10 @@ export default function NewCasePage() {
         // const newId = await createCase({ status: 'intake' });
         
         // For the Pilot, we generate a random ID and start the Intake Wizard
-        const randomId = \`case-\${Date.now()}\`;
+        const randomId = `case-${Date.now()}`;
         
         // Redirect to the Intake Wizard for this new case
-        router.replace(\`/dashboard/case/\${randomId}/intake\`);
+        router.replace(`/dashboard/case/${randomId}/intake`);
     }, [router]);
 
     return (

@@ -10,11 +10,54 @@ const db = admin.firestore();
 
 const weeksAgo = (weeks) => formatISO(subWeeks(new Date(), weeks));
 
+// --- MARKETPLACE MODULE DEFINITION (Copied from src/marketplace/catalog/uk_statutory_os.json) ---
+const UK_STATUTORY_OS = {
+  "id": "uk_statutory_os",
+  "name": "MindKindler Statutory OS (UK)",
+  "description": "Complete Operating System for UK EHC Needs Assessments. Includes 20-Week Tracker, AI Clerk, Triangulation Engine, and The Guardian Risk Scanner.",
+  "version": "2.0.0",
+  "releaseDate": "2026-01-15",
+  "publisher": "MindKindler Core",
+  "price": 499.00,
+  "stripePriceId": "price_uk_statutory_os_v2",
+  "subscriptionModel": "per_seat_month",
+  "regionTags": ["UK"],
+  "categories": ["Workflow", "AI", "Compliance"],
+  "dependencies": ["uk_la_pack"],
+  "capabilities": {
+    "featureFlags": [
+      { "key": "enable_statutory_workflow", "label": "20-Week Clock" },
+      { "key": "enable_ai_clerk", "label": "Intelligent Intake" },
+      { "key": "enable_triangulation", "label": "Evidence Triangulation" },
+      { "key": "enable_guardian", "label": "Systemic Risk Scanner" }
+    ],
+    "statutory_timeline": {
+      "standard": "SEND Code of Practice (2015)",
+      "total_weeks": 20,
+      "stages": [
+        { "id": "intake", "week_start": 0, "week_end": 6, "label": "Intake & Decision" },
+        { "id": "assessment", "week_start": 6, "week_end": 12, "label": "Evidence Gathering" },
+        { "id": "drafting", "week_start": 12, "week_end": 16, "label": "Drafting & Synthesis" },
+        { "id": "consultation", "week_start": 16, "week_end": 19, "label": "Consultation" },
+        { "id": "final", "week_start": 19, "week_end": 20, "label": "Finalization" }
+      ]
+    },
+    "installManifest": {
+        "routes": ["/guardian", "/dashboard/case/:id/intake"]
+    }
+  }
+};
+
 async function seedPilotData() {
     console.log("🌱 Starting Pilot Data Seed...");
     console.log("🧹 Clearing collections...");
 
     const BATCH = db.batch();
+
+    // --- 1. MARKETPLACE INJECTION ---
+    console.log("📦 Injecting UK Statutory OS Module into Marketplace...");
+    const marketplaceRef = db.collection('marketplace_items').doc('uk_statutory_os');
+    BATCH.set(marketplaceRef, UK_STATUTORY_OS);
 
     // --- CASE A: XX Jeffery (The Drafting Demo) ---
     console.log("📝 Seeding Case A: XX Jeffery (Drafting Stage)...");
@@ -168,7 +211,7 @@ async function seedPilotData() {
     });
 
     await BATCH.commit();
-    console.log("✅ Seeding Complete! Ready for Pilot Demo.");
+    console.log("✅ Seeding Complete! Marketplace and Cases injected.");
 }
 
 seedPilotData().catch(console.error);
