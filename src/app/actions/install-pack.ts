@@ -41,13 +41,18 @@ export async function installMarketplacePack(tenantId: string, packId: string, u
         const packSnap = await db.collection('marketplace_items').doc(packId).get();
         if (packSnap.exists) {
             packData = packSnap.data();
-            // Ensure manifest has required fields (id, version)
+            
+            // Ensure capabilities structure is valid for the installer
+            const caps = packData.capabilities || {};
+            if (!caps.countryCode) caps.countryCode = region.toUpperCase();
+            if (!caps.psychometricConfig) caps.psychometricConfig = {}; // Stub
+
             manifest = {
                 id: packData.id,
                 version: packData.version,
                 name: packData.title || packData.name,
                 description: packData.description,
-                capabilities: packData.capabilities || {},
+                capabilities: caps,
                 actions: packData.actions || []
             } as MarketplaceManifest;
         }
@@ -62,22 +67,60 @@ export async function installMarketplacePack(tenantId: string, packId: string, u
     }
     
     // Try to synthesize manifest if we have ID but no full catalog entry (e.g. Mock Packs)
-    if (!packData && (packId.includes('mock') || packId.includes('sensory'))) {
+    if (!packData && (packId.includes('mock') || packId.includes('sensory') || packId.includes('pack_'))) {
          console.warn(`[Install] Synthesizing manifest for ${packId}`);
          manifest = {
              id: packId,
              version: '1.0.0',
              name: 'Synthesized Pack',
              description: 'Auto-generated for Pilot',
-             capabilities: { countryCode: 'UK', psychometricConfig: {} } // Minimal valid config
+             capabilities: { countryCode: region.toUpperCase(), psychometricConfig: {} } 
          } as any;
+         
+         // If it's the sensory pack specifically, add price info so we can charge for it!
+         if (packId === 'pack_sensory_adv') {
+             // We can't easily add price to manifest here if it's already past the payment check,
+             // but `installMarketplacePack` returns `requiresPayment`.
+             // If we synthesized it, we need to know its price.
+             // But usually `installMarketplacePack` is called *before* payment to check if payment is needed.
+             // If packData was null, we synthesized it.
+             
+             // BUT, for `pack_sensory_adv`, it was likely found in Firestore (step above), so `packData` is NOT null.
+             // The issue was just missing capabilities, which I fixed in the Firestore block above.
+         }
     }
 
     if (!manifest) throw new Error(`Pack ${packId} not found in catalog.`);
 
     // 3. Payment Gate
-    // (Skipped for verifyPurchaseAction flow as it's assumed paid/verified upstream, 
-    // but good to keep if called directly. For now we assume caller handles payment check.)
+    // If pack has a price and user hasn't purchased, return requiresPayment
+    const price = packData?.price || (manifest as any).price;
+    const stripePriceId = packData?.stripePriceId || (manifest as any).stripePriceId;
+
+    if (price && price > 0) {
+        // Check root-level purchases
+        let hasPurchased = false;
+        try {
+            const purchaseSnap = await db.collection('marketplace_purchases')
+                .where('tenantId', '==', tenantId)
+                .where('packId', '==', packId)
+                .limit(1)
+                .get();
+            
+            if (!purchaseSnap.empty) hasPurchased = true;
+        } catch (e) {
+            console.warn("Purchase check failed:", e);
+        }
+
+        if (!hasPurchased) {
+            return { 
+                success: false, 
+                requiresPayment: true, 
+                priceId: stripePriceId || 'price_mock_123',
+                amount: price
+            };
+        }
+    }
 
     // 4. Install
     try {
