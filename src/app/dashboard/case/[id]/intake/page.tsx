@@ -2,14 +2,14 @@
 
 import React, { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { EvidenceUploadZone } from '../../../../components/intake/EvidenceUploadZone';
-import { StakeholderMapper } from '../../../../components/intake/StakeholderMapper';
-import { FactChecker } from '../../../../components/intake/FactChecker';
-import { IngestionAnalysis, EvidenceItem } from '../../../../types/evidence';
-import { Stakeholder } from '../../../../types/case';
-import { Button } from '../../../../components/ui/button';
-import { Steps } from '../../../../components/ui/steps'; // Hypothetical steps component
-import { Card, CardContent } from '../../../../components/ui/card';
+import { EvidenceUploadZone } from '@/components/intake/EvidenceUploadZone';
+import { StakeholderMapper } from '@/components/intake/StakeholderMapper';
+import { FactChecker } from '@/components/intake/FactChecker';
+import { IngestionAnalysis, EvidenceItem } from '@/types/evidence';
+import { Stakeholder } from '@/types/case';
+import { Button } from '@/components/ui/button';
+import { Steps } from '@/components/ui/steps'; // Hypothetical steps component
+import { Card, CardContent } from '@/components/ui/card';
 
 type IntakeStep = 'upload' | 'stakeholders' | 'facts' | 'complete';
 
@@ -57,7 +57,7 @@ export default function IntakePage() {
         await new Promise(r => setTimeout(r, 1000));
 
         // Redirect to Dashboard
-        router.push(\`/dashboard/case/\${caseId}\`);
+        router.push(`/dashboard/case/${caseId}`);
     };
 
     return (
@@ -79,13 +79,13 @@ export default function IntakePage() {
                         
                         return (
                             <div key={step} className="flex items-center gap-2">
-                                <div className={\`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold \${
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                                     isActive ? 'bg-blue-600 text-white' : 
                                     isPast ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
-                                }\`}>
+                                }`}>
                                     {idx + 1}
                                 </div>
-                                <span className={\`text-sm font-medium \${isActive ? 'text-gray-900' : 'text-gray-500'}\`}>
+                                <span className={`text-sm font-medium ${isActive ? 'text-gray-900' : 'text-gray-500'}`}>
                                     {step}
                                 </span>
                                 {idx < 2 && <div className="w-8 h-0.5 bg-gray-300" />}

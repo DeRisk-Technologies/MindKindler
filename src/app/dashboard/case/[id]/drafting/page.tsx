@@ -2,12 +2,12 @@
 
 import React, { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { FindingsManager } from '../../../../components/reporting/FindingsManager';
-import { ProvisionTableEditor } from '../../../../components/reporting/ProvisionTableEditor';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../components/ui/tabs';
-import { Button } from '../../../../components/ui/button';
+import { FindingsManager } from '@/components/reporting/FindingsManager';
+import { ProvisionTableEditor } from '@/components/reporting/ProvisionTableEditor';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { Download, FileText, LayoutGrid } from 'lucide-react';
-import { Finding, ProvisionSpec } from '../../../../types/report';
+import { Finding, ProvisionSpec } from '@/types/report';
 
 // Mock Data
 const MOCK_FINDINGS: Finding[] = [

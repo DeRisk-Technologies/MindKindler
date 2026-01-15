@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState } from 'react';
-import { PortalGuard } from '../../../../components/portal/PortalGuard';
-import { DraftCommenter } from '../../../../components/portal/DraftCommenter';
-import { DraftReport } from '../../../../types/report';
-import { DraftComment } from '../../../../types/feedback';
-import { Button } from '../../../../components/ui/button';
+import { PortalGuard } from '@/components/portal/PortalGuard';
+import { DraftCommenter } from '@/components/portal/DraftCommenter';
+import { DraftReport } from '@/types/report';
+import { DraftComment } from '@/types/feedback';
+import { Button } from '@/components/ui/button';
 import { CheckCircle } from 'lucide-react';
 
 // Mock Report Data for Portal View

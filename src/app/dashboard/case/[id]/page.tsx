@@ -2,15 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { CaseFile } from '../../../../types/case';
-import { useStatutoryWorkflow } from '../../../../hooks/useStatutoryWorkflow';
-import { CaseHeader } from '../../../../components/dashboard/CaseHeader';
-import { StatutoryStepper } from '../../../../components/dashboard/StatutoryStepper';
-import { BreachCountdown } from '../../../../components/dashboard/BreachCountdown';
-import { Button } from '../../../../components/ui/button';
+import { CaseFile } from '@/types/case';
+import { useStatutoryWorkflow } from '@/hooks/useStatutoryWorkflow';
+import { CaseHeader } from '@/components/dashboard/CaseHeader';
+import { StatutoryStepper } from '@/components/dashboard/StatutoryStepper';
+import { BreachCountdown } from '@/components/dashboard/BreachCountdown';
+import { Button } from '@/components/ui/button';
 import { ArrowRight, FileText, Loader2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/card';
-import { Skeleton } from '../../../../components/ui/skeleton';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // --- Mock Data Service (Replace with useFirestore later) ---
 async function fetchCaseById(id: string): Promise<CaseFile> {
@@ -80,7 +80,7 @@ export default function CaseDashboardPage() {
 
     const handleEscalate = () => {
         // Navigate to Safeguarding flow
-        // router.push(\`/dashboard/case/\${id}/safeguarding\`);
+        // router.push(`/dashboard/case/${id}/safeguarding`);
         console.log("Escalation Triggered");
     };
 
