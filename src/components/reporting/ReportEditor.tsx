@@ -6,7 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Save, Sparkles, FileText, Share2, SidebarOpen, CheckCircle } from 'lucide-react';
+import { Loader2, Save, Sparkles, FileText, Share2, SidebarOpen, CheckCircle, AlertTriangle, Lock } from 'lucide-react';
 import { CitationSidebar } from './CitationSidebar';
 import { ProvisionPicker } from './ProvisionPicker';
 import { ReportService } from '@/services/report-service';
@@ -14,6 +14,9 @@ import { useToast } from '@/hooks/use-toast';
 import { FeedbackWidget } from '@/components/ai/FeedbackWidget'; 
 import { SubmitForReviewModal } from './modals/SubmitForReviewModal'; 
 import { ExportOptionsModal } from './modals/ExportOptionsModal';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { getRegionalDb } from '@/lib/firebase';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 
 // Mock Supervisors
 const MOCK_SUPERVISORS = [
@@ -39,11 +42,46 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     const [provenanceId, setProvenanceId] = useState<string | null>(null);
     const [activeSidebar, setActiveSidebar] = useState<'none' | 'citations' | 'provisions'>('none');
     
+    // Compliance State
+    const [consentStatus, setConsentStatus] = useState<'verified' | 'missing' | 'checking'>('checking');
+    const [consentOverride, setConsentOverride] = useState(false);
+
     // Modals
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false); 
 
     const isTrainee = userRole === 'Trainee' || userRole === 'Assistant'; 
+
+    // --- CONSENT CHECK ---
+    useEffect(() => {
+        async function checkConsent() {
+            if (!tenantId) return; // Wait for tenantId
+            try {
+                const db = getRegionalDb(region); // Ensure regional DB context
+                const q = query(
+                    collection(db, 'consents'),
+                    where('tenantId', '==', tenantId), // CRITICAL: Security Rule Constraint
+                    where('studentId', '==', studentId),
+                    where('status', '==', 'granted'),
+                    orderBy('grantedAt', 'desc'),
+                    limit(1)
+                );
+                const snap = await getDocs(q);
+                if (!snap.empty) {
+                    setConsentStatus('verified');
+                } else {
+                    setConsentStatus('missing');
+                }
+            } catch (e) {
+                console.warn("[ReportEditor] Consent check failed, defaulting to missing.", e);
+                // If permission denied, it likely means no consents found for this tenant/student combo
+                setConsentStatus('missing');
+            }
+        }
+        checkConsent();
+    }, [studentId, region, tenantId]);
+
+    const isBlocked = consentStatus === 'missing' && !consentOverride;
 
     const editor = useEditor({
         immediatelyRender: false,
@@ -102,6 +140,10 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     };
 
     const handleFinalize = async () => {
+        if (isBlocked) {
+            toast({ title: "Compliance Block", description: "Cannot finalize without consent.", variant: "destructive" });
+            return;
+        }
         if (!editor) return;
         try {
             const json = editor.getJSON();
@@ -115,6 +157,10 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     };
 
     const handleAiDraft = async () => {
+        if (isBlocked) {
+            toast({ title: "Compliance Block", description: "Cannot generate AI draft without consent.", variant: "destructive" });
+            return;
+        }
         if (!editor) return;
         setIsGenerating(true);
         try {
@@ -158,11 +204,21 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
     };
 
     const handleSubmitForReview = async (supervisorId: string, note: string) => {
+        if (isBlocked) return;
         toast({ 
             title: "Submitted for Supervision", 
             description: `Sent to ${MOCK_SUPERVISORS.find(s => s.id === supervisorId)?.name}` 
         });
         setIsReviewModalOpen(false);
+    };
+
+    const handleOverride = () => {
+        setConsentOverride(true);
+        toast({ 
+            title: "Consent Overridden", 
+            description: "You have certified sighting manual consent.",
+            variant: "default" 
+        });
     };
 
     if (!editor) return null;
@@ -199,12 +255,35 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
             />
 
             {/* Main Editor Area */}
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col relative">
+                
+                {/* Compliance Banner */}
+                {isBlocked && (
+                    <div className="absolute top-14 left-4 right-4 z-50">
+                        <Alert variant="destructive" className="bg-red-50 border-red-200">
+                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                            <AlertTitle className="text-red-800">Consent Missing</AlertTitle>
+                            <AlertDescription className="flex items-center justify-between text-red-700">
+                                <span>No active digital consent record found for this student. Statutory generation is blocked.</span>
+                                <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="bg-white border-red-300 hover:bg-red-100 text-red-700 ml-4"
+                                    onClick={handleOverride}
+                                >
+                                    <Lock className="h-3 w-3 mr-2"/>
+                                    Override: I certify I have sighted consent
+                                </Button>
+                            </AlertDescription>
+                        </Alert>
+                    </div>
+                )}
+
                 {/* Toolbar */}
                 <div className="border-b p-2 flex items-center justify-between bg-white dark:bg-card">
                     <div className="flex gap-2 items-center">
-                        <Button variant="outline" size="sm" onClick={handleAiDraft} disabled={isGenerating}>
-                            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4 text-indigo-500"/>}
+                        <Button variant="outline" size="sm" onClick={handleAiDraft} disabled={isGenerating || isBlocked}>
+                            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className={`mr-2 h-4 w-4 ${isBlocked ? 'text-gray-400' : 'text-indigo-500'}`}/>}
                             AI Draft
                         </Button>
                         
@@ -246,16 +325,16 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
                         </Button>
 
                         {isTrainee ? (
-                            <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={() => setIsReviewModalOpen(true)}>
+                            <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={() => setIsReviewModalOpen(true)} disabled={isBlocked}>
                                 <CheckCircle className="mr-2 h-4 w-4" /> Submit for Review
                             </Button>
                         ) : (
-                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" onClick={handleFinalize}>
+                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" onClick={handleFinalize} disabled={isBlocked}>
                                 <FileText className="mr-2 h-4 w-4" /> Finalize
                             </Button>
                         )}
                         
-                        <Button size="sm" variant="secondary" onClick={() => setIsExportModalOpen(true)}>
+                        <Button size="sm" variant="secondary" onClick={() => setIsExportModalOpen(true)} disabled={isBlocked}>
                             <Share2 className="mr-2 h-4 w-4" /> Export
                         </Button>
                     </div>
@@ -263,7 +342,7 @@ export function ReportEditor({ reportId, tenantId, studentId, initialContent, us
 
                 {/* Canvas */}
                 <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900 p-8">
-                    <div className="max-w-3xl mx-auto bg-white dark:bg-card min-h-[800px] shadow-sm border rounded-lg p-8">
+                    <div className={`max-w-3xl mx-auto bg-white dark:bg-card min-h-[800px] shadow-sm border rounded-lg p-8 transition-opacity ${isBlocked ? 'opacity-50 pointer-events-none' : ''}`}>
                         <EditorContent editor={editor} />
                     </div>
                 </div>
