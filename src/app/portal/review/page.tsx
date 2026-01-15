@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { PortalGuard } from '@/components/portal/PortalGuard';
 import { DraftCommenter } from '@/components/portal/DraftCommenter';
 import { DraftReport } from '@/types/report';
 import { DraftComment } from '@/types/feedback';
 import { Button } from '@/components/ui/button';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Loader2 } from 'lucide-react';
 
 // Mock Report Data for Portal View
 const MOCK_DRAFT: DraftReport = {
@@ -27,7 +27,7 @@ const MOCK_DRAFT: DraftReport = {
     generatedByAiModel: 'gemini-1.5'
 };
 
-export default function ReviewPage() {
+function ReviewContent() {
     const [isSubmitted, setIsSubmitted] = useState(false);
     
     // In real app, this would POST to API
@@ -89,5 +89,17 @@ export default function ReviewPage() {
                 </main>
             </div>
         </PortalGuard>
+    );
+}
+
+export default function ReviewPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+            </div>
+        }>
+            <ReviewContent />
+        </Suspense>
     );
 }
