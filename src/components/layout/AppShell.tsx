@@ -25,9 +25,10 @@ export function AppShell({ children }: AppShellProps) {
         {
             title: "Clinical Practice",
             items: [
-                { label: 'My Caseload', icon: Users, path: '/dashboard' },
-                { label: 'Intake Wizard', icon: FilePlus, path: '/intake' },
-                { label: 'Reporting', icon: FileText, path: '/reports' },
+                // FIXED: Points to the unified /cases path
+                { label: 'My Caseload', icon: Users, path: '/dashboard/cases' },
+                { label: 'Intake Wizard', icon: FilePlus, path: '/dashboard/new' },
+                { label: 'Reporting', icon: FileText, path: '/dashboard/reports' },
             ]
         },
         {

@@ -8,14 +8,12 @@ export default function NewCasePage() {
     const router = useRouter();
 
     useEffect(() => {
-        // In a real app, this would call an API to create a blank Case record
-        // const newId = await createCase({ status: 'intake' });
-        
         // For the Pilot, we generate a random ID and start the Intake Wizard
         const randomId = `case-${Date.now()}`;
         
         // Redirect to the Intake Wizard for this new case
-        router.replace(`/dashboard/case/${randomId}/intake`);
+        // FIXED: Now points to the unified /cases path
+        router.replace(`/dashboard/cases/${randomId}/intake`);
     }, [router]);
 
     return (
