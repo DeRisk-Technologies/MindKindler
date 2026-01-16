@@ -1,42 +1,51 @@
 const admin = require('firebase-admin');
+const { getFirestore } = require('firebase-admin/firestore');
 
 // --- Configuration ---
+// Check if app is already initialized
 if (admin.apps.length === 0) {
-    admin.initializeApp();
+    admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
+        projectId: 'mindkindler-84fcf'
+    });
 }
 
-console.log("🌍 Connecting to Regional Database: mindkindler-uk");
-const db = admin.firestore(); // Use default if connecting to emulators, or specific instance if deployed
-// Note: For this script, we assume it's running in an environment where it can access the UK shard
-// or we explicitly select it if possible. 
-// However, the error "Missing or insufficient permissions" is usually RULES related or AUTH related in Client SDK.
-// But you mentioned the collection was deleted. This script RE-CREATES it.
-
 async function restoreReports() {
-    // Target the specific shard
-    const targetDb = admin.app().firestore('mindkindler-uk');
+    console.log("🌍 Connecting to Regional Database: mindkindler-uk...");
+    
+    // Correct way to access a named database in Admin SDK
+    const targetDb = getFirestore(admin.app(), 'mindkindler-uk');
     
     console.log("🛠️ Restoring 'reports' collection structure...");
 
-    // Create a dummy report to initialize the collection index
-    const dummyRef = targetDb.collection('reports').doc('init_placeholder');
-    
-    await dummyRef.set({
-        id: 'init_placeholder',
-        title: 'System Initialization Report',
-        studentName: 'Test Student',
-        status: 'archived',
-        tenantId: 'system', // System tenant
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        type: 'system_check'
-    });
+    try {
+        // Create a dummy report to initialize the collection
+        const dummyRef = targetDb.collection('reports').doc('init_placeholder');
+        
+        await dummyRef.set({
+            id: 'init_placeholder',
+            title: 'System Initialization Report',
+            studentName: 'Test Student',
+            status: 'archived',
+            tenantId: 'system',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            type: 'system_check',
+            // Add other mandatory fields from schema to prevent client-side crashes
+            caseId: 'system-case',
+            generatedBy: 'system-restore-script'
+        });
 
-    console.log("✅ Collection 'reports' initialized.");
-    
-    // Optional: If we had a backup JSON, we would loop through it here.
-    // Since we don't, we just ensure the collection exists so queries don't fail 
-    // (though queries on empty collections return empty, not error).
+        console.log("✅ Collection 'reports' successfully initialized in 'mindkindler-uk'.");
+        console.log("ℹ️  You can verify this in the Firebase Console > Firestore > mindkindler-uk");
+
+    } catch (error) {
+        console.error("❌ Failed to restore reports collection:", error);
+        
+        if (error.code === 5) { // NOT_FOUND
+            console.error("   Hint: Does the database 'mindkindler-uk' exist? You may need to create it in the Firebase Console first.");
+        }
+    }
 }
 
 restoreReports().catch(console.error);
