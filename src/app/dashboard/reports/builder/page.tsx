@@ -45,7 +45,7 @@ const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
 ];
 
 function ReportBuilderContent() {
-    const { user } = useAuth();
+    const { user, userProfile } = useAuth(); // Use userProfile for reliable tenantId
     const router = useRouter();
     const { toast } = useToast();
     const searchParams = useSearchParams(); 
@@ -72,26 +72,19 @@ function ReportBuilderContent() {
         
         async function init() {
             // A. Resolve Region
-            let region = user?.region;
-            if (!region || region === 'default') {
-                if (user?.uid) {
-                    const routingRef = doc(globalDb, 'user_routing', user.uid);
-                    const routingSnap = await getDoc(routingRef);
-                    region = routingSnap.exists() ? routingSnap.data().region : 'uk';
-                } else {
-                    region = 'uk';
-                }
-            }
+            let region = userProfile?.metadata?.region || 'uk';
             const targetDb = getRegionalDb(region);
 
             // B. Load Templates
-            const tenantId = user?.tenantId || 'default';
+            const tenantId = userProfile?.tenantId || 'default';
             try {
+                // Try to load custom templates for this tenant
                 const ref = doc(db, `tenants/${tenantId}/settings/reporting`);
                 const snap = await getDoc(ref);
                 if (snap.exists() && snap.data().templates) {
                     setTemplates(snap.data().templates);
-                } else if (region === 'uk' || user?.email?.includes('uk')) {
+                } else {
+                    // Fallback to defaults
                     setTemplates(FALLBACK_UK_TEMPLATES);
                 }
             } catch (e) {
@@ -116,13 +109,12 @@ function ReportBuilderContent() {
             setLoading(false);
         }
         init();
-    }, [user, sourceSessionId]);
+    }, [user, userProfile, sourceSessionId]);
 
     // --- PRIVACY HELPER: Redact PII before sending to AI ---
     const redactForAI = (student: any) => {
         if (!student) return {};
         
-        // Calculate Age instead of sending DOB
         let age = "Unknown";
         if (student.identity?.dateOfBirth?.value) {
             const dob = new Date(student.identity.dateOfBirth.value);
@@ -149,7 +141,10 @@ function ReportBuilderContent() {
     };
 
     const handleGenerate = async (forceOverride = false) => {
-        if (!selectedTemplateId || !selectedStudentId || !activeTemplate || !user) return;
+        if (!selectedTemplateId || !selectedStudentId || !activeTemplate || !user || !userProfile?.tenantId) {
+             toast({ title: "Configuration Error", description: "Missing Tenant ID or Selection.", variant: "destructive" });
+             return;
+        }
         
         // --- COMPLIANCE GATE ---
         setGenerating(true);
@@ -167,17 +162,9 @@ function ReportBuilderContent() {
 
         try {
             // 1. Resolve Region
-            let region = user?.region; 
-            if (!region || region === 'default') {
-                if (user?.uid) {
-                    const routingRef = doc(globalDb, 'user_routing', user.uid);
-                    const routingSnap = await getDoc(routingRef);
-                    region = routingSnap.exists() ? routingSnap.data().region : 'uk';
-                } else {
-                    region = 'uk';
-                }
-            }
+            const region = userProfile?.metadata?.region || 'uk';
             const targetDb = getRegionalDb(region);
+            const tenantId = userProfile.tenantId; // Explicitly use profile tenantId
 
             // 2. Fetch Full Student Data (Client Side)
             const studentRef = doc(targetDb, 'students', selectedStudentId);
@@ -206,17 +193,16 @@ function ReportBuilderContent() {
             // 5. AI Generation
             const generateFn = httpsCallable(functions, 'generateClinicalReport');
             const result = await generateFn({
-                tenantId: user?.tenantId,
+                tenantId: tenantId,
                 studentId: selectedStudentId,
                 templateId: selectedTemplateId,
                 contextPackId: 'uk_la_pack',
-                studentContext: redactedStudentContext, // SAFE
+                studentContext: redactedStudentContext, 
                 sessionContext: sessionContext       
             });
 
             const responseData = result.data as any;
 
-            // Check if responseData has content or sections
             let contentToSave = responseData.sections || responseData.content || [];
             if (!contentToSave || contentToSave.length === 0) {
                  if (responseData.text || (responseData.parsed && responseData.parsed.text)) {
@@ -235,25 +221,26 @@ function ReportBuilderContent() {
             }
             
             // 6. Persistence (Save with REAL Name for internal record)
-            const realName = rawStudentData.identity?.firstName?.value + ' ' + rawStudentData.identity?.lastName?.value;
+            const realName = (rawStudentData.identity?.firstName?.value || '') + ' ' + (rawStudentData.identity?.lastName?.value || '');
             
             const newReport = {
                 title: activeTemplate.name + ' - Draft',
                 templateId: selectedTemplateId,
                 studentId: selectedStudentId,
                 sessionId: sourceSessionId || null, 
-                studentName: realName || 'Unknown Student',
+                studentName: realName.trim() || 'Unknown Student',
                 status: 'draft',
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
-                createdBy: user?.uid, 
+                createdBy: user.uid, 
                 content: contentToSave, 
                 summary: responseData.summary || "",
                 type: 'statutory',
-                tenantId: user?.tenantId || 'default', // FIXED: Added Tenant ID
+                tenantId: tenantId, // CRITICAL: Must match auth.token.tenantId exactly
                 complianceOverride: forceOverride 
             };
 
+            console.log(`[ReportService] Saving draft to DB. Region: ${region}, Tenant: ${tenantId}`);
             const reportRef = await addDoc(collection(targetDb, 'reports'), newReport);
 
             setJustFinished(true);
@@ -345,7 +332,7 @@ function ReportBuilderContent() {
                     <CardFooter className="flex justify-end border-t bg-slate-50 p-4">
                         <Button 
                             onClick={() => handleGenerate(false)} 
-                            disabled={!selectedTemplateId || !selectedStudentId || generating} 
+                            disabled={!selectedTemplateId || !selectedStudentId || generating || !userProfile?.tenantId} 
                             className="w-[200px] bg-indigo-600 hover:bg-indigo-700"
                         >
                             {generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking...</> : 'Generate Draft'}
