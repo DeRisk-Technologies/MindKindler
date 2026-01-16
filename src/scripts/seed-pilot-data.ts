@@ -4,9 +4,14 @@ import { Finding, ProvisionSpec } from '../types/report';
 import { subWeeks, formatISO, addDays } from 'date-fns';
 
 // --- Configuration ---
-// In a real scenario, we'd initialize the app here. 
-// For this script to be runnable, we assume the environment is set up.
-// admin.initializeApp();
+// Check if app is already initialized (e.g. if imported elsewhere)
+if (!admin.apps.length) {
+    admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
+        projectId: 'mindkindler-84fcf'
+    });
+}
+
 const db = admin.firestore();
 
 /**
