@@ -48,7 +48,7 @@ export function ActiveCaseList({ cases }: ActiveCaseListProps) {
                             <tr 
                                 key={c.id} 
                                 className="hover:bg-gray-50 transition-colors cursor-pointer group"
-                                onClick={() => router.push(`/dashboard/case/${c.id}`)}
+                                onClick={() => router.push(`/dashboard/cases/${c.id}`)} // FIXED: Plural path
                             >
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col">
