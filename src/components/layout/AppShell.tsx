@@ -1,11 +1,11 @@
 "use client";
 
 import React from 'react';
-import { Shield, Users, FilePlus, Settings, Bell, Search, LogOut, ShoppingBag, BookOpen, FileText } from 'lucide-react';
+import { Shield, Users, FilePlus, Settings, Bell, Search, LogOut, ShoppingBag, BookOpen, FileText, UploadCloud } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
-import { cn } from '../../lib/utils';
-import { Button } from '../../components/ui/button';
-import { Avatar, AvatarFallback } from '../../components/ui/avatar';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 interface AppShellProps {
     children: React.ReactNode;
@@ -42,6 +42,7 @@ export function AppShell({ children }: AppShellProps) {
                 { label: 'Marketplace', icon: ShoppingBag, path: '/dashboard/marketplace/templates' },
                 { label: 'Library & CPD', icon: BookOpen, path: '/dashboard/training' },
                 { label: 'Settings', icon: Settings, path: '/dashboard/settings' },
+                { label: 'Publisher Studio', icon: UploadCloud, path: '/dashboard/marketplace/publisher/new' },
             ]
         }
     ];

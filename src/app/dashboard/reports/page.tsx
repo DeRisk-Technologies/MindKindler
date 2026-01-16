@@ -26,12 +26,14 @@ export default function ReportsDirectoryPage() {
     useEffect(() => {
         if (!user) return;
 
-        let unsubscribe: () => void;
+        // We use a flag to prevent race conditions if multiple listeners fire
+        let active = true;
+        const unsubscribers: (() => void)[] = [];
 
         async function initRealtime() {
             try {
                 // 1. Resolve Region
-                let region = user?.region; // Safe Access
+                let region = user?.region; 
                 if (!region || region === 'default') {
                     if (user?.uid) {
                         const routingRef = doc(globalDb, 'user_routing', user.uid);
@@ -45,28 +47,46 @@ export default function ReportsDirectoryPage() {
                 const targetDb = getRegionalDb(region);
                 console.log(`[Reports] Listing from shard: ${region}`);
 
-                // 2. Setup Listener with Security Filter
-                // Ensure query matches security rules (tenant scoping)
-                let q;
-                if (user.tenantId && user.tenantId !== 'default' && user.role !== 'SuperAdmin') {
-                     q = query(
-                         collection(targetDb, 'reports'), 
-                         where('tenantId', '==', user.tenantId),
-                         orderBy('createdAt', 'desc')
-                     );
-                } else {
-                     // Admins or Fallback
-                     q = query(collection(targetDb, 'reports'), orderBy('createdAt', 'desc'));
+                // 2. Dual Query Strategy (Tenant OR Owner)
+                // This covers cases where legacy data has no tenantId but has createdBy
+                const loadedReports = new Map();
+
+                const updateState = () => {
+                    if (active) {
+                        // Sort locally because we are merging two streams
+                        const sorted = Array.from(loadedReports.values()).sort((a, b) => {
+                            const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+                            const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+                            return dateB - dateA;
+                        });
+                        setReports(sorted);
+                        setLoading(false);
+                    }
+                };
+
+                // Query A: Tenant Scope
+                if (user.tenantId && user.tenantId !== 'default') {
+                    const qTenant = query(
+                        collection(targetDb, 'reports'), 
+                        where('tenantId', '==', user.tenantId)
+                    );
+                    const unsubTenant = onSnapshot(qTenant, (snap) => {
+                        snap.docs.forEach(d => loadedReports.set(d.id, { id: d.id, ...d.data() }));
+                        updateState();
+                    });
+                    unsubscribers.push(unsubTenant);
                 }
 
-                unsubscribe = onSnapshot(q, (snapshot) => {
-                    const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                    setReports(data);
-                    setLoading(false);
-                }, (err) => {
-                    console.error("Listener error", err);
-                    setLoading(false);
+                // Query B: Personal Scope (Fallback for orphaned legacy data)
+                const qOwner = query(
+                    collection(targetDb, 'reports'), 
+                    where('createdBy', '==', user.uid)
+                );
+                const unsubOwner = onSnapshot(qOwner, (snap) => {
+                    snap.docs.forEach(d => loadedReports.set(d.id, { id: d.id, ...d.data() }));
+                    updateState();
                 });
+                unsubscribers.push(unsubOwner);
 
             } catch (e) {
                 console.error(e);
@@ -75,7 +95,11 @@ export default function ReportsDirectoryPage() {
         }
 
         initRealtime();
-        return () => unsubscribe?.();
+        
+        return () => {
+            active = false;
+            unsubscribers.forEach(u => u());
+        };
     }, [user]);
 
     const filteredReports = reports.filter(r => 
@@ -157,7 +181,7 @@ export default function ReportsDirectoryPage() {
                                             )}
                                         </TableCell>
                                         <TableCell className="text-xs text-slate-500 font-medium">
-                                            {report.updatedAt ? new Date(report.updatedAt).toLocaleDateString() : new Date(report.createdAt).toLocaleDateString()}
+                                            {report.updatedAt ? new Date(report.updatedAt).toLocaleDateString() : (report.createdAt ? new Date(report.createdAt).toLocaleDateString() : 'N/A')}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Link href={`/dashboard/reports/editor/${report.id}`}>

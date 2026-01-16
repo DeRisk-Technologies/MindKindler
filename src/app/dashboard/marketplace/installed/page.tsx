@@ -1,36 +1,54 @@
 "use client";
 
-import { useFirestoreCollection } from "@/hooks/use-firestore";
 import { InstalledPack } from "@/types/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RotateCcw, CheckCircle2, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { RotateCcw, CheckCircle2, Loader2, Package } from "lucide-react";
+import { useState, useEffect } from "react";
 import { rollbackPack } from "@/marketplace/installer";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { getRegionalDb } from "@/lib/firebase";
+import { collection, query, getDocs } from "firebase/firestore";
 
 export default function InstalledPacksPage() {
     const { user } = useAuth();
     const { toast } = useToast();
     const [processing, setProcessing] = useState<string | null>(null);
+    const [installed, setInstalled] = useState<InstalledPack[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    // Dynamic path based on tenant
-    const collectionPath = user?.tenantId ? `tenants/${user.tenantId}/installed_packs` : null;
+    useEffect(() => {
+        const fetchInstalled = async () => {
+            if (!user?.tenantId) return;
+            
+            try {
+                // 1. Resolve Regional DB
+                const db = await getRegionalDb(user.region || 'uk');
+                
+                // 2. Query Tenant's Installed Packs
+                // Path: tenants/{tenantId}/installed_packs
+                const packsRef = collection(db, `tenants/${user.tenantId}/installed_packs`);
+                const snapshot = await getDocs(packsRef);
+                
+                const packs = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })) as InstalledPack[];
 
-    const { data: installed, loading } = useFirestoreCollection<InstalledPack>(
-        collectionPath || "installed_packs", // fallback strictly to prevent crash, but won't load data until user is ready
-        "installedAt", 
-        "desc",
-        {
-            // If user is not ready, we skip the query inside the hook via 'path' check usually, 
-            // but here we rely on the hook handling nullish path or just returning empty until user loads.
-            // Actually, passing "installed_packs" as fallback is dangerous if it tries to query root.
-            // But since 'collectionPath' is null initially, let's handle loading state.
-        }
-    );
+                setInstalled(packs);
+            } catch (err) {
+                console.error("Failed to fetch installed packs:", err);
+                toast({ title: "Error fetching data", variant: "destructive" });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (user) fetchInstalled();
+    }, [user, toast]);
 
     const handleRollback = async (id: string) => {
         if (!confirm("Are you sure? This will delete all policies and content created by this pack.")) return;
@@ -38,6 +56,8 @@ export default function InstalledPacksPage() {
         try {
             await rollbackPack(id);
             toast({ title: "Rollback Complete", description: "Pack artifacts removed." });
+            // Refresh list
+            setInstalled(prev => prev.filter(p => p.id !== id));
         } catch (e) {
             toast({ title: "Error", variant: "destructive" });
         } finally {
@@ -45,11 +65,14 @@ export default function InstalledPacksPage() {
         }
     };
 
-    if (loading || !user) return <div className="p-8"><Loader2 className="animate-spin h-8 w-8 text-indigo-600"/></div>;
+    if (loading || !user) return <div className="p-8 flex items-center justify-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-600"/></div>;
 
     return (
         <div className="p-8 space-y-8">
-            <h1 className="text-3xl font-bold">Installed Packs</h1>
+            <div className="flex items-center gap-3">
+                <Package className="h-8 w-8 text-indigo-600" />
+                <h1 className="text-3xl font-bold text-gray-900">Installed Packs</h1>
+            </div>
             
             <Card>
                 <CardContent className="p-0">
@@ -66,11 +89,11 @@ export default function InstalledPacksPage() {
                         <TableBody>
                             {installed.map(p => (
                                 <TableRow key={p.id}>
-                                    <TableCell className="font-mono text-xs">{p.packId}</TableCell>
+                                    <TableCell className="font-mono text-xs font-medium">{p.packId}</TableCell>
                                     <TableCell>{p.version}</TableCell>
                                     <TableCell>{new Date(p.installedAt).toLocaleDateString()}</TableCell>
                                     <TableCell>
-                                        <Badge variant={p.status === 'installed' || p.status === 'active' ? 'default' : 'secondary'} className="capitalize bg-green-600">
+                                        <Badge variant={p.status === 'installed' || p.status === 'active' ? 'default' : 'secondary'} className="capitalize bg-green-600 hover:bg-green-700">
                                             {p.status}
                                         </Badge>
                                     </TableCell>
@@ -84,7 +107,13 @@ export default function InstalledPacksPage() {
                                     </TableCell>
                                 </TableRow>
                             ))}
-                            {installed.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No packs installed.</TableCell></TableRow>}
+                            {installed.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground bg-gray-50/50">
+                                        No packs installed yet. Visit the Marketplace to add capabilities.
+                                    </TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
