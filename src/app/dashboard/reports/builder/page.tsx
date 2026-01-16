@@ -250,7 +250,8 @@ function ReportBuilderContent() {
                 content: contentToSave, 
                 summary: responseData.summary || "",
                 type: 'statutory',
-                complianceOverride: forceOverride // Audit the override
+                tenantId: user?.tenantId || 'default', // FIXED: Added Tenant ID
+                complianceOverride: forceOverride 
             };
 
             const reportRef = await addDoc(collection(targetDb, 'reports'), newReport);
