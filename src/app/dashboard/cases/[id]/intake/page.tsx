@@ -56,8 +56,8 @@ export default function IntakePage() {
         // Simulate save delay
         await new Promise(r => setTimeout(r, 1000));
 
-        // Redirect to Dashboard
-        router.push(`/dashboard/case/${caseId}`);
+        // Redirect to Dashboard (FIXED: Uses plural /cases path)
+        router.push(`/dashboard/cases/${caseId}`);
     };
 
     return (
