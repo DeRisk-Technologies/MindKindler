@@ -52,6 +52,10 @@ import { generateSecureLink as linkGenHandler, validateSecureLink as linkValHand
 export const generateSecureLink = linkGenHandler;
 export const validateSecureLink = linkValHandler;
 
+// --- Phase 57+: Communication & Copilot ---
+import { guardianChatScanner } from "./communication/chatGuardian";
+export const guardianChatScannerTrigger = guardianChatScanner;
+
 // --- Admin & Data Maintenance ---
 import { setupUserProfileHandler } from "./admin/userManagement";
 import { anonymizeDataHandler } from "./admin/dataMaintenance";
