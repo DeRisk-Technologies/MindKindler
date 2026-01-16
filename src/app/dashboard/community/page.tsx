@@ -1,130 +1,117 @@
-import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, MessageSquare, BookOpen, FileText } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Globe, Map, Lock, Users, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useAuth } from '@/hooks/use-auth';
+import { CommunitySpace } from '@/types/community';
 
-export default function CommunityPage() {
-  return (
-    <div className="flex-1 space-y-4 p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">MindKindler Community</h2>
-        <div className="flex items-center space-x-2">
-           <Button>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            New Post
-          </Button>
+export default function CommunityHub() {
+    const { user } = useAuth();
+    const [spaces, setSpaces] = useState<CommunitySpace[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchSpaces() {
+            try {
+                // In a real app, complex queries might need backend indexing
+                // We fetch all spaces and filter client-side for the demo/pilot simplicity
+                // or query specifically based on user attributes.
+                
+                const q = query(collection(db, 'community_spaces')); // Fetch all visible spaces logic
+                const snapshot = await getDocs(q);
+                
+                const allSpaces = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as CommunitySpace[];
+                
+                // Filter Visibility
+                const visible = allSpaces.filter(space => {
+                    if (space.isPublic) return true;
+                    if (!user) return false;
+                    
+                    if (space.scope === 'global') return true;
+                    if (space.scope === 'regional') return space.region === user.region;
+                    if (space.scope === 'private') return space.tenantId === user.tenantId;
+                    
+                    return false;
+                });
+
+                setSpaces(visible);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchSpaces();
+    }, [user]);
+
+    const getIcon = (scope: string) => {
+        switch (scope) {
+            case 'global': return <Globe className="w-5 h-5 text-blue-500" />;
+            case 'regional': return <Map className="w-5 h-5 text-green-500" />;
+            case 'private': return <Lock className="w-5 h-5 text-amber-500" />;
+            case 'public': return <Users className="w-5 h-5 text-purple-500" />;
+            default: return <Users className="w-5 h-5" />;
+        }
+    };
+
+    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin w-8 h-8 text-blue-600"/></div>;
+
+    return (
+        <div className="p-8 space-y-8">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900">Community Hub</h1>
+                    <p className="text-slate-500">Connect, share, and learn with peers globally and locally.</p>
+                </div>
+                {user?.role === 'SuperAdmin' && (
+                    <Button variant="outline">
+                        <ShieldCheck className="w-4 h-4 mr-2" /> Moderate
+                    </Button>
+                )}
+            </div>
+
+            <Tabs defaultValue="all">
+                <TabsList>
+                    <TabsTrigger value="all">All Spaces</TabsTrigger>
+                    <TabsTrigger value="global">Global</TabsTrigger>
+                    <TabsTrigger value="regional">Regional ({user?.region?.toUpperCase() || 'UK'})</TabsTrigger>
+                    <TabsTrigger value="private">My Team</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="all" className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {spaces.map(space => (
+                        <Card key={space.id} className="hover:shadow-md transition-shadow cursor-pointer group">
+                            <CardHeader>
+                                <div className="flex justify-between items-start">
+                                    <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-blue-50 transition-colors">
+                                        {getIcon(space.scope)}
+                                    </div>
+                                    <Badge variant="outline" className="capitalize">{space.type}</Badge>
+                                </div>
+                                <CardTitle className="mt-4">{space.title}</CardTitle>
+                                <CardDescription>{space.description}</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Link href={`/dashboard/community/${space.type}/${space.id}`}>
+                                    <Button className="w-full" variant="ghost">
+                                        Enter Space <ArrowRight className="w-4 h-4 ml-2" />
+                                    </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </TabsContent>
+                
+                {/* Other tabs would filter the `spaces` array similarly */}
+            </Tabs>
         </div>
-      </div>
-
-      <Tabs defaultValue="forum" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="forum">Forum</TabsTrigger>
-          <TabsTrigger value="wiki">Wiki</TabsTrigger>
-          <TabsTrigger value="blog">Blog</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="forum" className="space-y-4">
-           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Active Threads</CardTitle>
-                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">12</div>
-                  <p className="text-xs text-muted-foreground">+2 since last hour</p>
-                </CardContent>
-              </Card>
-           </div>
-           
-           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-              <Card className="col-span-4">
-                <CardHeader>
-                  <CardTitle>Recent Discussions</CardTitle>
-                  <CardDescription>Latest threads from your community.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                   <div className="flex flex-col gap-4">
-                      {/* Placeholder for thread list */}
-                      <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer">
-                        <h4 className="font-semibold">Best practices for SEN assessments?</h4>
-                        <p className="text-sm text-muted-foreground">Started by Sarah J. • 2 replies</p>
-                      </div>
-                      <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer">
-                        <h4 className="font-semibold">Integration with new LMS</h4>
-                        <p className="text-sm text-muted-foreground">Started by Mike T. • 0 replies</p>
-                      </div>
-                   </div>
-                   <div className="mt-4">
-                     <Link href="/dashboard/community/forum">
-                       <Button variant="outline" className="w-full">View All Threads</Button>
-                     </Link>
-                   </div>
-                </CardContent>
-              </Card>
-              
-              <Card className="col-span-3">
-                 <CardHeader>
-                   <CardTitle>Popular Categories</CardTitle>
-                 </CardHeader>
-                 <CardContent>
-                   <div className="space-y-2">
-                     <div className="flex justify-between text-sm">
-                       <span>Assessments</span>
-                       <span className="text-muted-foreground">24 threads</span>
-                     </div>
-                     <div className="flex justify-between text-sm">
-                       <span>Safeguarding</span>
-                       <span className="text-muted-foreground">18 threads</span>
-                     </div>
-                     <div className="flex justify-between text-sm">
-                       <span>Tech Support</span>
-                       <span className="text-muted-foreground">12 threads</span>
-                     </div>
-                   </div>
-                 </CardContent>
-              </Card>
-           </div>
-        </TabsContent>
-
-        <TabsContent value="wiki" className="space-y-4">
-          <div className="flex justify-between">
-             <h3 className="text-xl font-semibold">Knowledge Base</h3>
-             <Link href="/dashboard/community/wiki/new">
-                <Button variant="secondary"><BookOpen className="mr-2 h-4 w-4"/> Create Page</Button>
-             </Link>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-               <CardHeader><CardTitle>Policy Templates</CardTitle></CardHeader>
-               <CardContent><p className="text-sm text-muted-foreground">Standardized policy documents.</p></CardContent>
-            </Card>
-            <Card>
-               <CardHeader><CardTitle>Clinical Guidelines</CardTitle></CardHeader>
-               <CardContent><p className="text-sm text-muted-foreground">Vetted clinical procedures.</p></CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="blog" className="space-y-4">
-           <div className="flex justify-between">
-             <h3 className="text-xl font-semibold">Updates & News</h3>
-              <Link href="/dashboard/community/blog/new">
-                <Button variant="secondary"><FileText className="mr-2 h-4 w-4"/> New Post</Button>
-             </Link>
-          </div>
-           <Card>
-             <CardHeader>
-               <CardTitle>Latest News</CardTitle>
-             </CardHeader>
-             <CardContent>
-               <p className="text-muted-foreground">No blog posts yet.</p>
-             </CardContent>
-           </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+    );
 }
