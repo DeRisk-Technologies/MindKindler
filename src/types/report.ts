@@ -99,5 +99,5 @@ export interface DraftReport {
     provisionPlan: ProvisionSpec[];
     
     createdAt: string;
-    generatedByAiModel: string; // e.g., "gemini-1.5-flash"
+    generatedByAiModel: string; // e.g., "gemini-2.0-flash"
 }

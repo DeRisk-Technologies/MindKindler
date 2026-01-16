@@ -38,6 +38,20 @@ export const gradeOpenText = onCall(callOptions, async (req) => {
     return await scoreOpenTextResponseFlow(tenantId, question, studentAnswer, rubric, maxPoints, req.auth.uid);
 });
 
+// --- Phase 46: The Clerk (AI Ingestion) ---
+import { analyzeDocument as clerkHandler } from "./ai/clerkAgent";
+export const analyzeDocument = clerkHandler; // Already wrapped in onCall
+
+// --- Phase 48: Triangulation & Provisioning ---
+import { extractFindings as findingsHandler, draftProvisionPlan as provisionHandler } from "./ai/triangulation";
+export const extractFindings = findingsHandler;
+export const draftProvisionPlan = provisionHandler;
+
+// --- Phase 49: Secure Magic Links ---
+import { generateSecureLink as linkGenHandler, validateSecureLink as linkValHandler } from "./security/magicLinks";
+export const generateSecureLink = linkGenHandler;
+export const validateSecureLink = linkValHandler;
+
 // --- Admin & Data Maintenance ---
 import { setupUserProfileHandler } from "./admin/userManagement";
 import { anonymizeDataHandler } from "./admin/dataMaintenance";

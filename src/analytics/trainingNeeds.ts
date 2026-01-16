@@ -9,7 +9,8 @@ import * as levenshtein from 'levenshtein';
 const project = process.env.GCLOUD_PROJECT || 'mindkindler-84fcf';
 const location = 'europe-west3';
 const vertex_ai = new VertexAI({ project: project, location: location });
-const model = vertex_ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+// UPGRADE: Switched to Gemini 2.0 Flash
+const model = vertex_ai.getGenerativeModel({ model: 'gemini-2.0-flash-001' });
 
 interface ReportEdit {
     sectionId: string;

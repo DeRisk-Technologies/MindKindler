@@ -24,7 +24,7 @@ const MOCK_DRAFT: DraftReport = {
     },
     provisionPlan: [],
     createdAt: '2025-01-01',
-    generatedByAiModel: 'gemini-1.5'
+    generatedByAiModel: 'gemini-2.0-flash'
 };
 
 function ReviewContent() {
