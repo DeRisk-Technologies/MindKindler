@@ -7,7 +7,9 @@ const vertexAI = new VertexAI({project: project, location: location});
 // UPGRADE: Switched to Gemini 2.0 Flash
 const model = vertexAI.getGenerativeModel({ model: "gemini-2.0-flash-001" });
 
-export const extractFindings = onCall(async (request) => {
+const REGION_OPT = { region: "europe-west3" };
+
+export const extractFindings = onCall(REGION_OPT, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
     
     const { evidenceText } = request.data;
@@ -44,7 +46,7 @@ export const extractFindings = onCall(async (request) => {
     }
 });
 
-export const draftProvisionPlan = onCall(async (request) => {
+export const draftProvisionPlan = onCall(REGION_OPT, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
     
     const { findings, category } = request.data;

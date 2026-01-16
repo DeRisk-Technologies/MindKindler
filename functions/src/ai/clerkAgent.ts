@@ -8,7 +8,7 @@ const vertexAI = new VertexAI({project: project, location: location});
 // UPGRADE: Switched to Gemini 2.5 Flash for better reasoning and speed
 const model = vertexAI.getGenerativeModel({ model: "gemini-2.0-flash-001" });
 
-export const analyzeDocument = onCall(async (request) => {
+export const analyzeDocument = onCall({ region: "europe-west3" }, async (request) => {
     // 1. Auth Check
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'User must be logged in.');

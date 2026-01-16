@@ -3,8 +3,9 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 
 const db = admin.firestore();
+const REGION_OPT = { region: "europe-west3" };
 
-export const generateSecureLink = onCall(async (request) => {
+export const generateSecureLink = onCall(REGION_OPT, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
 
     const { caseId, reportId, email, role } = request.data;
@@ -35,7 +36,7 @@ export const generateSecureLink = onCall(async (request) => {
     return { url: `https://mindkindler.app/portal/review?token=${token}` };
 });
 
-export const validateSecureLink = onCall(async (request) => {
+export const validateSecureLink = onCall(REGION_OPT, async (request) => {
     // Unauthenticated call allowed (Public Portal)
     const { token } = request.data;
     
