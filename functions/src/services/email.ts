@@ -2,6 +2,7 @@
 import * as nodemailer from 'nodemailer';
 import * as sendgrid from '@sendgrid/mail';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import * as admin from 'firebase-admin';
 
 // Interface for email options
 interface EmailOptions {
@@ -105,6 +106,14 @@ export const emailService = {
                 console.log(`[PILOT SAFE MODE] Intercepted email to ${options.to}`);
                 console.log(`Subject: ${options.subject}`);
                 console.log(`Content Preview: ${options.text || options.html?.substring(0, 100)}...`);
+                // Write to intercept log for auditing
+                if (admin.apps.length) {
+                    await admin.firestore().collection('email_intercept_log').add({
+                        to: options.to,
+                        subject: options.subject,
+                        interceptedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                }
                 return true; // Pretend success
             }
         }
@@ -167,14 +176,21 @@ export const emailService = {
             }
         } 
         
-        // 3. Dev Mode / Mock
-        console.log(`
-            >>> [OUTBOUND EMAIL (MOCK)] >>>
-            To: ${options.to}
-            Subject: ${options.subject}
-            Content-Length: ${options.html?.length || options.text?.length}
-            <<< [END EMAIL] <<<
-        `);
+        // 3. Dev Mode / Mock -> Writes to Firestore for auditing
+        const logData = {
+            to: options.to,
+            subject: options.subject,
+            preview: options.html?.substring(0, 50) + "...",
+            status: 'simulated_dev_env',
+            createdAt: new Date().toISOString()
+        };
+        console.log(`[EMAIL DEV MODE]`, logData);
+        
+        // If we are in a cloud function context, write to a log
+        if (admin.apps.length) {
+             await admin.firestore().collection('mail_dev_log').add(logData);
+        }
+
         return true;
     }
 };

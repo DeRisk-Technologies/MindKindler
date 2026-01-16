@@ -1,6 +1,6 @@
 import { db } from "@/lib/firebase";
 import { PolicyRule, PolicyConflict } from "@/types/schema";
-import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, getDocs, query, where, Timestamp, writeBatch, doc } from "firebase/firestore";
 
 /**
  * Policy Hygiene Engine
@@ -25,7 +25,7 @@ export async function detectConflicts(): Promise<PolicyConflict[]> {
     for (const [key, group] of titleMap.entries()) {
         if (group.length > 1) {
             conflicts.push({
-                id: `conflict_${Date.now()}_${Math.random()}`,
+                id: `conflict_${Date.now()}_dup`,
                 tenantId: group[0].tenantId,
                 detectedAt: new Date().toISOString(),
                 severity: 'warning',
@@ -49,7 +49,7 @@ export async function detectConflicts(): Promise<PolicyConflict[]> {
         const modes = new Set(group.map(r => r.mode));
         if (modes.has('enforce') && modes.has('advisory')) {
              conflicts.push({
-                id: `conflict_${Date.now()}_${Math.random()}`,
+                id: `conflict_${Date.now()}_col`,
                 tenantId: group[0].tenantId,
                 detectedAt: new Date().toISOString(),
                 severity: 'critical',
@@ -61,8 +61,21 @@ export async function detectConflicts(): Promise<PolicyConflict[]> {
         }
     }
 
-    // 3. Persist Conflicts
-    // In real app, we'd upsert based on hash to avoid noise
-    // For mock, just return found
+    // 3. Persist Conflicts to DB
+    if (conflicts.length > 0) {
+        const batch = writeBatch(db);
+        const conflictsRef = collection(db, "policy_conflicts");
+        
+        // We only save unique conflicts (dedupe logic could be enhanced)
+        // For now, we add them. In prod, we might query existing open conflicts first.
+        conflicts.forEach(c => {
+             const newDoc = doc(conflictsRef);
+             batch.set(newDoc, c);
+        });
+
+        await batch.commit();
+        console.log(`[Guardian] Persisted ${conflicts.length} policy conflicts.`);
+    }
+
     return conflicts;
 }

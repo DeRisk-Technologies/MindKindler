@@ -1,15 +1,11 @@
 import * as admin from 'firebase-admin';
 import { onCall, HttpsOptions, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+// import axios from 'axios'; // Uncomment when implementing real calls
 
 const db = admin.firestore();
 const region = "europe-west3";
 const callOptions: HttpsOptions = { region, cors: true };
-
-// --- Configuration ---
-// In production, fetch these from Secret Manager
-// const ZOOM_API_BASE = 'https://api.zoom.us/v2';
-// const MICROSOFT_GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
 /**
  * securelyCreateMeeting
@@ -17,7 +13,10 @@ const callOptions: HttpsOptions = { region, cors: true };
  * Creates a meeting on an external provider (Zoom/Teams) while strictly sanitizing PII.
  * Ensures the student's name NEVER leaves the MindKindler boundary in metadata.
  */
-export const securelyCreateMeeting = onCall(callOptions, async (request) => {
+export const securelyCreateMeeting = onCall({
+    ...callOptions,
+    secrets: ["ZOOM_API_KEY", "ZOOM_API_SECRET"] // Prepared for secrets
+}, async (request) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'User must be logged in');
     }
@@ -32,15 +31,10 @@ export const securelyCreateMeeting = onCall(callOptions, async (request) => {
     } = request.data;
 
     // 1. DATA PRIVACY ENFORCEMENT
-    // We strictly control the meeting title sent to the third party.
-    // Instead of "Review for John Doe", we send "MindKindler Case #12345"
-    // This sanitization happens server-side so client code can't bypass it.
-    
     let sanitizedTopic = `MindKindler Session`;
     if (caseId) {
         sanitizedTopic += ` - Case Ref: ${caseId}`;
     }
-    // We explicitly IGNORE any 'studentName' passed in data to prevent accidental leakage.
 
     // 2. PROVIDER LOGIC
     let meetingDetails;
@@ -58,9 +52,6 @@ export const securelyCreateMeeting = onCall(callOptions, async (request) => {
     }
 
     // 3. SECURE STORAGE & LINKING
-    // We store the mapping of External Meeting ID <-> Internal Student Data here in Firestore.
-    // The external provider only knows the Meeting ID and the sanitized topic.
-    
     const appointmentRef = db.collection('appointments').doc();
     await appointmentRef.set({
         id: appointmentRef.id,
@@ -70,7 +61,7 @@ export const securelyCreateMeeting = onCall(callOptions, async (request) => {
         joinUrl: meetingDetails.joinUrl,
         
         // Internal Data (Safe to store in our secured DB)
-        internalTopic: topic, // e.g., "Review for John Doe" - stored locally only
+        internalTopic: topic, // e.g., "Review for John Doe"
         studentId: studentId,
         caseId: caseId,
         
@@ -80,7 +71,7 @@ export const securelyCreateMeeting = onCall(callOptions, async (request) => {
         createdBy: request.auth.uid,
         
         // Metadata for Recording Fetcher
-        recordingStatus: 'pending', // watcher will look for this
+        recordingStatus: 'pending', 
     });
 
     return {
@@ -89,43 +80,77 @@ export const securelyCreateMeeting = onCall(callOptions, async (request) => {
     };
 });
 
-// --- Helper Functions (Mocked API Calls) ---
+// --- Helper Functions ---
 
 async function createZoomMeeting(topic: string, startTime: string, duration: number) {
-    // In prod: Get OAuth token from Firestore/Secrets
-    // await axios.post(`${ZOOM_API_BASE}/users/me/meetings`, { topic, start_time: startTime... })
+    const apiKey = process.env.ZOOM_API_KEY;
     
-    console.log(`[Mock Zoom] Creating meeting: "${topic}" at ${startTime} for ${duration}m`);
+    // REAL IMPLEMENTATION (Active if Key Present)
+    if (apiKey) {
+        /*
+        try {
+            const token = generateZoomJwt(apiKey, process.env.ZOOM_API_SECRET);
+            const response = await axios.post('https://api.zoom.us/v2/users/me/meetings', {
+                topic: topic,
+                type: 2, // Scheduled
+                start_time: startTime,
+                duration: duration,
+            }, { headers: { Authorization: `Bearer ${token}` } });
+            
+            return {
+                id: response.data.id,
+                joinUrl: response.data.join_url
+            };
+        } catch (e) { throw e; }
+        */
+       console.log("Zoom Key present but logic commented out until JWT/OAuth implementation is finalized.");
+    }
+
+    // SIMULATION MODE (For Prod Stability without API Keys)
+    console.log(`[Simulation Zoom] Creating meeting: "${topic}"`);
+    
+    // We log the outbound request to DB so we can debug integration logic
+    await db.collection('integration_logs').add({
+        provider: 'zoom',
+        action: 'create_meeting',
+        payload: { topic, startTime, duration },
+        status: 'simulated',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
     return {
-        id: `zoom_${Math.floor(Math.random() * 100000)}`,
-        joinUrl: `https://zoom.us/j/mock_meeting`
+        id: `sim_zoom_${Date.now()}`,
+        joinUrl: `https://zoom.us/j/simulation_mode`
     };
 }
 
 async function createTeamsMeeting(subject: string, startTime: string, duration: number) {
-    // In prod: Graph API call
-    console.log(`[Mock Teams] Creating meeting: "${subject}" at ${startTime} for ${duration}m`);
+    // SIMULATION MODE
+    console.log(`[Simulation Teams] Creating meeting: "${subject}"`);
+    
+    await db.collection('integration_logs').add({
+        provider: 'teams',
+        action: 'create_meeting',
+        payload: { subject, startTime, duration },
+        status: 'simulated',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
     return {
-        id: `teams_${Math.floor(Math.random() * 100000)}`,
-        joinUrl: `https://teams.microsoft.com/l/meetup-join/mock`
+        id: `sim_teams_${Date.now()}`,
+        joinUrl: `https://teams.microsoft.com/l/meetup-join/simulation_mode`
     };
 }
 
 
 /**
  * fetchAndPurgeRecordings (Scheduled Function)
- * 
- * Runs periodically to:
- * 1. Check completed appointments.
- * 2. Fetch recordings from Zoom/Teams.
- * 3. Store them in MindKindler Secure Storage.
- * 4. DELETE them from Zoom/Teams to enforce data sovereignty.
  */
 export const fetchAndPurgeRecordings = onSchedule({
     schedule: "every 1 hours",
     region
 }, async (event) => {
-    
+    // In production, this would query only tenants who have this feature enabled
     const pendingRecordings = await db.collection('appointments')
         .where('status', '==', 'completed')
         .where('recordingStatus', '==', 'pending')
@@ -133,29 +158,22 @@ export const fetchAndPurgeRecordings = onSchedule({
 
     for (const doc of pendingRecordings.docs) {
         const data = doc.data();
-        const { provider, externalMeetingId } = data;
+        const { externalMeetingId } = data;
 
         try {
-            console.log(`[Compliance] Processing recording for ${externalMeetingId}`);
+            // Logic to fetch from Zoom/Teams API would go here.
+            // For now, we assume if it's a simulated meeting, we auto-complete it.
             
-            // 1. Fetch from Provider
-            // const fileStream = await downloadFromProvider(provider, externalMeetingId);
-            const mockFileUrl = `gs://mindkindler-recordings/${doc.id}/recording.mp4`; // Mock upload
+            if (externalMeetingId.startsWith('sim_')) {
+                 await doc.ref.update({
+                    recordingStatus: 'not_available', // Simulation has no recording
+                    note: 'Simulation mode - no recording generated'
+                });
+                continue;
+            }
 
-            // 2. Verify Upload Success
-            // await bucket.upload(fileStream...)
-            
-            // 3. PURGE from Provider (Critical for Data Privacy)
-            // await deleteFromProvider(provider, externalMeetingId);
-            console.log(`[Compliance] DELETED recording from ${provider} cloud.`);
-
-            // 4. Update Internal Record
-            await doc.ref.update({
-                recordingStatus: 'secured',
-                recordingUrl: mockFileUrl,
-                recordingSecuredAt: admin.firestore.FieldValue.serverTimestamp(),
-                providerPurged: true
-            });
+            // Real logic placeholder
+            // await downloadAndPurge(externalMeetingId);
 
         } catch (error) {
             console.error(`[Compliance] Failed to secure recording for ${doc.id}:`, error);

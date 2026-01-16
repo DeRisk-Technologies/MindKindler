@@ -1,5 +1,7 @@
+import { functions } from "@/lib/firebase"; // Import functions instance
+import { httpsCallable } from "firebase/functions";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
 
 /**
  * Government Intelligence: Snapshot Engine
@@ -21,70 +23,58 @@ export interface GovSnapshot {
     };
 }
 
+/**
+ * Generates (or triggers generation of) a snapshot.
+ * In Production, this calls a Cloud Function to perform the heavy lifting.
+ */
 export async function generateSnapshot(scopeType: 'council' | 'state' | 'federal', scopeId: string): Promise<GovSnapshot> {
-    console.log(`[GovIntel] Generating snapshot for ${scopeType}:${scopeId}`);
+    console.log(`[GovIntel] Requesting snapshot for ${scopeType}:${scopeId}`);
 
-    // Mock Fetching (Real app would use Count/Aggregation Queries)
-    // We assume the caller or security rules handle tenancy filters
-    const assessSnap = await getDocs(collection(db, "assessment_results"));
-    const intSnap = await getDocs(collection(db, "interventionPlans"));
-    const safeSnap = await getDocs(collection(db, "safeguardingIncidents"));
-    const trainSnap = await getDocs(collection(db, "trainingCompletions"));
-    const findSnap = await getDocs(collection(db, "guardianFindings"));
-
-    // Aggregation Logic (Mocked Scope Filtering)
-    // In production, we'd filter by schoolId matching the council/state hierarchy.
-    // Here we aggregate ALL for demo purposes.
-
-    const totalAssessments = assessSnap.size;
-    
-    // Outcome Logic
-    let improving = 0;
-    let worsening = 0;
-    intSnap.forEach(d => {
-        const data = d.data();
-        if ((data.currentScore || 0) > (data.baselineScore || 0) + 5) improving++;
-        else if ((data.currentScore || 0) < (data.baselineScore || 0) - 5) worsening++;
-    });
-
-    const snapshot: GovSnapshot = {
-        scopeType,
-        scopeId,
-        period: new Date().toISOString().slice(0, 7), // YYYY-MM
-        createdAt: new Date().toISOString(),
-        metrics: {
-            assessments: { 
-                total: totalAssessments, 
-                avgScore: 0 // Placeholder
-            },
-            interventions: { 
-                active: intSnap.size, 
-                improving, 
-                worsening 
-            },
-            safeguarding: { 
-                total: safeSnap.size, 
-                critical: safeSnap.docs.filter(d => d.data().severity === 'critical').length,
-                open: safeSnap.docs.filter(d => d.data().status === 'open').length
-            },
-            compliance: {
-                findings: findSnap.size,
-                critical: findSnap.docs.filter(d => d.data().severity === 'critical').length
-            },
-            training: {
-                completions: trainSnap.size,
-                totalHours: 0 // Need join with module duration
+    try {
+        // 1. Try to fetch existing recent snapshot first (Cache hit)
+        const recentQ = query(
+            collection(db, "govSnapshots"),
+            where("scopeId", "==", scopeId),
+            orderBy("createdAt", "desc"),
+            limit(1)
+        );
+        const recentSnap = await getDocs(recentQ);
+        
+        if (!recentSnap.empty) {
+            const data = recentSnap.docs[0].data() as GovSnapshot;
+            const age = Date.now() - new Date(data.createdAt).getTime();
+            if (age < 24 * 60 * 60 * 1000) { // < 24 hours old
+                return data;
             }
         }
-    };
 
-    // Persist
-    await addDoc(collection(db, "govSnapshots"), snapshot);
-    
-    return snapshot;
+        // 2. Trigger Cloud Aggregation
+        const aggregateFn = httpsCallable(functions, 'aggregateGovStatsV2'); // V2 maps to aggregateGovStats in index.ts
+        const result = await aggregateFn({ nodeId: scopeId, level: scopeType === 'council' ? 'lea' : 'region' });
+        const stats = (result.data as any).stats;
+
+        // 3. Construct Client Snapshot Object from Cloud Result
+        return {
+            scopeType,
+            scopeId,
+            period: new Date().toISOString().slice(0, 7),
+            createdAt: new Date().toISOString(),
+            metrics: {
+                assessments: { total: stats.totalStudents || 0, avgScore: 0 },
+                interventions: { active: stats.casesOpen || 0, improving: 0, worsening: 0 },
+                safeguarding: { total: stats.atRiskStudents || 0, critical: 0, open: 0 },
+                compliance: { findings: 0, critical: 0 },
+                training: { completions: 0, totalHours: 0 }
+            }
+        };
+
+    } catch (error) {
+        console.error("Snapshot Generation Failed", error);
+        throw error;
+    }
 }
 
 export function formatMetric(val: number): string {
-    if (val < 5) return "—"; // Suppression
+    if (val < 5 && val > 0) return "< 5"; // Statistical Suppression for Privacy
     return val.toLocaleString();
 }

@@ -7,6 +7,7 @@ import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, parseISO, i
 import { Appointment } from '@/types/schema';
 import { CreateAppointmentDialog } from '@/components/dashboard/appointments/create-dialog';
 import { AvailabilitySettingsDialog } from '@/components/dashboard/settings/availability-settings';
+import { useAppointments } from '@/hooks/use-appointments';
 
 export default function CalendarPage() {
     // Initialize with null to prevent hydration mismatch (server time vs client time)
@@ -28,31 +29,15 @@ export default function CalendarPage() {
         return { weekStart, weekEnd, days };
     }, [currentDate]);
 
-    // Mock Appointments (simulating data fetching)
-    // In production, fetch this via useEffect -> Service using start/end range
-    const appointments: Partial<Appointment>[] = useMemo(() => {
-        if (!calendarData) return [];
-        return [
-            { 
-                id: '1', 
-                title: 'Consultation - John Doe', 
-                startAt: addDays(calendarData.weekStart, 1).toISOString().replace(/T.*/, 'T10:00:00'), // Tuesday 10am
-                type: 'consultation',
-                status: 'scheduled'
-            },
-            { 
-                id: '2', 
-                title: 'Team Meeting', 
-                startAt: addDays(calendarData.weekStart, 3).toISOString().replace(/T.*/, 'T14:00:00'), // Thursday 2pm
-                type: 'follow_up',
-                status: 'scheduled'
-            }
-        ];
-    }, [calendarData]);
+    // Real Data Fetching
+    const { appointments, loading } = useAppointments(
+        calendarData?.weekStart || new Date(), 
+        calendarData?.weekEnd || new Date()
+    );
 
     const getAppointmentsForDay = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return appointments.filter(a => a.startAt?.startsWith(dateStr));
+        return appointments.filter(a => a.startAt.startsWith(dateStr));
     };
 
     if (!currentDate || !today || !calendarData) {
@@ -80,6 +65,7 @@ export default function CalendarPage() {
                             <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
+                    {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                     <AvailabilitySettingsDialog />
                 </div>
                 <CreateAppointmentDialog />
@@ -95,11 +81,13 @@ export default function CalendarPage() {
                             </div>
                             <div className="flex-1 p-2 space-y-2">
                                 {getAppointmentsForDay(day).map(appt => {
-                                    const startTime = appt.startAt ? parseISO(appt.startAt) : new Date();
+                                    const startTime = parseISO(appt.startAt);
                                     return (
                                         <div key={appt.id} className="p-2 text-xs rounded border bg-blue-50 border-blue-100 text-blue-700 cursor-pointer hover:bg-blue-100 transition-colors">
                                             <div className="font-bold">{format(startTime, 'HH:mm')}</div>
                                             <div className="truncate">{appt.title}</div>
+                                            {appt.provider === 'zoom' && <div className="text-[9px] uppercase tracking-tighter text-blue-400 mt-1">Zoom</div>}
+                                            {appt.provider === 'teams' && <div className="text-[9px] uppercase tracking-tighter text-indigo-400 mt-1">Teams</div>}
                                         </div>
                                     );
                                 })}

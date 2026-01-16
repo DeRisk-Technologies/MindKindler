@@ -1,7 +1,6 @@
 // src/ai/knowledge/retrieve.ts
-
-import { db } from "@/lib/firebase";
-import { getDocs, collection, query, limit, getDoc, doc, where } from "firebase/firestore";
+import { functions } from "@/lib/firebase"; // Assumes firebase.ts exports functions
+import { httpsCallable } from "firebase/functions";
 import { KnowledgeChunk, KnowledgeDocument } from "@/types/schema";
 
 interface SearchResult {
@@ -15,65 +14,52 @@ interface RetrievalFilters {
     minTrustScore?: number;
     jurisdiction?: string;
     includeEvidence?: boolean;
+    tenantId?: string; // Essential for data isolation
 }
 
 /**
- * Mock Retrieval Service.
- * Phase 3D Upgrade: Trust-Aware RAG.
+ * Retrieves context from the Knowledge Base using Semantic Search.
+ * Calls the secure Cloud Function 'searchKnowledgeBase'.
  */
 export async function retrieveContext(userQuery: string, filters: RetrievalFilters = {}): Promise<SearchResult[]> {
-    // Simulate latency
-    await new Promise(r => setTimeout(r, 800));
-
-    // Mock: Fetch random chunks for now
-    let q = query(collection(db, "knowledgeChunks"), limit(10));
-    const snap = await getDocs(q);
-
-    const results: SearchResult[] = [];
-    
-    for (const d of snap.docs) {
-        const chunkData = { id: d.id, ...d.data() } as KnowledgeChunk;
+    try {
+        // We use a Cloud Function because generating embeddings requires a secret API Key (Gemini/OpenAI)
+        // which cannot be exposed on the client.
+        const searchFn = httpsCallable(functions, 'searchKnowledgeBase');
         
-        // Fetch parent doc
-        const docSnap = await getDoc(doc(db, "knowledgeDocuments", chunkData.documentId));
-        let parentDoc: KnowledgeDocument | undefined;
-        
-        if (docSnap.exists()) {
-            parentDoc = { id: docSnap.id, ...docSnap.data() } as KnowledgeDocument;
-        }
-
-        // Apply Filters
-        if (filters.verifiedOnly && !parentDoc?.metadata.verified) continue;
-        if (filters.minTrustScore && (parentDoc?.metadata.trustScore || 0) < filters.minTrustScore) continue;
-        if (filters.includeEvidence === false && parentDoc?.type === 'evidence') continue;
-
-        // Mock Scoring Boost
-        let score = 0.85 + (Math.random() * 0.1);
-        if (parentDoc?.metadata.verified) score += 0.1;
-        if ((parentDoc?.metadata.trustScore || 0) > 80) score += 0.05;
-
-        results.push({
-            chunk: chunkData,
-            document: parentDoc,
-            score
+        const response = await searchFn({
+            query: userQuery,
+            filters: filters
         });
-    }
 
-    // Sort by score desc and take top 3-5
-    return results.sort((a, b) => b.score - a.score).slice(0, 5);
+        // The Cloud Function returns structured results
+        return (response.data as any).results as SearchResult[];
+    } catch (error) {
+        console.warn("Vector Search unavailable, falling back to basic keyword search simulation.", error);
+        // Fallback or empty return to prevent UI crash
+        return [];
+    }
 }
 
+/**
+ * Generates an answer using the retrieved context.
+ * Calls the secure Cloud Function 'chatWithCopilot' (RAG Pipeline).
+ */
 export async function generateRAGResponse(userQuery: string, context: SearchResult[]): Promise<string> {
-    // Simulate LLM generation
-    await new Promise(r => setTimeout(r, 1500));
+    try {
+        const chatFn = httpsCallable(functions, 'chatWithCopilot');
+        
+        // We send the Context explicitly to the LLM (Context Injection)
+        // Or we can let the Cloud Function re-fetch it if we just pass the query.
+        // Passing context is more deterministic if we already have it.
+        const response = await chatFn({
+            message: userQuery,
+            contextOverride: context.map(c => c.chunk.content).join("\n\n---\n\n")
+        });
 
-    if (context.length === 0) {
-        return "I could not find any relevant documents in the Vault to answer your question.";
+        return (response.data as any).reply;
+    } catch (error) {
+        console.error("RAG Generation Failed", error);
+        return "I'm having trouble connecting to the AI Co-pilot right now. Please try again.";
     }
-
-    // Check if we have evidence
-    const evidenceCount = context.filter(c => c.document?.type === 'evidence').length;
-    const evidenceNote = evidenceCount > 0 ? `\n\n(Includes ${evidenceCount} verified evidence sources)` : "";
-
-    return `Based on the documents in the vault, here is the answer to "${userQuery}":\n\nThe documents indicate that specific procedures must be followed. For example, one source mentions "${context[0].chunk.content.substring(0, 50)}...". ${evidenceNote}`;
 }

@@ -1,7 +1,7 @@
 import * as admin from 'firebase-admin';
 import { CaseFile } from '../types/case';
 import { Finding, ProvisionSpec } from '../types/report';
-import { subWeeks, formatISO } from 'date-fns';
+import { subWeeks, formatISO, addDays } from 'date-fns';
 
 // --- Configuration ---
 // In a real scenario, we'd initialize the app here. 
@@ -27,6 +27,8 @@ async function seedPilotData() {
     // implementation skipped for safety, assuming empty or overwrite.
 
     const BATCH = db.batch();
+    const TENANT_ID = 'pilot-tenant';
+    const REGION = 'uk-north';
 
     // --- CASE A: XX Jeffery (The Drafting Demo) ---
     console.log("📝 Seeding Case A: XX Jeffery (Drafting Stage)...");
@@ -34,13 +36,13 @@ async function seedPilotData() {
     const caseA_Id = 'case-a-jeffery';
     const caseA: CaseFile = {
         id: caseA_Id,
-        tenantId: 'pilot-tenant',
+        tenantId: TENANT_ID,
         studentId: 'stu-jeffery-01',
         studentName: 'XX Jeffery',
         dob: '2014-05-12',
         upn: 'Z12345678',
         localAuthorityId: 'York City Council',
-        region: 'uk-north',
+        region: REGION,
         status: 'drafting',
         flags: {
             isNonVerbal: false,
@@ -117,7 +119,7 @@ async function seedPilotData() {
     const caseB_Id = 'case-b-jeffery';
     const caseB: any = { // Using any to bypass optional prop strictness for scannable fields
         id: caseB_Id,
-        tenantId: 'pilot-tenant',
+        tenantId: TENANT_ID,
         studentName: 'Alex Jeffery',
         schoolId: 'Clifton Green Primary', // Same school
         status: 'assessment',
@@ -141,12 +143,12 @@ async function seedPilotData() {
     const caseC_Id = 'case-c-smith';
     const caseC: CaseFile = {
         id: caseC_Id,
-        tenantId: 'pilot-tenant',
+        tenantId: TENANT_ID,
         studentId: 'stu-smith-01',
         studentName: 'Sarah Smith',
         dob: '2015-01-01',
         localAuthorityId: 'York City Council',
-        region: 'uk-north',
+        region: REGION,
         status: 'assessment', // Stuck in assessment
         flags: { isNonVerbal: false, requiresGuardianPresence: false, hasSocialWorker: false, safeguardingRisk: false },
         stakeholders: [],
@@ -171,7 +173,7 @@ async function seedPilotData() {
     const schoolId = 'York High';
     const clusterCases = [1, 2, 3].map(i => ({
         id: `case-cluster-${i}`,
-        tenantId: 'pilot-tenant',
+        tenantId: TENANT_ID,
         studentName: `Student ${i} York`,
         schoolId: schoolId,
         clinicalTags: ['self_harm', 'anxiety'], // TRIGGER
@@ -182,6 +184,59 @@ async function seedPilotData() {
 
     clusterCases.forEach(c => {
         BATCH.set(db.collection('cases').doc(c.id), c);
+    });
+
+    // --- PHASE 57 SEEDING: CHAT CHANNELS ---
+    console.log("💬 Seeding Chat Channels...");
+    const channelId = `chat-case-${caseA_Id}`;
+    BATCH.set(db.collection('chat_channels').doc(channelId), {
+        id: channelId,
+        tenantId: TENANT_ID,
+        type: 'case_room',
+        caseId: caseA_Id,
+        displayName: 'Case Room: XX Jeffery',
+        participantIds: ['user-1'], // Assume current user
+        participants: { 
+            'user-1': { displayName: 'Dr. EP', role: 'epp_lead' } 
+        },
+        lastMessage: {
+            content: "Consultation booked for Tuesday.",
+            senderId: 'user-1',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            isRedacted: false
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // --- PHASE 1 SEEDING: APPOINTMENTS ---
+    console.log("📅 Seeding Appointments...");
+    const apptId = 'appt-1';
+    BATCH.set(db.collection('appointments').doc(apptId), {
+        id: apptId,
+        tenantId: TENANT_ID,
+        title: 'Review: XX Jeffery',
+        startAt: addDays(new Date(), 1).toISOString().replace(/T.*/, 'T10:00:00'), // Tomorrow 10am
+        endAt: addDays(new Date(), 1).toISOString().replace(/T.*/, 'T11:00:00'),
+        type: 'consultation',
+        provider: 'zoom',
+        status: 'scheduled',
+        caseId: caseA_Id
+    });
+
+    // --- POLICY RULES (For Guardian) ---
+    console.log("📜 Seeding Policy Rules...");
+    const ruleId = 'rule-uk-001';
+    BATCH.set(db.collection('policyRules').doc(ruleId), {
+        id: ruleId,
+        tenantId: TENANT_ID,
+        title: 'Statutory 20 Week Limit',
+        jurisdiction: 'UK',
+        triggerEvent: 'timeline_breach',
+        triggerCondition: 'weeks > 20',
+        mode: 'enforce',
+        enabled: true,
+        status: 'active'
     });
 
 
