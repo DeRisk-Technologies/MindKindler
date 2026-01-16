@@ -1,249 +1,170 @@
-// src/app/dashboard/cases/[id]/page.tsx
 "use client";
 
-import React, { useEffect, useState, use } from 'react';
-import { notFound, useRouter } from "next/navigation";
-import { 
-    doc, getDoc, collection, query, where, getDocs 
-} from 'firebase/firestore';
-import { getRegionalDb, db as globalDb } from '@/lib/firebase';
-import { useAuth } from '@/hooks/use-auth';
-import { Loader2, FileText, AlertTriangle, Plus, Link as LinkIcon, CheckCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { CaseFile } from '@/types/case';
+import { useStatutoryWorkflow } from '@/hooks/useStatutoryWorkflow';
+import { CaseHeader } from '@/components/dashboard/CaseHeader';
+import { StatutoryStepper } from '@/components/dashboard/StatutoryStepper';
+import { BreachCountdown } from '@/components/dashboard/BreachCountdown';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
+import { ArrowRight, FileText, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
-// Phase 23 Components
-import { StatutoryTimeline } from '@/components/cases/StatutoryTimeline';
-// Phase 40 Components
-import { RequestInfoWidget } from '@/components/dashboard/cases/RequestInfoWidget';
-
-export default function CasePage({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = use(params);
-    const { user } = useAuth();
-    const router = useRouter();
-    const { toast } = useToast();
-
-    const [loading, setLoading] = useState(true);
-    const [caseData, setCaseData] = useState<any>(null);
-    const [studentData, setStudentData] = useState<any>(null);
+// --- Mock Data Service (Replace with useFirestore later) ---
+async function fetchCaseById(id: string): Promise<CaseFile> {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 800));
     
-    // Evidence Lists
-    const [consultations, setConsultations] = useState<any[]>([]);
-    const [assessments, setAssessments] = useState<any[]>([]);
+    return {
+        id: id,
+        tenantId: 'tenant-123',
+        studentId: 'student-456',
+        studentName: 'Alex Thompson',
+        dob: '2016-05-15', // 9 Years old
+        upn: 'A123456789',
+        localAuthorityId: 'Leeds City Council',
+        region: 'uk-north',
+        status: 'assessment',
+        flags: {
+            isNonVerbal: false,
+            requiresGuardianPresence: false,
+            hasSocialWorker: true,
+            safeguardingRisk: false
+        },
+        stakeholders: [],
+        statutoryTimeline: {
+            requestDate: '2025-10-01', // Example date placing us in Assessment
+            decisionToAssessDeadline: '2025-11-12',
+            evidenceDeadline: '2025-12-24',
+            draftPlanDeadline: '2026-01-21',
+            finalPlanDeadline: '2026-02-18',
+            isOverdue: false
+        },
+        createdAt: '2025-10-01',
+        updatedAt: '2025-11-15',
+        createdBy: 'user-1'
+    };
+}
+
+export default function CaseDashboardPage() {
+    const params = useParams();
+    const router = useRouter();
+    const id = params.id as string;
+    
+    const [caseFile, setCaseFile] = useState<CaseFile | null>(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user) return;
-
-        async function loadCaseContext() {
-            try {
-                // 1. Resolve Region
-                let region = user?.region;
-                if (!region || region === 'default') {
-                    const rRef = doc(globalDb, 'user_routing', user?.uid || 'unknown');
-                    const rSnap = await getDoc(rRef);
-                    region = rSnap.exists() ? rSnap.data().region : 'uk';
-                }
-                const db = getRegionalDb(region);
-
-                // 2. Fetch Case
-                const caseRef = doc(db, 'cases', id);
-                const caseSnap = await getDoc(caseRef);
-                
-                if (!caseSnap.exists()) {
-                    setLoading(false);
-                    return;
-                }
-                
-                const cData = caseSnap.data();
-                setCaseData({ id: caseSnap.id, ...cData });
-
-                // 3. Fetch Student (Subject)
-                if (cData.subjectId) {
-                    const studentSnap = await getDoc(doc(db, 'students', cData.subjectId));
-                    if (studentSnap.exists()) setStudentData(studentSnap.data());
-
-                    // 4. Fetch Linked Evidence (Consultations)
-                    const consultQ = query(
-                        collection(db, 'consultation_sessions'), 
-                        where('studentId', '==', cData.subjectId)
-                    );
-                    const consultSnaps = await getDocs(consultQ);
-                    setConsultations(consultSnaps.docs.map(d => ({ id: d.id, ...d.data() })));
-
-                    // 5. Fetch Linked Evidence (Assessments)
-                    const assessQ = query(
-                        collection(db, 'assessment_results'),
-                        where('studentId', '==', cData.subjectId)
-                    );
-                    const assessSnaps = await getDocs(assessQ);
-                    setAssessments(assessSnaps.docs.map(d => ({ id: d.id, ...d.data() })));
-                }
-
-            } catch (e) {
-                console.error("Failed to load case", e);
-            } finally {
-                setLoading(false);
-            }
-        }
-        loadCaseContext();
-    }, [id, user]);
-
-    const handleDraftAdvice = () => {
-        // Validation Rule: Must have evidence
-        if (consultations.length === 0 && assessments.length === 0) {
-            toast({
-                title: "Evidence Missing",
-                description: "Cannot draft statutory advice without a consultation or assessment record.",
-                variant: "destructive"
-            });
-            return;
-        }
-
-        // Proceed to Builder
-        const params = new URLSearchParams({
-            studentId: caseData.subjectId,
-            caseId: id,
-            templateId: 'ehcp_needs_assessment', // Statutory Template
-            mode: 'statutory'
+        fetchCaseById(id).then(data => {
+            setCaseFile(data);
+            setLoading(false);
         });
-        
-        router.push(`/dashboard/reports/builder?${params.toString()}`);
-    };
+    }, [id]);
 
-    if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
-    if (!caseData) return notFound();
+    // Initialize Hook only when data is ready
+    const workflow = useStatutoryWorkflow(caseFile!, undefined, false);
 
-    return (
-        <div className="flex-1 space-y-6 p-8 pt-6 bg-slate-50 min-h-screen">
-            
-            {/* Header */}
-            <div className="flex justify-between items-start">
-                <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="outline" className="uppercase text-[10px] tracking-wider">Case {caseData.id.slice(0,6)}</Badge>
-                        <Badge className={caseData.priority === 'Critical' ? 'bg-red-500' : 'bg-blue-500'}>{caseData.priority}</Badge>
-                    </div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                        {studentData?.identity?.firstName?.value} {studentData?.identity?.lastName?.value}
-                    </h1>
-                    <p className="text-slate-500">Statutory Assessment (EHCP) • {studentData?.education?.currentSchoolId?.value || "School Unknown"}</p>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="outline"><LinkIcon className="mr-2 h-4 w-4" /> Link External Doc</Button>
-                    <Button onClick={() => router.push(`/dashboard/consultations/new?studentId=${caseData.subjectId}`)}>
-                        <Plus className="mr-2 h-4 w-4" /> New Consultation
-                    </Button>
+    if (loading || !caseFile) {
+        return (
+            <div className="p-8 space-y-6">
+                <Skeleton className="h-24 w-full" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <Skeleton className="h-64 md:col-span-2" />
+                    <Skeleton className="h-64" />
                 </div>
             </div>
+        );
+    }
 
-            {/* Phase 23: Timeline Widget */}
-            <StatutoryTimeline 
-                startDate={caseData.createdAt} 
-                currentStage={caseData.stage || 'evidence'} 
-            />
+    const handleEscalate = () => {
+        // Navigate to Safeguarding flow
+        // router.push(`/dashboard/case/${id}/safeguarding`);
+        console.log("Escalation Triggered");
+    };
 
-            {/* Tabs */}
-            <Tabs defaultValue="evidence" className="space-y-4">
-                <TabsList>
-                    <TabsTrigger value="evidence">Evidence Bank ({consultations.length + assessments.length})</TabsTrigger>
-                    <TabsTrigger value="output">Statutory Output</TabsTrigger>
-                    <TabsTrigger value="timeline">Full Audit Trail</TabsTrigger>
-                </TabsList>
+    return (
+        <div className="min-h-screen bg-gray-50 pb-20">
+            {/* 1. Case Header */}
+            <CaseHeader caseFile={caseFile} onEscalate={handleEscalate} />
 
-                <TabsContent value="evidence" className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* LEFT COLUMN: Internal Evidence */}
-                        <div className="col-span-2 space-y-4">
-                            <Card>
-                                <CardHeader className="pb-3">
-                                    <CardTitle className="text-sm font-medium uppercase text-slate-500">Consultation Sessions</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    {consultations.length === 0 ? (
-                                        <div className="text-sm text-slate-400 italic">No sessions recorded.</div>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {consultations.map(c => (
-                                                <div key={c.id} className="flex justify-between items-center p-3 bg-white border rounded-lg shadow-sm">
-                                                    <div>
-                                                        <div className="font-medium text-sm">Session: {c.mode || "Standard"}</div>
-                                                        <div className="text-xs text-slate-500">{new Date(c.date || c.createdAt).toLocaleDateString()}</div>
-                                                    </div>
-                                                    <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/consultations/synthesis/${c.id}`)}>
-                                                        View
-                                                    </Button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardHeader className="pb-3">
-                                    <CardTitle className="text-sm font-medium uppercase text-slate-500">Psychometric Assessments</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    {assessments.length === 0 ? (
-                                        <div className="text-sm text-slate-400 italic">No assessments completed.</div>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {assessments.map(a => (
-                                                <div key={a.id} className="flex justify-between items-center p-3 bg-white border rounded-lg shadow-sm">
-                                                    <div>
-                                                        <div className="font-medium text-sm">{a.templateId}</div>
-                                                        <div className="text-xs text-slate-500">Score: {a.totalScore}</div>
-                                                    </div>
-                                                    <CheckCircle className="h-4 w-4 text-emerald-500" />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* RIGHT COLUMN: External Requests */}
-                        <div className="col-span-1">
-                            <RequestInfoWidget 
-                                caseId={id} 
-                                studentId={caseData.subjectId} 
-                                studentName={`${studentData?.identity?.firstName?.value || ''} ${studentData?.identity?.lastName?.value || ''}`}
-                                tenantId={user?.tenantId || 'default'}
-                                parents={studentData?.family?.parents || []}
-                            />
-                        </div>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+                
+                {/* 2. Top Grid: Timeline & Countdown */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    
+                    {/* Left: The Statutory Stepper (Span 2) */}
+                    <div className="lg:col-span-2">
+                        <StatutoryStepper workflow={workflow} />
                     </div>
-                </TabsContent>
 
-                <TabsContent value="output" className="space-y-4">
-                    <Card className="bg-indigo-50 border-indigo-100">
+                    {/* Right: The Breach Countdown (Span 1) */}
+                    <div className="h-full">
+                        <BreachCountdown workflow={workflow} />
+                    </div>
+                </div>
+
+                {/* 3. Middle Grid: Active Workspace */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    
+                    {/* Active Tools Card */}
+                    <Card className="md:col-span-2">
                         <CardHeader>
-                            <CardTitle className="text-indigo-900">Appendix K: Educational Advice</CardTitle>
-                            <CardDescription className="text-indigo-700">
-                                Draft the formal statutory advice for the Local Authority. This will pull all triangulated evidence.
-                            </CardDescription>
+                            <CardTitle className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-blue-600" />
+                                Active Phase Tools: {workflow.currentStage.label}
+                            </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="flex gap-4 items-center">
-                                <div className="p-3 bg-white rounded-full text-indigo-600 border border-indigo-200">
-                                    <FileText className="h-6 w-6" />
-                                </div>
-                                <div className="flex-1">
-                                    <div className="text-sm font-medium">Status: {consultations.length > 0 ? 'Ready to Draft' : 'Evidence Pending'}</div>
-                                    <div className="text-xs text-slate-500">Deadline: Week 6</div>
-                                </div>
-                                <Button onClick={handleDraftAdvice} className="bg-indigo-600 hover:bg-indigo-700">
-                                    Start Drafting
-                                </Button>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {workflow.activeTools.map(toolId => (
+                                    <Button 
+                                        key={toolId} 
+                                        variant="outline" 
+                                        className="h-20 flex flex-col items-center justify-center gap-2 border-dashed border-2 hover:border-solid hover:border-blue-500 hover:bg-blue-50 transition-all"
+                                    >
+                                        <span className="font-semibold capitalize text-gray-700">
+                                            {toolId.replace(/_/g, ' ')}
+                                        </span>
+                                    </Button>
+                                ))}
                             </div>
                         </CardContent>
                     </Card>
-                </TabsContent>
-            </Tabs>
+
+                    {/* Quick Actions / Gaps */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-md font-semibold text-gray-700">
+                                Next Actions
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {workflow.canProceed ? (
+                                <div className="p-4 bg-green-50 border border-green-100 rounded-md text-green-800 text-sm">
+                                    <p className="font-semibold mb-2">Stage Complete!</p>
+                                    <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                                        Move to Next Stage <ArrowRight className="w-4 h-4 ml-2" />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <p className="text-sm text-gray-500">
+                                        To proceed to <strong>Next Stage</strong>, complete the following:
+                                    </p>
+                                    {/* Mock blockers for now */}
+                                    <ul className="list-disc pl-5 text-sm text-amber-700">
+                                        <li>Gather School Advice (Sec B)</li>
+                                        <li>Complete Observation</li>
+                                    </ul>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+            </div>
         </div>
     );
 }
