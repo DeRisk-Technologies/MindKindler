@@ -3,67 +3,103 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { CaseFile } from '@/types/case';
-import { useStatutoryWorkflow } from '@/hooks/useStatutoryWorkflow';
+import { useStatutoryWorkflow, WorkflowState } from '@/hooks/useStatutoryWorkflow';
 import { CaseHeader } from '@/components/dashboard/CaseHeader';
 import { StatutoryStepper } from '@/components/dashboard/StatutoryStepper';
 import { BreachCountdown } from '@/components/dashboard/BreachCountdown';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, FileText, Loader2 } from 'lucide-react';
+import { ArrowRight, FileText, Loader2, Link as LinkIcon, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getRegionalDb } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { useAuth } from '@/hooks/use-auth';
 
-// --- Mock Data Service (Replace with useFirestore later) ---
-async function fetchCaseById(id: string): Promise<CaseFile> {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    return {
-        id: id,
-        tenantId: 'tenant-123',
-        studentId: 'student-456',
-        studentName: 'Alex Thompson',
-        dob: '2016-05-15', // 9 Years old
-        upn: 'A123456789',
-        localAuthorityId: 'Leeds City Council',
-        region: 'uk-north',
-        status: 'assessment',
-        flags: {
-            isNonVerbal: false,
-            requiresGuardianPresence: false,
-            hasSocialWorker: true,
-            safeguardingRisk: false
-        },
-        stakeholders: [],
-        statutoryTimeline: {
-            requestDate: '2025-10-01', // Example date placing us in Assessment
-            decisionToAssessDeadline: '2025-11-12',
-            evidenceDeadline: '2025-12-24',
-            draftPlanDeadline: '2026-01-21',
-            finalPlanDeadline: '2026-02-18',
-            isOverdue: false
-        },
-        createdAt: '2025-10-01',
-        updatedAt: '2025-11-15',
-        createdBy: 'user-1'
-    };
-}
+// Helper to map active tools to URLs
+const TOOL_LINKS: Record<string, (id: string, studentId: string) => string> = {
+    'file_uploader': (id) => `/dashboard/cases/${id}/intake`,
+    'clerk_agent': (id) => `/dashboard/cases/${id}/intake`,
+    'observation_mode': (id) => `/dashboard/assessments/mobile`, // Placeholder
+    'report_editor': (id) => `/dashboard/cases/${id}/drafting`,
+    'consultation_cockpit': (id, studentId) => `/dashboard/consultations/new?studentId=${studentId}&caseId=${id}`,
+    'final_signoff': (id) => `/dashboard/reports`
+};
 
 export default function CaseDashboardPage() {
     const params = useParams();
     const router = useRouter();
+    const { user } = useAuth();
     const id = params.id as string;
     
     const [caseFile, setCaseFile] = useState<CaseFile | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchCaseById(id).then(data => {
-            setCaseFile(data);
-            setLoading(false);
-        });
-    }, [id]);
+        async function loadCase() {
+            if (!user) return;
+            
+            try {
+                // 1. Resolve Region & DB
+                const db = await getRegionalDb(user.region || 'uk');
+                
+                // 2. Fetch Case Document
+                const caseRef = doc(db, 'cases', id);
+                const caseSnap = await getDoc(caseRef);
+                
+                if (!caseSnap.exists()) {
+                    console.error("Case not found:", id);
+                    setLoading(false);
+                    return;
+                }
 
-    // Initialize Hook only when data is ready
+                const data = caseSnap.data();
+                
+                // 3. Map Firestore Data to CaseFile Interface
+                // Handle missing fields gracefully for new/intake cases
+                const mappedCase: CaseFile = {
+                    id: caseSnap.id,
+                    tenantId: data.tenantId,
+                    studentId: data.subjectId || data.studentId || 'unknown',
+                    studentName: data.studentName || data.title || 'Unnamed Student', // Fallback
+                    dob: data.dob || '2000-01-01', // Default if missing
+                    upn: data.upn,
+                    localAuthorityId: data.localAuthorityId || 'Default LA',
+                    region: user.region || 'uk',
+                    status: data.status || 'intake',
+                    // Flags might be missing in raw Firestore docs, provide defaults
+                    flags: data.flags || {
+                        isNonVerbal: false,
+                        requiresGuardianPresence: false,
+                        hasSocialWorker: false,
+                        safeguardingRisk: false
+                    },
+                    stakeholders: data.stakeholders || [],
+                    // Statutory Timeline might need init if missing
+                    statutoryTimeline: data.statutoryTimeline || {
+                        requestDate: data.createdAt, // Use creation as start
+                        decisionToAssessDeadline: new Date(Date.now() + 42 * 86400000).toISOString(),
+                        evidenceDeadline: new Date(Date.now() + 84 * 86400000).toISOString(),
+                        draftPlanDeadline: new Date(Date.now() + 112 * 86400000).toISOString(),
+                        finalPlanDeadline: new Date(Date.now() + 140 * 86400000).toISOString(),
+                        isOverdue: false
+                    },
+                    createdAt: data.createdAt,
+                    updatedAt: data.updatedAt,
+                    createdBy: data.createdBy
+                };
+
+                setCaseFile(mappedCase);
+            } catch (e) {
+                console.error("Error loading case:", e);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadCase();
+    }, [id, user]);
+
+    // Initialize Hook
     const workflow = useStatutoryWorkflow(caseFile!, undefined, false);
 
     if (loading || !caseFile) {
@@ -79,9 +115,17 @@ export default function CaseDashboardPage() {
     }
 
     const handleEscalate = () => {
-        // Navigate to Safeguarding flow
-        // router.push(`/dashboard/case/${id}/safeguarding`);
-        console.log("Escalation Triggered");
+        console.log("Escalation Triggered for", caseFile.id);
+        // router.push(`/dashboard/cases/${id}/safeguarding`);
+    };
+
+    const handleToolClick = (toolId: string) => {
+        const linkFn = TOOL_LINKS[toolId];
+        if (linkFn) {
+            router.push(linkFn(caseFile.id, caseFile.studentId));
+        } else {
+            console.warn("No link configured for tool:", toolId);
+        }
     };
 
     return (
@@ -122,6 +166,7 @@ export default function CaseDashboardPage() {
                                     <Button 
                                         key={toolId} 
                                         variant="outline" 
+                                        onClick={() => handleToolClick(toolId)}
                                         className="h-20 flex flex-col items-center justify-center gap-2 border-dashed border-2 hover:border-solid hover:border-blue-500 hover:bg-blue-50 transition-all"
                                     >
                                         <span className="font-semibold capitalize text-gray-700">
