@@ -5,8 +5,15 @@ import { VertexAI } from '@google-cloud/vertexai';
 const project = process.env.GCLOUD_PROJECT || "mindkindler-84fcf";
 const location = "us-central1"; 
 const vertexAI = new VertexAI({project: project, location: location});
-// UPGRADE: Switched to Gemini 2.5 Flash for better reasoning and speed
-const model = vertexAI.getGenerativeModel({ model: "gemini-2.0-flash-001" });
+
+// UPGRADE: Use JSON Mode configuration
+const model = vertexAI.getGenerativeModel({ 
+    model: "gemini-2.0-flash-001",
+    generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.1 // Lower temp for deterministic output
+    }
+});
 
 export const analyzeDocument = onCall({ region: "europe-west3" }, async (request) => {
     // 1. Auth Check
@@ -31,8 +38,6 @@ export const analyzeDocument = onCall({ region: "europe-west3" }, async (request
 
         Current File Name: "${fileName}"
 
-        Please analyze the text below and output a STRICT JSON object. Do not include markdown formatting (like \`\`\`json).
-
         Output Schema:
         {
           "extractedStakeholders": [
@@ -43,12 +48,12 @@ export const analyzeDocument = onCall({ region: "europe-west3" }, async (request
           ],
           "suggestedCategory": "parental_advice" | "school_report" | "medical_report" | "social_care_report" | "previous_ehcp" | "hearing_vision" | "speech_language" | "other",
           "confidence": number,
-          "riskSignals": string[], // List any mentions of: Safeguarding, Suicide, Self-harm, Tribunal, Exclusion, Abuse, Legal Action
-          "summary": string // A concise 2-sentence summary of what this document is.
+          "riskSignals": string[], 
+          "summary": string 
         }
 
         Input Text:
-        ${text.substring(0, 30000)} // Truncate to safety limit
+        ${text.substring(0, 30000)}
         `;
 
         // 4. Call Vertex AI
@@ -59,16 +64,26 @@ export const analyzeDocument = onCall({ region: "europe-west3" }, async (request
             throw new Error("No candidates returned from AI");
         }
 
-        const responseText = candidates[0].content.parts[0].text;
+        let responseText = candidates[0].content.parts[0].text || "{}";
         
-        if (!responseText) {
-             throw new Error("Empty response text from AI");
+        // 5. Robust Parsing
+        // Even with JSON mode, sometimes it wraps in ```json
+        responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        // Find first '{' and last '}' to strip any conversational prefix/suffix
+        const firstOpen = responseText.indexOf('{');
+        const lastClose = responseText.lastIndexOf('}');
+        if (firstOpen !== -1 && lastClose !== -1) {
+            responseText = responseText.substring(firstOpen, lastClose + 1);
         }
 
-        // 5. Parse JSON
-        // Robust cleaning of markdown blocks if AI ignored instruction
-        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        const analysis = JSON.parse(cleanJson);
+        let analysis;
+        try {
+            analysis = JSON.parse(responseText);
+        } catch (e) {
+            console.error("JSON Parse Error. Raw Text:", responseText);
+            throw new Error("AI returned invalid JSON format.");
+        }
 
         return { success: true, analysis };
 
