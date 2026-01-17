@@ -3,54 +3,96 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, FileText, Eye, Loader2 } from 'lucide-react';
+import { Upload, FileText, Eye, Loader2, Plus, UserPlus } from 'lucide-react';
 import { DocumentUploader } from '@/components/dashboard/data-ingestion/document-uploader'; 
 import { Badge } from '@/components/ui/badge';
-import { useFirestoreCollection } from '@/hooks/use-firestore';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, arrayUnion } from 'firebase/firestore';
 import { getRegionalDb } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { formatDistanceToNow } from 'date-fns';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Stakeholder } from '@/types/case';
 
-export function CaseFiles({ caseId }: { caseId: string }) {
+export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: string }) {
     const { user } = useAuth();
     const [documents, setDocuments] = useState<any[]>([]);
+    const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
     const [loading, setLoading] = useState(true);
+    
+    // Stakeholder Dialog
+    const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false);
+    const [newStakeholder, setNewStakeholder] = useState<Partial<Stakeholder>>({
+        role: 'parent',
+        name: '',
+        contactInfo: { email: '', phone: '' }
+    });
 
     useEffect(() => {
-        async function fetchDocs() {
+        async function fetchData() {
             if (!user) return;
             try {
                 const db = getRegionalDb(user.region || 'uk');
-                const q = query(
-                    collection(db, 'knowledgeDocuments'), 
-                    where('caseId', '==', caseId)
-                    // Note: Composite index needed for caseId + createdAt
-                );
                 
-                const snap = await getDocs(q);
-                const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                // Sort client side to avoid index requirement for now
+                // 1. Fetch Docs
+                const docQ = query(collection(db, 'knowledgeDocuments'), where('caseId', '==', caseId));
+                const docSnap = await getDocs(docQ);
+                const docs = docSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 docs.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-                
                 setDocuments(docs);
+
+                // 2. Fetch Case (for Stakeholders)
+                // Assuming parent passed ID, but we need fresh stakeholders list
+                const caseSnap = await getDoc(doc(db, 'cases', caseId));
+                if (caseSnap.exists()) {
+                    setStakeholders(caseSnap.data().stakeholders || []);
+                }
+
             } catch (e) {
-                console.error("Failed to fetch case files", e);
+                console.error("Failed to fetch case files/stakeholders", e);
             } finally {
                 setLoading(false);
             }
         }
-        fetchDocs();
-    }, [caseId, user]);
+        fetchData();
+    }, [caseId, user, isAddStakeholderOpen]); // Reload on dialog close
+
+    const handleAddStakeholder = async () => {
+        if (!user || !newStakeholder.name) return;
+        try {
+            const db = getRegionalDb(user.region || 'uk');
+            const stakeholder: Stakeholder = {
+                id: `sh-${Date.now()}`,
+                role: newStakeholder.role as any,
+                name: newStakeholder.name || 'Unknown',
+                contactInfo: {
+                    email: newStakeholder.contactInfo?.email || '',
+                    phone: newStakeholder.contactInfo?.phone || '',
+                    organization: newStakeholder.contactInfo?.organization || ''
+                },
+                consentStatus: 'pending',
+                contributionStatus: 'not_requested'
+            };
+
+            await updateDoc(doc(db, 'cases', caseId), {
+                stakeholders: arrayUnion(stakeholder)
+            });
+
+            setIsAddStakeholderOpen(false);
+            // Optimistic update
+            setStakeholders(prev => [...prev, stakeholder]);
+
+        } catch (e) {
+            console.error("Failed to add stakeholder", e);
+        }
+    };
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">The Digital Case File (Forensic View)</h3>
-                <Button variant="outline" size="sm">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Add Evidence
-                </Button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -89,23 +131,69 @@ export function CaseFiles({ caseId }: { caseId: string }) {
                         
                         <div className="mt-4 p-4 border-t border-dashed">
                             <p className="text-sm font-medium mb-2">Upload New Evidence</p>
-                            <DocumentUploader /> 
+                            {/* LOCKED UPLOADER */}
+                            <DocumentUploader preselectedStudentId={studentId} locked={true} /> 
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Extracted Stakeholders (Mock for now, or link to CaseFile.stakeholders) */}
+                {/* Stakeholders Manager */}
                 <Card>
-                    <CardHeader>
-                        <CardTitle className="text-sm font-medium">Detected Stakeholders</CardTitle>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">Stakeholders</CardTitle>
+                        <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                    <UserPlus className="h-4 w-4" />
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader><DialogTitle>Add Stakeholder</DialogTitle></DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                        <Label>Role</Label>
+                                        <Select 
+                                            value={newStakeholder.role} 
+                                            onValueChange={v => setNewStakeholder({...newStakeholder, role: v as any})}
+                                        >
+                                            <SelectTrigger><SelectValue/></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="parent">Parent</SelectItem>
+                                                <SelectItem value="senco">SENCO</SelectItem>
+                                                <SelectItem value="social_worker">Social Worker</SelectItem>
+                                                <SelectItem value="pediatrician">Pediatrician</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Name</Label>
+                                        <Input 
+                                            value={newStakeholder.name} 
+                                            onChange={e => setNewStakeholder({...newStakeholder, name: e.target.value})}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Email</Label>
+                                        <Input 
+                                            value={newStakeholder.contactInfo?.email} 
+                                            onChange={e => setNewStakeholder({...newStakeholder, contactInfo: {...newStakeholder.contactInfo, email: e.target.value} as any})}
+                                        />
+                                    </div>
+                                </div>
+                                <Button onClick={handleAddStakeholder}>Add Stakeholder</Button>
+                            </DialogContent>
+                        </Dialog>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-3">
-                            <div className="text-sm">
-                                <p className="font-medium">Mrs. Smith (Parent)</p>
-                                <p className="text-xs text-muted-foreground">Source: Parental Advice.docx</p>
-                                <Badge variant="outline" className="mt-1 text-[10px]">Consent Pending</Badge>
-                            </div>
+                            {stakeholders.map((sh) => (
+                                <div key={sh.id} className="text-sm border-b pb-2 last:border-0">
+                                    <p className="font-medium">{sh.name} <span className="text-xs text-muted-foreground">({sh.role})</span></p>
+                                    <p className="text-xs text-muted-foreground">{sh.contactInfo.email}</p>
+                                    {sh.consentStatus === 'pending' && <Badge variant="outline" className="mt-1 text-[10px] text-amber-600 bg-amber-50">Consent Pending</Badge>}
+                                </div>
+                            ))}
+                            {stakeholders.length === 0 && <p className="text-xs text-muted-foreground">No stakeholders added.</p>}
                         </div>
                     </CardContent>
                 </Card>
@@ -113,3 +201,6 @@ export function CaseFiles({ caseId }: { caseId: string }) {
         </div>
     );
 }
+
+// Helper needed for getDoc import
+import { getDoc } from 'firebase/firestore';
