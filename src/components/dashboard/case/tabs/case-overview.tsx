@@ -1,12 +1,17 @@
 // src/components/dashboard/case/tabs/case-overview.tsx
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { CaseFile } from '@/types/case';
 import { WorkflowState } from '@/hooks/useStatutoryWorkflow';
-import { Calendar, Clock, AlertTriangle, Building, FileText, Activity } from 'lucide-react';
+import { Calendar, Clock, AlertTriangle, FileText, Activity, User, School, Users, Pencil, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { StudentEditDialog } from '@/components/student360/dialogs/StudentEditDialog'; 
+import { doc, getDoc } from 'firebase/firestore';
+import { getRegionalDb } from '@/lib/firebase';
+import { useAuth } from '@/hooks/use-auth';
 
 interface CaseOverviewProps {
     caseFile: CaseFile;
@@ -14,11 +19,94 @@ interface CaseOverviewProps {
 }
 
 export function CaseOverview({ caseFile, workflow }: CaseOverviewProps) {
+    const { user } = useAuth();
     const contract = caseFile.contract;
+    const [editOpen, setEditOpen] = useState(false);
+    const [studentDetails, setStudentDetails] = useState<any>(null);
+    const [loadingStudent, setLoadingStudent] = useState(true);
+
+    // Fetch Student Details explicitly to get linked names (School/Parent)
+    // We assume 'caseFile' might only have ID/Name snapshot
+    useEffect(() => {
+        async function loadStudent() {
+            if (!user || !caseFile.studentId) return;
+            try {
+                const db = getRegionalDb(user.region || 'uk');
+                const snap = await getDoc(doc(db, 'students', caseFile.studentId));
+                if (snap.exists()) {
+                    const data = snap.data();
+                    
+                    // Fetch Linked Names (Naive approach: sequential)
+                    let schoolName = 'Unknown School';
+                    let parentName = 'Unknown Parent';
+
+                    if (data.schoolId) {
+                        const sSnap = await getDoc(doc(db, 'schools', data.schoolId));
+                        if (sSnap.exists()) schoolName = sSnap.data().name;
+                    }
+                    if (data.parentId) {
+                        const pSnap = await getDoc(doc(db, 'users', data.parentId));
+                        if (pSnap.exists()) parentName = pSnap.data().displayName;
+                    }
+
+                    setStudentDetails({ ...data, schoolName, parentName });
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoadingStudent(false);
+            }
+        }
+        loadStudent();
+    }, [caseFile.studentId, user, editOpen]); // Reload on edit close
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* 1. The Brief / Contract */}
+            {/* 1. Student Profile (NEW) */}
+            <Card className="md:col-span-1">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Student Profile</CardTitle>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditOpen(true)}>
+                        <Pencil className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                </CardHeader>
+                <CardContent>
+                    {loadingStudent ? (
+                        <div className="flex justify-center py-4"><Loader2 className="animate-spin h-6 w-6"/></div>
+                    ) : studentDetails ? (
+                        <div className="space-y-4 mt-2">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+                                    {studentDetails.firstName?.[0]}{studentDetails.lastName?.[0]}
+                                </div>
+                                <div>
+                                    <p className="font-semibold">{studentDetails.firstName} {studentDetails.lastName}</p>
+                                    <p className="text-xs text-muted-foreground">DOB: {studentDetails.dob}</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 text-sm border-t pt-3">
+                                <div className="flex items-center gap-2 text-slate-600">
+                                    <School className="h-4 w-4" />
+                                    <span>{studentDetails.schoolName}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-slate-600">
+                                    <Users className="h-4 w-4" />
+                                    <span>{studentDetails.parentName}</span>
+                                </div>
+                                {studentDetails.upn && (
+                                    <div className="flex items-center gap-2 text-slate-600">
+                                        <span className="font-mono text-xs bg-slate-100 px-1 rounded">UPN: {studentDetails.upn}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">Student data unavailable.</p>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* 2. The Brief / Contract */}
             <Card className="md:col-span-2">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -72,7 +160,7 @@ export function CaseOverview({ caseFile, workflow }: CaseOverviewProps) {
                 </CardContent>
             </Card>
 
-            {/* 2. Timeline Status */}
+            {/* 3. Timeline Status */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -116,8 +204,8 @@ export function CaseOverview({ caseFile, workflow }: CaseOverviewProps) {
                 </CardContent>
             </Card>
 
-            {/* 3. Recent Activity (Audit Trail) */}
-            <Card className="md:col-span-3">
+            {/* 4. Recent Activity (Audit Trail) */}
+            <Card className="md:col-span-2">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <Activity className="w-5 h-5 text-slate-600" />
@@ -126,7 +214,6 @@ export function CaseOverview({ caseFile, workflow }: CaseOverviewProps) {
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
-                        {/* Mock Activity Stream - Connect to 'audit_logs' later */}
                         <div className="flex gap-4 items-start">
                             <div className="w-2 h-2 mt-2 rounded-full bg-blue-500 shrink-0" />
                             <div>
@@ -146,6 +233,12 @@ export function CaseOverview({ caseFile, workflow }: CaseOverviewProps) {
                     </div>
                 </CardContent>
             </Card>
+
+            <StudentEditDialog 
+                open={editOpen} 
+                onOpenChange={setEditOpen} 
+                studentId={caseFile.studentId}
+            />
         </div>
     );
 }

@@ -41,20 +41,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { usePermissions } from "@/hooks/use-permissions"; // Added for shard awareness
+import { usePermissions } from "@/hooks/use-permissions"; 
+import { StudentEditDialog } from "@/components/student360/dialogs/StudentEditDialog"; // NEW IMPORT
 
 export default function StudentsPage() {
-  // Shard-Aware Fetching
   const { shardId } = usePermissions();
   
-  // Explicitly fetch from the regional DB if shardId is set (handled by hook context but good to verify)
   const { data: students, loading: loadingStudents, refresh: refreshStudents } = useFirestoreCollection<Student>("students", "lastName", "asc");
   const { data: schools, loading: loadingSchools } = useFirestoreCollection<any>("schools", "name", "asc");
   const { data: users, loading: loadingUsers } = useFirestoreCollection<any>("users", "displayName", "asc");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isStudentEditOpen, setIsStudentEditOpen] = useState(false);
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   
   // Parent state
   const [isParentDialogOpen, setIsParentDialogOpen] = useState(false);
@@ -79,7 +79,6 @@ export default function StudentsPage() {
   const handleDeleteStudent = async (id: string) => {
     if(!confirm("Are you sure you want to delete this student?")) return;
     
-    // Shard-Aware Delete
     const targetDb = shardId ? getRegionalDb(shardId.replace('mindkindler-', '')) : db;
     await deleteDoc(doc(targetDb, "students", id));
     
@@ -152,6 +151,11 @@ export default function StudentsPage() {
       if(!confirm("Delete this parent profile?")) return;
       const targetDb = shardId ? getRegionalDb(shardId.replace('mindkindler-', '')) : db;
       await deleteDoc(doc(targetDb, "users", id));
+  };
+
+  const handleEditStudent = (id: string) => {
+      setEditingStudentId(id);
+      setIsStudentEditOpen(true);
   };
 
   return (
@@ -254,6 +258,11 @@ export default function StudentsPage() {
                                         <span>{getParentName(student.parentId)}</span>
                                       </div>
                                     </div>
+                                    
+                                    <Button variant="outline" size="sm" className="w-full" onClick={() => handleEditStudent(student.id)}>
+                                        <Pencil className="h-3 w-3 mr-2" />
+                                        Edit Details
+                                    </Button>
 
                                     {(student.alerts && student.alerts.length > 0) ? (
                                        <div className="bg-red-50 p-2 rounded border border-red-200 text-xs text-red-800 flex items-start gap-2">
@@ -285,6 +294,9 @@ export default function StudentsPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
+                                  <Button variant="ghost" size="icon" onClick={() => handleEditStudent(student.id)}>
+                                      <Pencil className="h-4 w-4" />
+                                  </Button>
                                   <Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(student.id)}>
                                       <Trash2 className="h-4 w-4 text-destructive" />
                                   </Button>
@@ -301,7 +313,7 @@ export default function StudentsPage() {
         </TabsContent>
 
         <TabsContent value="parents" className="space-y-4">
-           {/* Parent Tab Content (unchanged logic, just sharded) */}
+           {/* Parent Tab Content (unchanged logic) */}
            <div className="flex justify-end">
               <Dialog open={isParentDialogOpen} onOpenChange={(open) => { setIsParentDialogOpen(open); if(!open) setEditingParentId(null); }}>
                   <DialogTrigger asChild>
@@ -315,7 +327,6 @@ export default function StudentsPage() {
                       <DialogDescription>Create a profile for a guardian.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleSaveParent} className="space-y-4">
-                      {/* Form fields same as before */}
                       <div className="space-y-2">
                         <Label htmlFor="name">Full Name</Label>
                         <Input id="name" name="name" required defaultValue={editingParentId ? parents.find(p => p.id === editingParentId)?.displayName : ""} />
@@ -415,6 +426,14 @@ export default function StudentsPage() {
            </Card>
         </TabsContent>
       </Tabs>
+
+      {/* GLOBAL STUDENT EDIT DIALOG */}
+      <StudentEditDialog 
+        open={isStudentEditOpen} 
+        onOpenChange={setIsStudentEditOpen} 
+        studentId={editingStudentId || ''} 
+        onSuccess={refreshStudents}
+      />
     </div>
   );
 }
