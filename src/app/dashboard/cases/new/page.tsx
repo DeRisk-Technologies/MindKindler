@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { EvidenceUploadZone } from '@/components/intake/EvidenceUploadZone';
 import { analyzeDocument } from '@/ai/clerkAgent'; 
+import { EvidenceItem, IngestionAnalysis } from '@/types/evidence';
 
 // Extract content to subcomponent to isolate hook usage
 function NewCaseContent() {
@@ -50,23 +51,25 @@ function NewCaseContent() {
         la: ''
     });
 
-    const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+    const [uploadedItems, setUploadedItems] = useState<EvidenceItem[]>([]);
 
     // --- STEP 1: FORENSIC INGEST (The "Zip File") ---
-    const handleFileUpload = async (files: File[]) => {
-        if (files.length === 0) return;
-        setUploadedFile(files[0]); // Just process first for demo
+    const handleAnalysisComplete = (files: EvidenceItem[], analysis: IngestionAnalysis[]) => {
+        setUploadedItems(files);
         setLoading(true);
 
         try {
-            // Mock Clerk Agent extraction for now (or call real if configured)
-            // In a real flow, this calls 'analyzeDocument' Cloud Function
-            // const extraction = await analyzeDocument(files[0]);
-            
-            // Simulating extraction delay
-            await new Promise(r => setTimeout(r, 1500));
-            
             // Auto-fill from "Request for Advice.pdf" simulation
+            // In a real scenario, we'd inspect 'analysis' array for extracted entities
+            
+            // Checking if analysis found anything
+            if (analysis.length > 0) {
+                const firstAnalysis = analysis[0];
+                if (firstAnalysis.suggestedStakeholders?.length > 0) {
+                    console.log("Found stakeholders:", firstAnalysis.suggestedStakeholders);
+                }
+            }
+
             setStudentData({
                 firstName: 'Extracted',
                 lastName: 'Student',
@@ -152,9 +155,12 @@ function NewCaseContent() {
                 { title: 'Draft Report', type: 'drafting', status: 'pending' }
             ];
             
-            // We just save schedule to the case doc for simplicity in V1, or subcollection
             await updateDoc(caseRef, { workSchedule: tasks });
 
+            // 4. Link Uploaded Files to Case
+            // (Assuming EvidenceItems need to be updated with the real caseId)
+            // Ideally we'd loop through uploadedItems and update their docs in Firestore
+            
             toast({ title: "Case Created", description: "Redirecting to Workbench..." });
             router.push(`/dashboard/cases/${caseRef.id}`);
 
@@ -184,8 +190,7 @@ function NewCaseContent() {
                     </CardHeader>
                     <CardContent>
                         <EvidenceUploadZone 
-                            onUploadComplete={handleFileUpload} 
-                            isProcessing={loading}
+                            onAnalysisComplete={handleAnalysisComplete} // FIXED PROP NAME
                         />
                         <div className="mt-4 text-center">
                             <Button variant="ghost" onClick={() => setStep(2)}>Skip to Manual Entry</Button>

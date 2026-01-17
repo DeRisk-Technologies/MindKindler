@@ -8,18 +8,14 @@ export default function NewCasePage() {
     const router = useRouter();
 
     useEffect(() => {
-        // For the Pilot, we generate a random ID and start the Intake Wizard
-        const randomId = `case-${Date.now()}`;
-        
-        // Redirect to the Intake Wizard for this new case
-        // FIXED: Now points to the unified /cases path
-        router.replace(`/dashboard/cases/${randomId}/intake`);
+        // Redirect to the new Forensic Intake Wizard
+        router.replace(`/dashboard/cases/new`);
     }, [router]);
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 gap-4">
             <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-            <p className="text-gray-500 font-medium">Initializing new case file...</p>
+            <p className="text-gray-500 font-medium">Redirecting to Intake Wizard...</p>
         </div>
     );
 }
