@@ -29,6 +29,7 @@ async function seedPilotData() {
     console.log("📝 Seeding Case A: XX Jeffery (Drafting Stage)...");
     
     const caseA_Id = 'case-a-jeffery';
+    const studentId = 'stu-jeffery-01';
     
     // Create Tasks for Work Schedule Tab
     const tasksA: WorkTask[] = [
@@ -41,7 +42,7 @@ async function seedPilotData() {
     const caseA: CaseFile = {
         id: caseA_Id,
         tenantId: TENANT_ID,
-        studentId: 'stu-jeffery-01',
+        studentId: studentId,
         studentName: 'XX Jeffery',
         dob: '2014-05-12',
         upn: 'Z12345678',
@@ -56,9 +57,9 @@ async function seedPilotData() {
         },
         contract: {
             clientName: 'York City Council',
-            serviceType: 'statutory_advice',
+            serviceTypes: ['statutory_advice'],
             commissionedDate: weeksAgo(6),
-            dueDate: addDays(new Date(), 14).toISOString(), // Due in 2 weeks
+            dueDate: addDays(new Date(), 14).toISOString(), 
             budgetHours: 6,
             specialInstructions: 'Specific focus on sensory needs and recent exclusions.'
         },
@@ -85,11 +86,10 @@ async function seedPilotData() {
     BATCH.set(caseARef, caseA);
 
     // --- FORENSIC FILES (Knowledge Base) ---
-    // These populate the 'Case File' tab
     const files = [
         { name: 'Request for Advice - York Council.pdf', type: 'referral', date: weeksAgo(6) },
         { name: 'Parental Contribution (Section A).docx', type: 'evidence', date: weeksAgo(5) },
-        { name: 'Clinic Letter - Pediatrician.pdf', type: 'medical', date: weeksAgo(10) }, // Old file
+        { name: 'Clinic Letter - Pediatrician.pdf', type: 'medical', date: weeksAgo(10) }, 
         { name: 'School Attendance Log.xlsx', type: 'school_data', date: weeksAgo(4) }
     ];
 
@@ -100,7 +100,7 @@ async function seedPilotData() {
             tenantId: TENANT_ID,
             title: f.name,
             type: 'evidence',
-            caseId: caseA_Id, // Linked to Case
+            caseId: caseA_Id, 
             status: 'processed',
             metadata: {
                 originalFileName: f.name,
@@ -112,12 +112,11 @@ async function seedPilotData() {
     });
 
     // --- EVIDENCE LAB: OBSERVATION ---
-    // Populates 'Evidence Lab > Observation'
     const obsRef = db.collection('observations').doc('obs-1');
     BATCH.set(obsRef, {
         id: 'obs-1',
         caseId: caseA_Id,
-        studentId: 'stu-jeffery-01',
+        studentId: studentId,
         tenantId: TENANT_ID,
         date: weeksAgo(1),
         setting: 'Classroom - Literacy',
@@ -130,8 +129,23 @@ async function seedPilotData() {
         status: 'finalized'
     });
 
+    // --- EVIDENCE LAB: CONSULTATION (NEW) ---
+    const sessRef = db.collection('consultation_sessions').doc('sess-1');
+    BATCH.set(sessRef, {
+        id: 'sess-1',
+        caseId: caseA_Id,
+        studentId: studentId,
+        tenantId: TENANT_ID,
+        title: 'Initial Parent Consultation',
+        status: 'completed',
+        startTime: weeksAgo(2),
+        participants: ['MXX Jeffery (Mother)', 'Dr. EP'],
+        summary: 'Mother reports good sleep but high anxiety in mornings.',
+        transcript: [], // Mock empty for seed
+        createdAt: weeksAgo(2)
+    });
+
     // --- REPORTING ---
-    // Inject Findings for Report Generator
     const findingsA: Finding[] = [
         {
             id: 'f-cog-1',
