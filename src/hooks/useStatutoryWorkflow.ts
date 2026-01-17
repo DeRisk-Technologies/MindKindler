@@ -11,60 +11,58 @@ import { validateStageTransition } from '../lib/statutory/stage-guard';
 export type RAGStatus = 'red' | 'amber' | 'green';
 
 export interface WorkflowState {
-    /** The active configuration object for the current stage */
     currentStage: StatutoryStageConfig;
-    
-    /** Days remaining until the END of the current stage */
     daysRemainingInStage: number;
-    
-    /** Days until the HARD statutory deadline (Week 20) */
     daysUntilFinalDeadline: number;
-    
-    /** Days until the EPP's Personal Contract Deadline */
     daysUntilContractDeadline: number | null;
-    
-    /** Urgency indicator (Prioritizes Contract Deadline if set) */
     ragStatus: RAGStatus;
-    
-    /** Has the deadline for this stage passed? */
     isBreachRisk: boolean;
-    
-    /** Tools that should be enabled in the UI Sidebar */
     activeTools: StatutoryToolId[];
-    
-    /** Can the user legally/clinically move to the next stage? */
     canProceed: boolean;
-    
-    /** Why they can't proceed (if applicable) */
     blockers: string[];
 }
 
+// Default "Empty" State to return during loading
+const DEFAULT_STATE: WorkflowState = {
+    currentStage: EHCP_STAGES[0],
+    daysRemainingInStage: 0,
+    daysUntilFinalDeadline: 0,
+    daysUntilContractDeadline: null,
+    ragStatus: 'green',
+    isBreachRisk: false,
+    activeTools: [],
+    canProceed: false,
+    blockers: []
+};
+
 export function useStatutoryWorkflow(
-    caseFile: CaseFile,
+    caseFile: CaseFile | null | undefined, // Allow null
     gapReport?: GapReport,
     hasDraftReport: boolean = false
 ): WorkflowState {
 
-    // 1. Calculate Timeline Baseline
-    const timeline: StatutoryDeadlines = useMemo(() => {
-        const reqDate = caseFile?.statutoryTimeline?.requestDate 
-            ? parseISO(caseFile.statutoryTimeline.requestDate)
-            : new Date(); // Fallback if new
-        return calculateStatutoryTimeline(reqDate);
-    }, [caseFile?.statutoryTimeline?.requestDate]);
+    // 1. Safety Check: If loading or invalid, return safe default
+    if (!caseFile || !caseFile.statutoryTimeline) {
+        return DEFAULT_STATE;
+    }
 
-    // 2. Determine Current Stage based on Today vs Timeline
+    // 2. Calculate Timeline Baseline
+    const timeline: StatutoryDeadlines = calculateStatutoryTimeline(
+        caseFile.statutoryTimeline.requestDate 
+            ? parseISO(caseFile.statutoryTimeline.requestDate)
+            : new Date()
+    );
+
+    // 3. Determine Current Stage
     const today = new Date();
     const requestDate = parseISO(timeline.requestDate);
     const daysSinceRequest = isValid(requestDate) ? differenceInDays(today, requestDate) : 0;
     const weeksSinceRequest = daysSinceRequest / 7;
 
-    const currentStageConfig = useMemo(() => {
-        const stage = EHCP_STAGES.find(s => weeksSinceRequest >= s.weekStart && weeksSinceRequest < s.weekEnd);
-        return stage || (weeksSinceRequest >= 20 ? EHCP_STAGES[EHCP_STAGES.length - 1] : EHCP_STAGES[0]);
-    }, [weeksSinceRequest]);
+    const currentStageConfig = EHCP_STAGES.find(s => weeksSinceRequest >= s.weekStart && weeksSinceRequest < s.weekEnd) 
+        || (weeksSinceRequest >= 20 ? EHCP_STAGES[EHCP_STAGES.length - 1] : EHCP_STAGES[0]);
 
-    // 3. Calculate Days Remaining (Dual Track)
+    // 4. Calculate Days Remaining
     const stageEndDate = addWeeks(requestDate, currentStageConfig.weekEnd);
     const daysRemaining = differenceInDays(stageEndDate, today);
     const finalDeadlineDate = parseISO(timeline.finalPlanDeadline);
@@ -79,15 +77,15 @@ export function useStatutoryWorkflow(
         }
     }
 
-    // 4. Determine RAG Status (Prioritize EPP Deadline)
+    // 5. Determine RAG Status
     let rag: RAGStatus = 'green';
     const deadlineToCheck = daysUntilContractDeadline !== null ? daysUntilContractDeadline : daysRemaining;
     
-    if (deadlineToCheck < 0) rag = 'red'; // Overdue
-    else if (deadlineToCheck < 5) rag = 'red'; // Urgent
-    else if (deadlineToCheck < 10) rag = 'amber'; // Warning
+    if (deadlineToCheck < 0) rag = 'red';
+    else if (deadlineToCheck < 5) rag = 'red';
+    else if (deadlineToCheck < 10) rag = 'amber';
 
-    // 5. Check Gate Logic
+    // 6. Check Gate Logic
     const currentIndex = EHCP_STAGES.findIndex(s => s.id === currentStageConfig.id);
     const nextStage = EHCP_STAGES[currentIndex + 1];
     
