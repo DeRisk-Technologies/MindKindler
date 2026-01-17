@@ -1,267 +1,139 @@
-"use client";
+// src/components/dashboard/case/tabs/case-overview.tsx
 
-import { useEffect, useState } from "react";
-import { Case } from "@/types/schema";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { CalendarDays, Clock, Users, Activity, AlertTriangle, FileText, CheckCircle, NotebookPen, Calendar } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
-import { getRegionalDb } from "@/lib/firebase";
-import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, arrayUnion } from "firebase/firestore";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
+import React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { CaseFile } from '@/types/case';
+import { WorkflowState } from '@/hooks/useStatutoryWorkflow';
+import { Calendar, Clock, AlertTriangle, Building, FileText, Activity } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface CaseOverviewProps {
-  caseData: Case;
+    caseFile: CaseFile;
+    workflow: WorkflowState;
 }
 
-export function CaseOverview({ caseData }: CaseOverviewProps) {
-  const { user } = useAuth();
-  const [student, setStudent] = useState<any>(null);
-  const [note, setNote] = useState("");
-  const [plannerOpen, setPlannerOpen] = useState(false);
-  const [plannerEvent, setPlannerEvent] = useState({ title: '', date: '' });
-  const [stats, setStats] = useState({ consultations: 0, reports: 0, assessments: 0 });
+export function CaseOverview({ caseFile, workflow }: CaseOverviewProps) {
+    const contract = caseFile.contract;
 
-  useEffect(() => {
-      if(!user || !caseData.studentId) return;
-      
-      async function loadStudent() {
-          try {
-              const db = getRegionalDb(user?.region);
-              
-              // Load Student
-              const stuSnap = await getDoc(doc(db, 'students', caseData.studentId));
-              if(stuSnap.exists()) setStudent(stuSnap.data());
-
-              // Load Stats
-              const consults = await getDocs(query(collection(db, 'consultation_sessions'), where('studentId', '==', caseData.studentId)));
-              const reports = await getDocs(query(collection(db, 'reports'), where('studentId', '==', caseData.studentId)));
-              const assess = await getDocs(query(collection(db, 'assessment_results'), where('studentId', '==', caseData.studentId)));
-
-              setStats({
-                  consultations: consults.size,
-                  reports: reports.size,
-                  assessments: assess.size
-              });
-
-          } catch(e) { console.error(e); }
-      }
-      loadStudent();
-  }, [user, caseData.studentId]);
-
-  const handleAddNote = async () => {
-      if(!note || !user) return;
-      try {
-          const db = getRegionalDb(user.region);
-          // Add as activity
-          await updateDoc(doc(db, 'cases', caseData.id), {
-              activities: arrayUnion({
-                  date: new Date().toISOString(),
-                  summary: "Note Added: " + note,
-                  performedBy: user.uid,
-                  type: 'note'
-              })
-          });
-          setNote("");
-      } catch(e) { console.error(e); }
-  };
-
-  const handleAddPlan = async () => {
-      // Phase 36: Planner Logic Placeholder
-      // In a full implementation, this saves to a 'planner' subcollection or appointments
-      setPlannerOpen(false);
-  };
-
-  if(!student) return <div>Loading context...</div>;
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-      <div className="col-span-4 space-y-4">
-        {/* Student/Subject Profile Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-4 space-y-0 pb-2">
-            <Avatar className="h-16 w-16">
-              <AvatarImage src={student.identity?.photoUrl} alt={student.identity?.firstName?.value} />
-              <AvatarFallback>{student.identity?.firstName?.value?.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <CardTitle className="text-xl">{student.identity?.firstName?.value} {student.identity?.lastName?.value}</CardTitle>
-              <CardDescription>{student.education?.yearGroup?.value || "Year Group Unknown"} • {student.education?.currentSchoolId?.value ? "School Linked" : "No School Linked"}</CardDescription>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {student.education?.senStatus?.value && <Badge variant="secondary">{student.education.senStatus.value}</Badge>}
-                {student.health?.conditions?.value?.map((c: string) => <Badge key={c} variant="outline">{c}</Badge>)}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-center">
-                 <div className="p-2 bg-slate-50 rounded">
-                     <div className="font-bold text-lg">{stats.consultations}</div>
-                     <div className="text-xs text-muted-foreground">Sessions</div>
-                 </div>
-                 <div className="p-2 bg-slate-50 rounded">
-                     <div className="font-bold text-lg">{stats.assessments}</div>
-                     <div className="text-xs text-muted-foreground">Assessments</div>
-                 </div>
-                 <div className="p-2 bg-slate-50 rounded">
-                     <div className="font-bold text-lg">{stats.reports}</div>
-                     <div className="text-xs text-muted-foreground">Reports</div>
-                 </div>
-            </div>
-            <Separator className="my-4" />
-            <div className="space-y-2">
-              <h4 className="font-semibold text-sm">Case Focus</h4>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {caseData.description || "No description provided."}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Quick Note Taker */}
-        <Card>
-            <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex gap-2 items-center"><NotebookPen className="h-4 w-4"/> Quick Note</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="flex gap-2">
-                    <Textarea 
-                        placeholder="Log a quick observation, phone call, or thought..." 
-                        className="min-h-[80px]"
-                        value={note}
-                        onChange={e => setNote(e.target.value)}
-                    />
-                </div>
-                <div className="flex justify-end mt-2">
-                    <Button size="sm" onClick={handleAddNote} disabled={!note}>Save Note</Button>
-                </div>
-            </CardContent>
-        </Card>
-
-        {/* Recent Activity Timeline */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Case Timeline</CardTitle>
-            <CardDescription>Chronological log of all interactions.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {caseData.activities?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5).map((activity, index) => (
-                <div key={index} className="flex gap-4 relative">
-                  <div className="flex flex-col items-center">
-                    <div className="relative z-10 flex h-3 w-3 rounded-full bg-indigo-500 ring-4 ring-white" />
-                    {index !== (caseData.activities.length - 1) && (
-                      <div className="h-full w-[2px] bg-slate-200 absolute top-3" />
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* 1. The Brief / Contract */}
+            <Card className="md:col-span-2">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-indigo-600" />
+                        Engagement Brief
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {contract ? (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-sm text-muted-foreground">Client</p>
+                                <p className="font-semibold">{contract.clientName}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-muted-foreground">Service Type</p>
+                                <Badge variant="outline" className="capitalize">{contract.serviceType.replace('_', ' ')}</Badge>
+                            </div>
+                            <div>
+                                <p className="text-sm text-muted-foreground">Commissioned</p>
+                                <p>{format(new Date(contract.commissionedDate), 'PPP')}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-muted-foreground">Deadline</p>
+                                <p className="font-bold text-red-600">{format(new Date(contract.dueDate), 'PPP')}</p>
+                            </div>
+                            {contract.specialInstructions && (
+                                <div className="col-span-2 bg-yellow-50 p-3 rounded-md border border-yellow-100 text-sm text-yellow-900 mt-2">
+                                    <strong>Instructions:</strong> {contract.specialInstructions}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed">
+                            <p className="text-muted-foreground mb-2">No contract details defined.</p>
+                            <Badge>Internal Case</Badge>
+                        </div>
                     )}
-                  </div>
-                  <div className="space-y-1 pb-2">
-                    <p className="text-sm font-medium leading-none">{activity.summary}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(activity.date).toLocaleString()} • {activity.type || 'System'}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {!caseData.activities?.length && (
-                <p className="text-sm text-muted-foreground">No recent activity.</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                </CardContent>
+            </Card>
 
-      <div className="col-span-3 space-y-4">
-        {/* Next Actions Planner */}
-        <Card className="bg-indigo-50 border-indigo-100">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-indigo-900 text-sm font-bold flex justify-between items-center">
-                    <span><Calendar className="inline mr-2 h-4 w-4"/> Case Planner</span>
-                    <Button size="sm" variant="ghost" onClick={() => setPlannerOpen(true)}><Activity className="h-4 w-4"/></Button>
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-2">
-                    {/* Mock Future Events */}
-                    <div className="flex gap-3 items-center bg-white p-2 rounded border shadow-sm">
-                        <div className="bg-red-100 text-red-700 text-xs font-bold p-1 rounded text-center min-w-[40px]">
-                            14<br/>JAN
+            {/* 2. Timeline Status */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Clock className="w-5 h-5 text-blue-600" />
+                        Timeline Status
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    {/* EPP Deadline */}
+                    {workflow.daysUntilContractDeadline !== null && (
+                        <div>
+                            <div className="flex justify-between items-end mb-1">
+                                <span className="text-sm font-medium">Your Deadline</span>
+                                <span className={`text-xl font-bold ${workflow.ragStatus === 'red' ? 'text-red-600' : 'text-emerald-600'}`}>
+                                    {workflow.daysUntilContractDeadline} Days
+                                </span>
+                            </div>
+                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div 
+                                    className={`h-full ${workflow.ragStatus === 'red' ? 'bg-red-500' : 'bg-emerald-500'}`} 
+                                    style={{ width: '60%' }} // Dynamic calc needed
+                                /> 
+                            </div>
                         </div>
-                        <div className="text-sm">
-                            <div className="font-semibold">Parent Consultation</div>
-                            <div className="text-xs text-muted-foreground">10:00 AM - Zoom</div>
-                        </div>
-                    </div>
-                     <div className="flex gap-3 items-center bg-white p-2 rounded border shadow-sm">
-                        <div className="bg-blue-100 text-blue-700 text-xs font-bold p-1 rounded text-center min-w-[40px]">
-                            20<br/>JAN
-                        </div>
-                        <div className="text-sm">
-                            <div className="font-semibold">School Visit</div>
-                            <div className="text-xs text-muted-foreground">09:00 AM - On Site</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <Dialog open={plannerOpen} onOpenChange={setPlannerOpen}>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>Add to Planner</DialogTitle></DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <Input placeholder="Event Title" value={plannerEvent.title} onChange={e => setPlannerEvent({...plannerEvent, title: e.target.value})}/>
-                            <Input type="date" value={plannerEvent.date} onChange={e => setPlannerEvent({...plannerEvent, date: e.target.value})}/>
-                        </div>
-                         <Button onClick={handleAddPlan}>Add to Schedule</Button>
-                    </DialogContent>
-                </Dialog>
-            </CardContent>
-        </Card>
+                    )}
 
-        {/* Key Metrics / Quick Stats */}
-        <div className="grid grid-cols-2 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">3</div>
-              <p className="text-xs text-muted-foreground">2 high priority</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">SLA Status</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">On Track</div>
-              <p className="text-xs text-muted-foreground">12 days remaining</p>
-            </CardContent>
-          </Card>
+                    {/* LA Context */}
+                    <div className="pt-4 border-t">
+                        <p className="text-xs text-muted-foreground mb-2">LA Statutory Context (20 Weeks)</p>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="secondary">Week {Math.floor((20 * 7 - workflow.daysUntilFinalDeadline) / 7)}</Badge>
+                            <span className="text-xs text-slate-500">of 20</span>
+                        </div>
+                        {workflow.isBreachRisk && (
+                            <div className="flex items-center gap-1 text-red-600 text-xs font-bold mt-2">
+                                <AlertTriangle className="w-3 h-3" />
+                                LA Breach Risk High
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* 3. Recent Activity (Audit Trail) */}
+            <Card className="md:col-span-3">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-slate-600" />
+                        Activity Journal
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        {/* Mock Activity Stream - Connect to 'audit_logs' later */}
+                        <div className="flex gap-4 items-start">
+                            <div className="w-2 h-2 mt-2 rounded-full bg-blue-500 shrink-0" />
+                            <div>
+                                <p className="text-sm font-medium">Case Created (Intake)</p>
+                                <p className="text-xs text-muted-foreground">{format(new Date(caseFile.createdAt), 'PP p')}</p>
+                            </div>
+                        </div>
+                        {caseFile.lastActivity && (
+                            <div className="flex gap-4 items-start">
+                                <div className="w-2 h-2 mt-2 rounded-full bg-emerald-500 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium">{caseFile.lastActivity}</p>
+                                    <p className="text-xs text-muted-foreground">Just now</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
         </div>
-
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            <Button className="w-full justify-start" variant="secondary">
-              <FileText className="mr-2 h-4 w-4" /> Generate Report
-            </Button>
-            <Button className="w-full justify-start" variant="ghost">
-              <Activity className="mr-2 h-4 w-4" /> Log Intervention
-            </Button>
-            <Button className="w-full justify-start" variant="ghost">
-              <AlertTriangle className="mr-2 h-4 w-4" /> Report Incident
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+    );
 }

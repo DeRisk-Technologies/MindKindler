@@ -14,10 +14,6 @@ export type CaseStatus =
 
 /**
  * Stakeholder Roles in an EHC Needs Assessment.
- * - 'senco': Special Educational Needs Coordinator (School)
- * - 'epp_lead': Educational Psychologist managing the case
- * - 'social_worker': Assigned social worker (if any)
- * - 'pediatrician': Community Pediatrician (Health advice)
  */
 export type StakeholderRole = 'parent' | 'senco' | 'social_worker' | 'pediatrician' | 'class_teacher' | 'epp_lead';
 
@@ -36,6 +32,33 @@ export interface Stakeholder {
     contributionStatus: 'not_requested' | 'requested' | 'received';
     /** Link to the specific evidence/report they submitted */
     evidenceId?: string; 
+}
+
+/**
+ * NEW: Case Contract Logic
+ * Defines the parameters of the EPP's engagement.
+ */
+export interface CaseContract {
+    clientName: string; // e.g., "Leeds City Council"
+    serviceType: 'statutory_advice' | 'intervention_plan' | 'tribunal' | 'consultation_only';
+    commissionedDate: string; // ISO Date (Date of Instruction)
+    dueDate: string; // ISO Date (The EPP's strict deadline, e.g. 6 weeks from commissioned)
+    budgetHours?: number; // e.g. 6 hours
+    specialInstructions?: string; // e.g. "Focus on ASD traits"
+}
+
+/**
+ * NEW: Work Schedule Task
+ * A unit of work for the EPP.
+ */
+export interface WorkTask {
+    id: string;
+    title: string; // e.g., "Interview SENCO"
+    type: 'admin' | 'consultation' | 'observation' | 'analysis' | 'drafting';
+    status: 'pending' | 'scheduled' | 'done';
+    dueDate?: string;
+    linkedAppointmentId?: string; // If scheduled
+    linkedEvidenceId?: string; // If done
 }
 
 /**
@@ -102,6 +125,12 @@ export interface CaseFile {
     status: CaseStatus;
     flags: CaseFlags;
     
+    // --- NEW: Contract Management (EPP View) ---
+    contract?: CaseContract;
+    
+    // --- NEW: Work Schedule (Project Management) ---
+    workSchedule?: WorkTask[];
+
     // --- Stakeholders ---
     /** Map of all professionals and family involved */
     stakeholders: Stakeholder[];
@@ -113,4 +142,8 @@ export interface CaseFile {
     createdAt: string;
     updatedAt: string;
     createdBy: string;
+    
+    // --- Audit Trail ---
+    lastActivity?: string;
+    lastActivityAt?: string;
 }
