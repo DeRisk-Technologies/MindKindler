@@ -65,7 +65,6 @@ export function ReportBuilder({
             // B. Load Templates
             const tenantId = userProfile?.tenantId || 'default';
             try {
-                // Try to load custom templates for this tenant
                 const ref = doc(db, `tenants/${tenantId}/settings/reporting`);
                 const snap = await getDoc(ref);
                 if (snap.exists() && snap.data().templates) {
@@ -150,7 +149,7 @@ export function ReportBuilder({
             // 1. Resolve Region
             const region = userProfile?.metadata?.region || 'uk';
             const targetDb = getRegionalDb(region);
-            const tenantId = userProfile.tenantId; // Explicitly use profile tenantId
+            const tenantId = userProfile.tenantId; 
 
             // 2. Fetch Full Student Data (Client Side)
             const studentRef = doc(targetDb, 'students', selectedStudentId);
@@ -213,7 +212,7 @@ export function ReportBuilder({
                 title: activeTemplate.name + ' - Draft',
                 templateId: selectedTemplateId,
                 studentId: selectedStudentId,
-                caseId: caseId || null, // Link to Case
+                caseId: caseId || null, 
                 sessionId: sourceSessionId || null, 
                 studentName: realName.trim() || 'Unknown Student',
                 status: 'draft',
@@ -371,15 +370,22 @@ export function ReportBuilder({
     );
 }
 
-// Default Page Wrapper
-export default function ReportBuilderPage() {
+// Wrapper to safely use useSearchParams inside Suspense
+function ReportBuilderWrapper() {
     const searchParams = useSearchParams();
     return (
+        <ReportBuilder 
+            sourceSessionId={searchParams.get('sourceSessionId')} 
+            preselectedTemplateId={searchParams.get('templateId') || undefined}
+        />
+    );
+}
+
+// Default Page Wrapper
+export default function ReportBuilderPage() {
+    return (
         <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-indigo-600"/></div>}>
-            <ReportBuilder 
-                sourceSessionId={searchParams.get('sourceSessionId')} 
-                preselectedTemplateId={searchParams.get('templateId') || undefined}
-            />
+            <ReportBuilderWrapper />
         </Suspense>
     );
 }
