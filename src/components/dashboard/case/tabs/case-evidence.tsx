@@ -1,13 +1,41 @@
 // src/components/dashboard/case/tabs/case-evidence.tsx
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ObservationMode } from '@/components/assessments/ObservationMode'; // Existing Tool
+import { ObservationMode } from '@/components/assessments/ObservationMode'; 
 import { Button } from '@/components/ui/button';
-import { Mic, FileText, Activity } from 'lucide-react';
+import { Mic, FileText, Activity, Loader2, Eye } from 'lucide-react';
+import { getRegionalDb } from '@/lib/firebase';
+import { useAuth } from '@/hooks/use-auth';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { formatDistanceToNow } from 'date-fns';
 
 export function CaseEvidence({ caseId, studentId }: { caseId: string, studentId: string }) {
+    const { user } = useAuth();
+    const [observations, setObservations] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function loadEvidence() {
+            if (!user) return;
+            try {
+                const db = getRegionalDb(user.region || 'uk');
+                
+                // Fetch Observations
+                const obsQ = query(collection(db, 'observations'), where('caseId', '==', caseId));
+                const obsSnap = await getDocs(obsQ);
+                setObservations(obsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+            } catch (e) {
+                console.error("Evidence Load Failed", e);
+            } finally {
+                setLoading(false);
+            }
+        }
+        loadEvidence();
+    }, [caseId, user]);
+
     return (
         <div className="space-y-6">
             <h3 className="text-lg font-semibold">Evidence Lab</h3>
@@ -20,10 +48,32 @@ export function CaseEvidence({ caseId, studentId }: { caseId: string, studentId:
                 </TabsList>
 
                 {/* Sub-Tab 1: Observation */}
-                <TabsContent value="observation" className="mt-4">
+                <TabsContent value="observation" className="mt-4 space-y-4">
+                    {/* List Existing */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {loading ? <Loader2 className="animate-spin" /> : observations.map(obs => (
+                            <Card key={obs.id} className="bg-indigo-50 border-indigo-100">
+                                <CardContent className="p-4 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-semibold text-indigo-900">{obs.setting}</p>
+                                        <p className="text-xs text-indigo-700">
+                                            {obs.date ? formatDistanceToNow(new Date(obs.date)) : 'Recently'} ago
+                                        </p>
+                                        <div className="flex gap-2 mt-2">
+                                            <div className="bg-white px-2 py-1 rounded text-xs border border-indigo-200">
+                                                On-Task: {obs.metrics?.onTask}%
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Button size="icon" variant="ghost"><Eye className="w-4 h-4 text-indigo-500"/></Button>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-sm font-medium">Classroom Observation</CardTitle>
+                            <CardTitle className="text-sm font-medium">New Classroom Observation</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <ObservationMode />

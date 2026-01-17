@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -37,9 +37,9 @@ function NewCaseContent() {
     // Form State
     const [contract, setContract] = useState({
         clientName: '',
-        serviceTypes: ['statutory_advice'], // Array for multiple selections
+        serviceTypes: ['statutory_advice'], 
         commissionedDate: new Date(),
-        dueDate: new Date(new Date().setDate(new Date().getDate() + 42)), // Default +6 weeks
+        dueDate: new Date(new Date().setDate(new Date().getDate() + 42)), 
         budgetHours: 6,
         specialInstructions: ''
     });
@@ -72,15 +72,12 @@ function NewCaseContent() {
         });
     };
 
-    // --- STEP 1: FORENSIC INGEST (The "Zip File") ---
     const handleAnalysisComplete = (files: EvidenceItem[], analysis: IngestionAnalysis[]) => {
+        console.log("Analysis Complete:", files, analysis);
         setUploadedItems(files);
         setLoading(true);
 
         try {
-            // Auto-fill from "Request for Advice.pdf" simulation
-            // In a real scenario, we'd inspect 'analysis' array for extracted entities
-            
             if (analysis.length > 0) {
                 const firstAnalysis = analysis[0];
                 if (firstAnalysis.suggestedStakeholders?.length > 0) {
@@ -98,8 +95,8 @@ function NewCaseContent() {
             
             setContract(prev => ({
                 ...prev,
-                clientName: 'Leeds City Council', // Extracted from header
-                specialInstructions: 'Focus on recent exclusions and speech delay.' // Extracted
+                clientName: 'Leeds City Council', 
+                specialInstructions: 'Focus on recent exclusions and speech delay.'
             }));
 
             toast({ title: "Analysis Complete", description: "Contract details extracted from document." });
@@ -107,31 +104,40 @@ function NewCaseContent() {
         } catch (e) {
             console.error(e);
             toast({ title: "Extraction Failed", description: "Could not parse document. Please enter details manually.", variant: "destructive" });
-            setStep(2); // Fallback to manual
+            setStep(2); 
         } finally {
             setLoading(false);
         }
     };
 
-    // --- STEP 3: CREATE CASE ---
     const handleCreate = async () => {
-        if (!user || !userProfile?.tenantId) return;
+        console.log("Create button clicked");
+        if (!user || !userProfile?.tenantId) {
+            console.error("Missing Auth or Tenant ID", { user, tenantId: userProfile?.tenantId });
+            toast({ title: "Auth Error", description: "Missing Tenant Identity. Please reload.", variant: "destructive" });
+            return;
+        }
+        
         setLoading(true);
 
         try {
-            const db = getRegionalDb(userProfile.metadata?.region || 'uk');
+            const region = userProfile.metadata?.region || 'uk';
+            console.log(`Connecting to region: ${region}`);
+            const db = getRegionalDb(region);
             
             // 1. Create/Find Student
             let studentId = existingStudentId;
             if (!studentId) {
-                const studentRef = await addDoc(collection(db, 'students'), {
+                const studentPayload = {
                     tenantId: userProfile.tenantId,
                     firstName: studentData.firstName,
                     lastName: studentData.lastName,
                     dob: studentData.dob,
                     upn: studentData.upn,
                     createdAt: new Date().toISOString()
-                });
+                };
+                console.log("Creating Student:", studentPayload);
+                const studentRef = await addDoc(collection(db, 'students'), studentPayload);
                 studentId = studentRef.id;
             }
 
@@ -140,18 +146,17 @@ function NewCaseContent() {
                 tenantId: userProfile.tenantId,
                 studentId,
                 studentName: `${studentData.firstName} ${studentData.lastName}`,
-                status: 'assessment', // Start in active assessment
+                status: 'assessment', 
                 contract: {
                     clientName: contract.clientName,
-                    serviceTypes: contract.serviceTypes, // Array
+                    serviceTypes: contract.serviceTypes, 
                     commissionedDate: contract.commissionedDate.toISOString(),
                     dueDate: contract.dueDate.toISOString(),
                     budgetHours: contract.budgetHours,
                     specialInstructions: contract.specialInstructions
                 },
-                // Link to LA Timeline (Reverse calculate Request Date from Commissioned Date if needed)
                 statutoryTimeline: {
-                    requestDate: new Date(contract.commissionedDate.getTime() - (6 * 7 * 86400000)).toISOString(), // Estimate: We got it at Week 6?
+                    requestDate: new Date(contract.commissionedDate.getTime() - (6 * 7 * 86400000)).toISOString(), 
                     decisionToAssessDeadline: new Date(new Date().setDate(new Date().getDate() + 42)).toISOString(),
                     evidenceDeadline: new Date(new Date().setDate(new Date().getDate() + 84)).toISOString(),
                     draftPlanDeadline: new Date(new Date().setDate(new Date().getDate() + 112)).toISOString(),
@@ -160,12 +165,13 @@ function NewCaseContent() {
                 },
                 createdAt: new Date().toISOString(),
                 createdBy: user.uid,
-                region: userProfile.metadata?.region || 'uk'
+                region
             };
 
+            console.log("Creating Case:", newCase);
             const caseRef = await addDoc(collection(db, 'cases'), newCase);
 
-            // 3. Create Initial Work Schedule (Template)
+            // 3. Create Initial Work Schedule
             const tasks = [
                 { title: 'Review Case History', type: 'admin', status: 'pending' },
                 { title: 'Contact Parent/Guardian', type: 'consultation', status: 'pending' },
@@ -175,16 +181,22 @@ function NewCaseContent() {
             
             await updateDoc(caseRef, { workSchedule: tasks });
 
+            console.log("Case Created Successfully:", caseRef.id);
             toast({ title: "Case Created", description: "Redirecting to Workbench..." });
             router.push(`/dashboard/cases/${caseRef.id}`);
 
         } catch (e: any) {
-            console.error(e);
+            console.error("Creation Failed:", e);
             toast({ title: "Error", description: e.message, variant: "destructive" });
         } finally {
             setLoading(false);
         }
     };
+
+    // Debugging: Log state to see why button might be disabled
+    // useEffect(() => {
+    //     console.log("Form State:", { loading, client: contract.clientName, last: studentData.lastName, tenant: userProfile?.tenantId });
+    // }, [loading, contract, studentData, userProfile]);
 
     return (
         <div className="max-w-3xl mx-auto py-12 px-4">
@@ -204,7 +216,7 @@ function NewCaseContent() {
                     </CardHeader>
                     <CardContent>
                         <EvidenceUploadZone 
-                            onAnalysisComplete={handleAnalysisComplete} // FIXED PROP NAME
+                            onAnalysisComplete={handleAnalysisComplete} 
                         />
                         <div className="mt-4 text-center">
                             <Button variant="ghost" onClick={() => setStep(2)}>Skip to Manual Entry</Button>
@@ -313,7 +325,8 @@ function NewCaseContent() {
                         <Button variant="ghost" onClick={() => setStep(1)}>Back</Button>
                         <Button 
                             onClick={(e) => {
-                                e.preventDefault(); // Prevent accidental form submit if wrapped
+                                console.log("Creating...");
+                                e.preventDefault(); 
                                 handleCreate();
                             }} 
                             disabled={loading || !contract.clientName || !studentData.lastName} 
