@@ -157,6 +157,13 @@ function NewCaseContent() {
                     budgetHours: contract.budgetHours,
                     specialInstructions: contract.specialInstructions
                 },
+                // FIXED: Default Flags Required by CaseHeader
+                flags: {
+                    isNonVerbal: false,
+                    requiresGuardianPresence: false,
+                    hasSocialWorker: false,
+                    safeguardingRisk: false
+                },
                 statutoryTimeline: {
                     requestDate: new Date(contract.commissionedDate.getTime() - (6 * 7 * 86400000)).toISOString(), 
                     decisionToAssessDeadline: new Date(new Date().setDate(new Date().getDate() + 42)).toISOString(),
