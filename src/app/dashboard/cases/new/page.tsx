@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -21,7 +21,8 @@ import { cn } from '@/lib/utils';
 import { EvidenceUploadZone } from '@/components/intake/EvidenceUploadZone';
 import { analyzeDocument } from '@/ai/clerkAgent'; 
 
-export default function NewCasePage() {
+// Extract content to subcomponent to isolate hook usage
+function NewCaseContent() {
     const router = useRouter();
     const { user, userProfile } = useAuth();
     const { toast } = useToast();
@@ -130,7 +131,11 @@ export default function NewCasePage() {
                 // Link to LA Timeline (Reverse calculate Request Date from Commissioned Date if needed)
                 statutoryTimeline: {
                     requestDate: new Date(contract.commissionedDate.getTime() - (6 * 7 * 86400000)).toISOString(), // Estimate: We got it at Week 6?
-                    // ... other timeline fields calc'd by hook
+                    decisionToAssessDeadline: new Date(new Date().setDate(new Date().getDate() + 42)).toISOString(),
+                    evidenceDeadline: new Date(new Date().setDate(new Date().getDate() + 84)).toISOString(),
+                    draftPlanDeadline: new Date(new Date().setDate(new Date().getDate() + 112)).toISOString(),
+                    finalPlanDeadline: new Date(new Date().setDate(new Date().getDate() + 140)).toISOString(),
+                    isOverdue: false
                 },
                 createdAt: new Date().toISOString(),
                 createdBy: user.uid,
@@ -288,5 +293,14 @@ export default function NewCasePage() {
                 </Card>
             )}
         </div>
+    );
+}
+
+// Wrap with Suspense
+export default function NewCasePage() {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-600" /></div>}>
+            <NewCaseContent />
+        </Suspense>
     );
 }
