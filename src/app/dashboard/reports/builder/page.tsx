@@ -20,48 +20,35 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle 
 } from "@/components/ui/alert-dialog";
+import { UK_EPP_TEMPLATES } from '@/config/report-templates';
 
-// FALLBACK UK TEMPLATES
-const FALLBACK_UK_TEMPLATES: StatutoryReportTemplate[] = [
-    {
-        id: "ehcp_needs_assessment",
-        name: "EHCP Needs Assessment (Section F)",
-        sections: [
-          { id: "section_a", title: "Section A: Views of Child", promptId: "ehcp_sec_a" },
-          { id: "section_b", title: "Section B: Special Educational Needs", promptId: "ehcp_sec_b" },
-          { id: "section_f", title: "Section F: Provision", promptId: "ehcp_sec_f" }
-        ],
-        constraints: ["no_medical_diagnosis", "use_tentative_language"]
-    },
-    {
-        id: "early_years_inclusion",
-        name: "Early Years Inclusion Fund (EYIF)",
-        sections: [
-            { id: "strengths", title: "Strengths & Interests", promptId: "eyif_strengths" },
-            { id: "impact", title: "Impact on Development", promptId: "eyif_impact" }
-        ],
-        constraints: ["eyfs_framework_alignment"]
-    }
-];
+// Props Interface for Reusability
+export interface ReportBuilderProps {
+    sourceSessionId?: string | null;
+    preselectedStudentId?: string;
+    preselectedTemplateId?: string;
+    caseId?: string; // Link to case
+}
 
-function ReportBuilderContent() {
-    const { user, userProfile } = useAuth(); // Use userProfile for reliable tenantId
+export function ReportBuilder({ 
+    sourceSessionId, 
+    preselectedStudentId, 
+    preselectedTemplateId,
+    caseId 
+}: ReportBuilderProps) {
+    const { user, userProfile } = useAuth(); 
     const router = useRouter();
     const { toast } = useToast();
-    const searchParams = useSearchParams(); 
     const { checkConsent } = useCompliance();
     
-    const sourceSessionId = searchParams.get('sourceSessionId');
-    const paramTemplateId = searchParams.get('templateId');
-
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [justFinished, setJustFinished] = useState(false);
     const [complianceError, setComplianceError] = useState<string | null>(null);
     
     const [templates, setTemplates] = useState<StatutoryReportTemplate[]>([]);
-    const [selectedTemplateId, setSelectedTemplateId] = useState<string>(paramTemplateId || '');
-    const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string>(preselectedTemplateId || '');
+    const [selectedStudentId, setSelectedStudentId] = useState<string>(preselectedStudentId || '');
 
     const { data: students } = useFirestoreCollection('students', 'lastName', 'asc');
     const activeTemplate = templates.find(t => t.id === selectedTemplateId);
@@ -84,15 +71,14 @@ function ReportBuilderContent() {
                 if (snap.exists() && snap.data().templates) {
                     setTemplates(snap.data().templates);
                 } else {
-                    // Fallback to defaults
-                    setTemplates(FALLBACK_UK_TEMPLATES);
+                    setTemplates(UK_EPP_TEMPLATES);
                 }
             } catch (e) {
-                setTemplates(FALLBACK_UK_TEMPLATES);
+                setTemplates(UK_EPP_TEMPLATES);
             }
 
-            // C. If sourceSessionId, load Session
-            if (sourceSessionId) {
+            // C. If sourceSessionId, load Session (if student not passed)
+            if (sourceSessionId && !selectedStudentId) {
                 try {
                     const sessionSnap = await getDoc(doc(targetDb, 'consultation_sessions', sourceSessionId));
                     if (sessionSnap.exists()) {
@@ -109,7 +95,7 @@ function ReportBuilderContent() {
             setLoading(false);
         }
         init();
-    }, [user, userProfile, sourceSessionId]);
+    }, [user, userProfile, sourceSessionId, selectedStudentId]);
 
     // --- PRIVACY HELPER: Redact PII before sending to AI ---
     const redactForAI = (student: any) => {
@@ -227,6 +213,7 @@ function ReportBuilderContent() {
                 title: activeTemplate.name + ' - Draft',
                 templateId: selectedTemplateId,
                 studentId: selectedStudentId,
+                caseId: caseId || null, // Link to Case
                 sessionId: sourceSessionId || null, 
                 studentName: realName.trim() || 'Unknown Student',
                 status: 'draft',
@@ -236,7 +223,7 @@ function ReportBuilderContent() {
                 content: contentToSave, 
                 summary: responseData.summary || "",
                 type: 'statutory',
-                tenantId: tenantId, // CRITICAL: Must match auth.token.tenantId exactly
+                tenantId: tenantId, 
                 complianceOverride: forceOverride 
             };
 
@@ -289,7 +276,7 @@ function ReportBuilderContent() {
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
                                 value={selectedStudentId}
                                 onChange={(e) => setSelectedStudentId(e.target.value)}
-                                disabled={!!sourceSessionId} 
+                                disabled={!!sourceSessionId || !!preselectedStudentId} 
                             >
                                 <option value="" disabled>Select Student...</option>
                                 {students.map(s => (
@@ -364,7 +351,7 @@ function ReportBuilderContent() {
                                     handleGenerate(true);
                                 }}
                             >
-                                <LockKeyhole className="h-3 w-3 mr-2"/>
+                                <LockKeyhole className="h-3 w-3 mr-1" />
                                 Override (I have sighted consent)
                             </Button>
                         </div>
@@ -384,10 +371,15 @@ function ReportBuilderContent() {
     );
 }
 
+// Default Page Wrapper
 export default function ReportBuilderPage() {
+    const searchParams = useSearchParams();
     return (
         <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-indigo-600"/></div>}>
-            <ReportBuilderContent />
+            <ReportBuilder 
+                sourceSessionId={searchParams.get('sourceSessionId')} 
+                preselectedTemplateId={searchParams.get('templateId') || undefined}
+            />
         </Suspense>
     );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { CaseFile } from '@/types/case';
 import { useStatutoryWorkflow } from '@/hooks/useStatutoryWorkflow';
 import { CaseHeader } from '@/components/dashboard/CaseHeader';
@@ -16,15 +16,22 @@ import { CaseOverview } from '@/components/dashboard/case/tabs/case-overview';
 import { CaseFiles } from '@/components/dashboard/case/tabs/case-files';
 import { CaseSchedule } from '@/components/dashboard/case/tabs/case-schedule';
 import { CaseEvidence } from '@/components/dashboard/case/tabs/case-evidence';
-import { ReportGenerator } from '@/components/dashboard/report-generator';
+// Use the robust Builder we just refactored
+import { ReportBuilder } from '@/app/dashboard/reports/builder/page'; 
 
-export default function CaseDashboardPage() {
+function CaseDashboardContent() {
     const params = useParams();
+    const searchParams = useSearchParams();
     const { user } = useAuth();
     const id = params.id as string;
     
+    // URL State
+    const initialTab = searchParams.get('tab') || 'overview';
+    const sourceSessionId = searchParams.get('sourceSessionId');
+
     const [caseFile, setCaseFile] = useState<CaseFile | null>(null);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState(initialTab);
 
     useEffect(() => {
         async function loadCase() {
@@ -61,7 +68,7 @@ export default function CaseDashboardPage() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
                 
                 {/* 2. The Workbench Tabs */}
-                <Tabs defaultValue="overview" className="w-full">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <TabsList className="w-full justify-start border-b rounded-none bg-transparent p-0 h-12">
                         <TabsTrigger value="overview" className="data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none h-12 px-6">
                             The Brief
@@ -86,7 +93,7 @@ export default function CaseDashboardPage() {
                         </TabsContent>
                         
                         <TabsContent value="files">
-                            <CaseFiles caseId={caseFile.id} />
+                            <CaseFiles caseId={caseFile.id} studentId={caseFile.studentId} />
                         </TabsContent>
 
                         <TabsContent value="schedule">
@@ -98,11 +105,24 @@ export default function CaseDashboardPage() {
                         </TabsContent>
 
                         <TabsContent value="reporting">
-                            <ReportGenerator />
+                            {/* Embedded Full Report Builder */}
+                            <ReportBuilder 
+                                caseId={caseFile.id} 
+                                preselectedStudentId={caseFile.studentId}
+                                sourceSessionId={sourceSessionId || undefined} 
+                            />
                         </TabsContent>
                     </div>
                 </Tabs>
             </div>
         </div>
+    );
+}
+
+export default function CaseDashboardPage() {
+    return (
+        <Suspense fallback={<div className="p-8"><Skeleton className="h-48 w-full" /></div>}>
+            <CaseDashboardContent />
+        </Suspense>
     );
 }

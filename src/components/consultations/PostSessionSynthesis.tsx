@@ -6,7 +6,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     CheckCircle, AlertTriangle, FileText, ArrowRight, 
     Sparkles, Edit3, MessageSquare, Plus, Trash2,
-    Clock, Activity, BrainCircuit, Save, X, Highlighter, Send, BookmarkPlus
+    Clock, Activity, BrainCircuit, Save, X, Highlighter, Send, BookmarkPlus, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { StudentRecord, AssessmentResult } from '@/types/schema';
 import { InterventionLogic } from '@/marketplace/types';
 import { Input } from '@/components/ui/input'; 
+import { useRouter } from 'next/navigation'; // Added Router
 
 import { askSessionQuestionAction, AiInsight } from '@/app/actions/consultation';
 import { generateInterventionPlanAction, PlannedIntervention } from '@/app/actions/intervention';
@@ -42,6 +43,7 @@ export interface SynthesisResult {
 
 interface PostSessionSynthesisProps {
     sessionId: string;
+    caseId?: string; // New: Case Context
     transcript: string;
     initialInsights: AiInsight[];
     student: Partial<StudentRecord>;
@@ -54,11 +56,12 @@ interface PostSessionSynthesisProps {
     initialPromotedEvidence?: string[];
 
     onComplete: (data: SynthesisResult) => void; 
-    onSave?: (data: SynthesisResult) => void;
+    onSave?: (data: SynthesisResult) => Promise<void>; // Ensure Promise for await
 }
 
 export function PostSessionSynthesis({ 
     sessionId, 
+    caseId,
     transcript, 
     initialInsights, 
     student,
@@ -71,6 +74,7 @@ export function PostSessionSynthesis({
     onSave
 }: PostSessionSynthesisProps) {
     const { toast } = useToast();
+    const router = useRouter();
     
     // State
     const [activeTab, setActiveTab] = useState('review');
@@ -222,21 +226,24 @@ export function PostSessionSynthesis({
 
     
     const handleTabChange = (val: string) => {
-        // Auto-save on tab switch to prevent data loss if user navigates away later
         handleSaveProgress(true);
         setActiveTab(val);
     };
 
-    const handleDraftReport = (type: 'statutory' | 'custom') => {
-        const synthesisResult: SynthesisResult = {
-            confirmedOpinions: clinicalOpinions.filter(op => (op as any).confirmed), 
-            plannedInterventions,
-            referrals,
-            editedTranscript,
-            reportType: type,
-            manualClinicalNotes: [...manualOpinions, ...promotedEvidence]
-        };
-        onComplete(synthesisResult);
+    const handleDraftReport = async () => {
+        // 1. Force Save First
+        await handleSaveProgress(false);
+
+        // 2. Redirect to Workbench with Context
+        if (caseId) {
+            toast({ title: "Redirecting...", description: "Opening Case Workbench for Reporting." });
+            // Redirect to the Case Tab "reporting" with session context
+            router.push(`/dashboard/cases/${caseId}?tab=reporting&sourceSessionId=${sessionId}`);
+        } else {
+            // Fallback for standalone sessions (though we are deprecating them)
+            toast({ title: "Warning", description: "No Case Linked. Opening generic builder.", variant: "secondary" });
+            router.push(`/dashboard/reports/builder?sourceSessionId=${sessionId}`);
+        }
     };
 
     const mockTimelineEvents = initialInsights.map((insight, i) => ({
@@ -271,13 +278,14 @@ export function PostSessionSynthesis({
                 onClose={() => setShowSafeguarding(false)}
                 studentId={student.id || ''}
                 contacts={safeguardingContacts}
-                detectedRisks={[]} // Can populate from AI check if needed
+                detectedRisks={[]} 
             />
 
             <div className="flex justify-between items-center mb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Post-Session Synthesis</h1>
                     <div className="flex items-center gap-2 text-slate-500 text-sm">
+                        {caseId && <Badge variant="outline" className="mr-2">Case Linked</Badge>}
                         <span>Review timeline, triangulate findings, and plan interventions.</span>
                         {lastSaved && <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Saved: {lastSaved.toLocaleTimeString()}</span>}
                     </div>
@@ -297,8 +305,9 @@ export function PostSessionSynthesis({
                     <Button variant="outline" onClick={() => setIsReferralModalOpen(true)}>
                         <Send className="mr-2 h-4 w-4" /> Generate Referral
                     </Button>
-                    <Button onClick={() => handleDraftReport('statutory')} className="bg-indigo-600 hover:bg-indigo-700">
-                        <FileText className="mr-2 h-4 w-4" /> Draft Statutory Report
+                    <Button onClick={handleDraftReport} className="bg-indigo-600 hover:bg-indigo-700" disabled={isSaving}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4" />}
+                        Proceed to Report
                     </Button>
                 </div>
             </div>
