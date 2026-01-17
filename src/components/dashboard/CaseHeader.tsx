@@ -1,8 +1,8 @@
 import React from 'react';
 import { CaseFile } from '../../types/case';
 import { AlertTriangle, ShieldAlert, Baby, Building2, Hash } from 'lucide-react';
-import { Button } from '../../components/ui/button'; // Assuming Shadcn Button exists, or basic HTML button
-import { Badge } from '../../components/ui/badge';   // Assuming Shadcn Badge exists, or basic span
+import { Button } from '../../components/ui/button'; 
+import { Badge } from '../../components/ui/badge';   
 
 interface CaseHeaderProps {
     caseFile: CaseFile;
@@ -10,8 +10,8 @@ interface CaseHeaderProps {
 }
 
 export function CaseHeader({ caseFile, onEscalate }: CaseHeaderProps) {
-    // Determine risk flags for badging
-    const { flags } = caseFile;
+    // Determine risk flags for badging (Safely handle undefined)
+    const flags = caseFile.flags || {};
 
     return (
         <div className="bg-white border-b border-gray-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -31,7 +31,7 @@ export function CaseHeader({ caseFile, onEscalate }: CaseHeaderProps) {
                 <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 mt-1">
                     <div className="flex items-center gap-1">
                         <Baby className="w-4 h-4" />
-                        <span>DOB: {new Date(caseFile.dob).toLocaleDateString()}</span>
+                        <span>DOB: {caseFile.dob ? new Date(caseFile.dob).toLocaleDateString() : 'Unknown'}</span>
                     </div>
                     {caseFile.upn && (
                         <div className="flex items-center gap-1">

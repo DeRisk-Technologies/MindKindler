@@ -6,20 +6,21 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { getRegionalDb, db as globalDb } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LayoutDashboard, Shield } from 'lucide-react';
 
 // Components
 import { WelcomeHeader } from '@/components/dashboard/widgets/WelcomeHeader';
 import { StatsOverview } from '@/components/dashboard/widgets/StatsOverview';
 import { ActiveCaseList, CaseSummary } from '@/components/dashboard/ActiveCaseList';
-import { GuardianDashboard } from '@/components/guardian/GuardianDashboard'; // Reuse if admin
-import { DistrictReport } from '@/types/analytics'; // For Guardian
+import { GuardianDashboard } from '@/components/guardian/GuardianDashboard';
+import { DashboardSchedule } from '@/components/dashboard/widgets/DashboardSchedule';
+import { ComplianceWidget } from '@/components/dashboard/widgets/ComplianceWidget';
+import { DistrictReport } from '@/types/analytics'; 
 
 export default function DashboardPage() {
     const { user, loading } = useAuth();
     const router = useRouter();
     
-    // State
     const [cases, setCases] = useState<CaseSummary[]>([]);
     const [stats, setStats] = useState({
         activeCases: 0,
@@ -38,25 +39,21 @@ export default function DashboardPage() {
         }
     }, [user, loading, router]);
 
-    // 2. Data Fetching Strategy (Robust & Regional)
+    // 2. Data Fetching
     useEffect(() => {
         const loadDashboard = async () => {
             if (!user) return;
 
             try {
-                // A. Resolve Database (Handle Default vs Shard)
                 let region = user.region || 'uk';
                 if (user.uid && !user.region) {
-                     // Fallback check on routing doc if claims failed
                      const rDoc = await getDoc(doc(globalDb, 'user_routing', user.uid));
                      if (rDoc.exists()) region = rDoc.data().region || 'uk';
                 }
                 const db = await getRegionalDb(region);
-                console.log(`[Dashboard] Loading from shard: ${region} for tenant: ${user.tenantId}`);
+                console.log(`[Dashboard] Loading from shard: ${region}`);
 
-                // B. Fetch Cases (Scoped to Tenant)
-                // Note: We use a loose query first to ensure we get data, then filter if needed
-                // Ideally: where('tenantId', '==', user.tenantId)
+                // Fetch Cases
                 let qCases;
                 if (user.tenantId && user.tenantId !== 'default') {
                     qCases = query(
@@ -67,14 +64,12 @@ export default function DashboardPage() {
                         limit(50)
                     );
                 } else {
-                    // Fallback for admins/test users without strict tenant
                     qCases = query(collection(db, 'cases'), limit(20));
                 }
 
                 const caseSnaps = await getDocs(qCases);
                 const loadedCases: CaseSummary[] = caseSnaps.docs.map(d => {
                     const data = d.data();
-                    // Calc Timeline
                     const reqDate = data.statutoryTimeline?.requestDate ? new Date(data.statutoryTimeline.requestDate) : new Date();
                     const weeks = Math.floor((Date.now() - reqDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
                     
@@ -91,36 +86,26 @@ export default function DashboardPage() {
 
                 setCases(loadedCases);
 
-                // C. Fetch Reports Stats (Parallel)
-                let draftCount = 0;
-                // Simple hack: check 'drafts' collection if it exists, or 'reports' where status=draft
-                // Assuming 'reports' collection per our fix
-                // We won't do a full count query for perf, just estimate or skip for pilot
-                
-                // D. Calculate Aggregate Stats
+                // Stats Calculation
                 const overdueCount = loadedCases.filter(c => c.isOverdue).length;
                 
                 setStats({
                     activeCases: loadedCases.length,
-                    draftReports: 0, // Placeholder
-                    upcomingDeadlines: loadedCases.filter(c => c.currentWeek > 18).length, // Near end
+                    draftReports: 0, // In prod: fetch count
+                    upcomingDeadlines: loadedCases.filter(c => c.currentWeek > 18).length,
                     breachRisks: overdueCount
                 });
 
-                // E. If Admin, Load Guardian Data
+                // Admin View Logic
                 if (user.role === 'SuperAdmin' || user.role?.includes('Admin')) {
-                    // Fetch alerts from 'analytics_alerts' collection if it exists
-                    // For now, mock the Admin Report to prevent 404 block
                     setAdminReport({
                         generatedAt: new Date().toISOString(),
                         totalActiveCases: loadedCases.length,
                         breachProjections: overdueCount,
                         topNeeds: { 'Autism': 10, 'SEMH': 5 },
-                        activeAlerts: [] // Populate if you have alerts
+                        activeAlerts: [] 
                     });
-                    setViewMode('admin'); // Default to admin view if admin
-                } else {
-                    setViewMode('clinician');
+                    // Don't auto-switch, allow user to toggle
                 }
 
             } catch (e) {
@@ -136,10 +121,7 @@ export default function DashboardPage() {
     if (loading || (user && dataLoading)) {
         return (
             <div className="flex h-screen items-center justify-center bg-slate-50">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
-                    <p className="text-slate-500 font-medium animate-pulse">Loading Workspace...</p>
-                </div>
+                <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
             </div>
         );
     }
@@ -147,39 +129,61 @@ export default function DashboardPage() {
     if (!user) return null;
 
     return (
-        <div className="space-y-8 p-8 max-w-7xl mx-auto">
-            {/* 1. Universal Header */}
-            <WelcomeHeader />
-
-            {/* 2. Key Metrics (Role Agnostic) */}
-            <StatsOverview stats={stats} />
-
-            {/* 3. Main Workspace Switcher (If Admin) */}
-            {adminReport && (
-                <div className="flex justify-end">
-                    <div className="bg-slate-100 p-1 rounded-lg inline-flex">
-                        <button 
-                            onClick={() => setViewMode('clinician')}
-                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'clinician' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
-                        >
-                            My Caseload
-                        </button>
-                        <button 
-                            onClick={() => setViewMode('admin')}
-                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'admin' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
-                        >
-                            District Intelligence
-                        </button>
-                    </div>
+        <div className="min-h-screen bg-slate-50/50 pb-20">
+            <div className="max-w-7xl mx-auto p-6 space-y-8">
+                
+                {/* 1. Header & Context Switcher */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <WelcomeHeader />
+                    
+                    {adminReport && (
+                        <div className="bg-white p-1 rounded-lg border shadow-sm inline-flex">
+                            <button 
+                                onClick={() => setViewMode('clinician')}
+                                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${viewMode === 'clinician' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                            >
+                                <LayoutDashboard className="w-4 h-4" />
+                                My Caseload
+                            </button>
+                            <button 
+                                onClick={() => setViewMode('admin')}
+                                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${viewMode === 'admin' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                            >
+                                <Shield className="w-4 h-4" />
+                                Admin / Guardian
+                            </button>
+                        </div>
+                    )}
                 </div>
-            )}
 
-            {/* 4. The View */}
-            {viewMode === 'clinician' ? (
-                <ActiveCaseList cases={cases} />
-            ) : (
-                adminReport && <GuardianDashboard report={adminReport} />
-            )}
+                {viewMode === 'clinician' ? (
+                    <>
+                        {/* 2. Key Metrics */}
+                        <StatsOverview stats={stats} />
+
+                        {/* 3. Main Dashboard Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            
+                            {/* Left Column: Active Cases (2/3 Width) */}
+                            <div className="lg:col-span-2 space-y-8">
+                                <ActiveCaseList cases={cases} />
+                            </div>
+
+                            {/* Right Column: Widgets (1/3 Width) */}
+                            <div className="space-y-6">
+                                {/* Schedule Widget */}
+                                <DashboardSchedule />
+                                
+                                {/* Compliance / Alerts Widget */}
+                                <ComplianceWidget />
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    // Admin View
+                    adminReport && <GuardianDashboard report={adminReport} />
+                )}
+            </div>
         </div>
     );
 }
