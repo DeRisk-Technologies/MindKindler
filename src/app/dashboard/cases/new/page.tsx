@@ -26,7 +26,7 @@ import { Badge } from '@/components/ui/badge';
 // Extract content to subcomponent to isolate hook usage
 function NewCaseContent() {
     const router = useRouter();
-    const { user, userProfile } = useAuth();
+    const { user } = useAuth(); // FIXED: useAuth returns { user, loading }, not userProfile
     const { toast } = useToast();
     const searchParams = useSearchParams();
     const existingStudentId = searchParams.get('studentId');
@@ -112,8 +112,9 @@ function NewCaseContent() {
 
     const handleCreate = async () => {
         console.log("Create button clicked");
-        if (!user || !userProfile?.tenantId) {
-            console.error("Missing Auth or Tenant ID", { user, tenantId: userProfile?.tenantId });
+        // FIXED: Access tenantId from user object directly
+        if (!user || !user.tenantId) {
+            console.error("Missing Auth or Tenant ID", { user, tenantId: user?.tenantId });
             toast({ title: "Auth Error", description: "Missing Tenant Identity. Please reload.", variant: "destructive" });
             return;
         }
@@ -121,7 +122,8 @@ function NewCaseContent() {
         setLoading(true);
 
         try {
-            const region = userProfile.metadata?.region || 'uk';
+            // FIXED: Access region from user object directly (useAuth populates this)
+            const region = user.region || 'uk';
             console.log(`Connecting to region: ${region}`);
             const db = getRegionalDb(region);
             
@@ -129,7 +131,7 @@ function NewCaseContent() {
             let studentId = existingStudentId;
             if (!studentId) {
                 const studentPayload = {
-                    tenantId: userProfile.tenantId,
+                    tenantId: user.tenantId, // FIXED
                     firstName: studentData.firstName,
                     lastName: studentData.lastName,
                     dob: studentData.dob,
@@ -143,7 +145,7 @@ function NewCaseContent() {
 
             // 2. Create Case with Contract
             const newCase = {
-                tenantId: userProfile.tenantId,
+                tenantId: user.tenantId, // FIXED
                 studentId,
                 studentName: `${studentData.firstName} ${studentData.lastName}`,
                 status: 'assessment', 
@@ -192,11 +194,6 @@ function NewCaseContent() {
             setLoading(false);
         }
     };
-
-    // Debugging: Log state to see why button might be disabled
-    // useEffect(() => {
-    //     console.log("Form State:", { loading, client: contract.clientName, last: studentData.lastName, tenant: userProfile?.tenantId });
-    // }, [loading, contract, studentData, userProfile]);
 
     return (
         <div className="max-w-3xl mx-auto py-12 px-4">
