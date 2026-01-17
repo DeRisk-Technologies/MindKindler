@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
     CheckCircle, AlertTriangle, FileText, ArrowRight, 
     Sparkles, Edit3, MessageSquare, Plus, Trash2,
@@ -85,6 +85,7 @@ export function PostSessionSynthesis({
     
     const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [lastSaved, setLastSaved] = useState<Date | null>(null);
     
     // Q&A State
     const [question, setQuestion] = useState("");
@@ -157,7 +158,7 @@ export function PostSessionSynthesis({
 
             const plans = await generateInterventionPlanAction(context);
             if (!plans || plans.length === 0) {
-                 toast({ title: "No Plans Generated", description: "AI returned no matches. Try adding more notes." });
+                 toast({ title: "No Plans Generated", description: "AI returned no matches. Try adding more notes.", variant: "secondary" });
             } else {
                  setPlannedInterventions(plans);
                  toast({ title: "Plan Generated", description: `Created ${plans.length} targeted interventions.` });
@@ -202,12 +203,23 @@ export function PostSessionSynthesis({
                 manualClinicalNotes: [...manualOpinions, ...promotedEvidence] 
             };
             await onSave(synthesisResult);
+            setLastSaved(new Date());
             if (!silent) {
                 setIsSaving(false);
                 toast({ title: "Progress Saved", description: "Session state updated." });
             }
         }
     };
+    
+    // --- AUTO SAVE EFFECT ---
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            handleSaveProgress(true);
+        }, 5000); // 5 Seconds Debounce
+
+        return () => clearTimeout(timer);
+    }, [manualOpinions, clinicalOpinions, plannedInterventions, referrals, promotedEvidence]);
+
     
     const handleTabChange = (val: string) => {
         // Auto-save on tab switch to prevent data loss if user navigates away later
@@ -265,7 +277,10 @@ export function PostSessionSynthesis({
             <div className="flex justify-between items-center mb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Post-Session Synthesis</h1>
-                    <p className="text-slate-500 text-sm">Review timeline, triangulate findings, and plan interventions.</p>
+                    <div className="flex items-center gap-2 text-slate-500 text-sm">
+                        <span>Review timeline, triangulate findings, and plan interventions.</span>
+                        {lastSaved && <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Saved: {lastSaved.toLocaleTimeString()}</span>}
+                    </div>
                 </div>
                 <div className="flex gap-2">
                     <Button 
