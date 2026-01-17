@@ -2,8 +2,15 @@ import React from 'react';
 import { DistrictReport, SystemicAlert } from '../../types/analytics';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
-import { AlertTriangle, ShieldAlert, TrendingUp, Activity } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, TrendingUp, Activity, Map as MapIcon } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import dynamic from 'next/dynamic';
+
+// Dynamic Import for Map (Client Side Only)
+const SchoolsMap = dynamic(() => import('../maps/SchoolsMap').then(mod => mod.SchoolsMap), { 
+    ssr: false,
+    loading: () => <div className="h-[400px] w-full bg-slate-100 animate-pulse rounded-lg flex items-center justify-center text-slate-400">Loading Geospatial Data...</div>
+});
 
 interface GuardianDashboardProps {
     report: DistrictReport;
@@ -12,11 +19,17 @@ interface GuardianDashboardProps {
 export function GuardianDashboard({ report }: GuardianDashboardProps) {
     const { activeAlerts, breachProjections, topNeeds, totalActiveCases } = report;
 
-    // Helper to sort alerts by severity
     const sortedAlerts = [...activeAlerts].sort((a, b) => {
         const severityScore: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
         return severityScore[b.severity] - severityScore[a.severity];
     });
+
+    // Mock Schools for Visual (In prod: fetch from schools collection)
+    const mockSchools = [
+        { id: '1', name: 'Clifton Green Primary', address: { street: 'Water Lane, York', coordinates: { lat: 53.97, lng: -1.10 } }, stats: { activeCases: 3, studentsOnRoll: 420 }, senco: { name: 'Mrs. Senco', email: 'senco@clifton.sch.uk' } },
+        { id: '2', name: 'York High School', address: { street: 'Cornlands Rd, York', coordinates: { lat: 53.95, lng: -1.12 } }, stats: { activeCases: 8, studentsOnRoll: 900 }, senco: { name: 'Mr. Lead', phone: '01904 123456' } },
+        { id: '3', name: 'St Barnabas CE', address: { street: 'Jubilee Terrace, York', coordinates: { lat: 53.96, lng: -1.11 } }, stats: { activeCases: 0, studentsOnRoll: 210 } }
+    ];
 
     return (
         <div className="space-y-6">
@@ -37,77 +50,65 @@ export function GuardianDashboard({ report }: GuardianDashboardProps) {
 
             {/* Top Metrics Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Metric 1: Breach Risk */}
-                <Card className={cn(
-                    "border-l-4", 
-                    breachProjections > 0 ? "border-l-red-500" : "border-l-green-500"
-                )}>
+                <Card className={cn("border-l-4", breachProjections > 0 ? "border-l-red-500" : "border-l-green-500")}>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-gray-500 uppercase">
-                            Statutory Breaches (Projected)
-                        </CardTitle>
+                        <CardTitle className="text-sm font-medium text-gray-500 uppercase">Statutory Breaches (Projected)</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="flex items-end gap-2">
-                            <span className={cn(
-                                "text-4xl font-bold",
-                                breachProjections > 0 ? "text-red-600" : "text-gray-900"
-                            )}>
+                            <span className={cn("text-4xl font-bold", breachProjections > 0 ? "text-red-600" : "text-gray-900")}>
                                 {breachProjections}
                             </span>
                             <span className="text-sm text-gray-400 mb-1">/ {totalActiveCases} Active Cases</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">
-                            Cases at risk of missing the 20-week deadline.
-                        </p>
+                        <p className="text-xs text-gray-500 mt-2">Cases at risk of missing the 20-week deadline.</p>
                     </CardContent>
                 </Card>
 
-                {/* Metric 2: Active Alerts */}
                 <Card className="border-l-4 border-l-indigo-500">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-gray-500 uppercase">
-                            Active Pattern Alerts
-                        </CardTitle>
+                        <CardTitle className="text-sm font-medium text-gray-500 uppercase">Active Pattern Alerts</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="flex items-end gap-2">
-                            <span className="text-4xl font-bold text-indigo-600">
-                                {activeAlerts.length}
-                            </span>
+                            <span className="text-4xl font-bold text-indigo-600">{activeAlerts.length}</span>
                             <span className="text-sm text-gray-400 mb-1">Systemic Risks</span>
                         </div>
-                         <p className="text-xs text-gray-500 mt-2">
-                            Clusters detected across schools/postcodes.
-                        </p>
+                         <p className="text-xs text-gray-500 mt-2">Clusters detected across schools/postcodes.</p>
                     </CardContent>
                 </Card>
 
-                {/* Metric 3: Caseload Volume */}
                 <Card className="border-l-4 border-l-blue-500">
                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-gray-500 uppercase">
-                            Total Caseload
-                        </CardTitle>
+                        <CardTitle className="text-sm font-medium text-gray-500 uppercase">Total Caseload</CardTitle>
                     </CardHeader>
                      <CardContent>
                         <div className="flex items-end gap-2">
-                            <span className="text-4xl font-bold text-gray-900">
-                                {totalActiveCases}
-                            </span>
+                            <span className="text-4xl font-bold text-gray-900">{totalActiveCases}</span>
                             <span className="text-sm text-gray-400 mb-1">Children</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">
-                             Currently undergoing EHC Needs Assessment.
-                        </p>
+                        <p className="text-xs text-gray-500 mt-2">Currently undergoing EHC Needs Assessment.</p>
                     </CardContent>
                 </Card>
             </div>
 
+            {/* Map Section */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <MapIcon className="w-5 h-5 text-indigo-500" />
+                        Geospatial Hotspots
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <SchoolsMap schools={mockSchools} />
+                </CardContent>
+            </Card>
+
             {/* Main Content Split */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
-                {/* Left: Risk Radar (Span 2) */}
+                {/* Left: Risk Radar */}
                 <Card className="lg:col-span-2">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -123,53 +124,19 @@ export function GuardianDashboard({ report }: GuardianDashboardProps) {
                         ) : (
                             <div className="space-y-4">
                                 {sortedAlerts.map(alert => (
-                                    <div 
-                                        key={alert.id} 
-                                        className={cn(
-                                            "p-4 rounded-lg border flex flex-col md:flex-row gap-4 items-start md:items-center",
-                                            alert.severity === 'critical' ? "bg-red-50 border-red-200" :
-                                            alert.severity === 'high' ? "bg-orange-50 border-orange-200" :
-                                            "bg-amber-50 border-amber-200"
-                                        )}
-                                    >
-                                        {/* Icon */}
-                                        <div className={cn(
-                                            "p-2 rounded-full shrink-0",
-                                            alert.severity === 'critical' ? "bg-red-100 text-red-600" :
-                                            alert.severity === 'high' ? "bg-orange-100 text-orange-600" :
-                                            "bg-amber-100 text-amber-600"
-                                        )}>
+                                    <div key={alert.id} className={cn("p-4 rounded-lg border flex flex-col md:flex-row gap-4 items-start md:items-center", alert.severity === 'critical' ? "bg-red-50 border-red-200" : alert.severity === 'high' ? "bg-orange-50 border-orange-200" : "bg-amber-50 border-amber-200")}>
+                                        <div className={cn("p-2 rounded-full shrink-0", alert.severity === 'critical' ? "bg-red-100 text-red-600" : alert.severity === 'high' ? "bg-orange-100 text-orange-600" : "bg-amber-100 text-amber-600")}>
                                             <AlertTriangle className="w-5 h-5" />
                                         </div>
-
-                                        {/* Content */}
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <h4 className={cn(
-                                                    "font-bold text-sm uppercase tracking-wide",
-                                                    alert.severity === 'critical' ? "text-red-800" : "text-gray-800"
-                                                )}>
-                                                    {alert.type.replace('_', ' ')}
-                                                </h4>
-                                                <Badge variant="outline" className="bg-white/50">
-                                                    {alert.targetId}
-                                                </Badge>
+                                                <h4 className={cn("font-bold text-sm uppercase tracking-wide", alert.severity === 'critical' ? "text-red-800" : "text-gray-800")}>{alert.type.replace('_', ' ')}</h4>
+                                                <Badge variant="outline" className="bg-white/50">{alert.targetId}</Badge>
                                             </div>
-                                            <p className="text-sm text-gray-700 font-medium">
-                                                {alert.description}
-                                            </p>
-                                            <p className="text-xs text-gray-500 mt-1">
-                                                Detected: {new Date(alert.detectedAt).toLocaleDateString()}
-                                            </p>
+                                            <p className="text-sm text-gray-700 font-medium">{alert.description}</p>
+                                            <p className="text-xs text-gray-500 mt-1">Detected: {new Date(alert.detectedAt).toLocaleDateString()}</p>
                                         </div>
-
-                                        {/* Action */}
-                                        <Badge className={cn(
-                                            "uppercase",
-                                            alert.severity === 'critical' ? "bg-red-600" : "bg-gray-600"
-                                        )}>
-                                            {alert.severity} Priority
-                                        </Badge>
+                                        <Badge className={cn("uppercase", alert.severity === 'critical' ? "bg-red-600" : "bg-gray-600")}>{alert.severity} Priority</Badge>
                                     </div>
                                 ))}
                             </div>
@@ -177,7 +144,7 @@ export function GuardianDashboard({ report }: GuardianDashboardProps) {
                     </CardContent>
                 </Card>
 
-                {/* Right: Needs Profile (Span 1) */}
+                {/* Right: Needs Profile */}
                 <Card>
                      <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -194,10 +161,7 @@ export function GuardianDashboard({ report }: GuardianDashboardProps) {
                                         <span className="text-gray-500">{Math.round((count / totalActiveCases) * 100)}% ({count})</span>
                                     </div>
                                     <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                                        <div 
-                                            className="h-full bg-blue-500 rounded-full" 
-                                            style={{ width: `${(count / totalActiveCases) * 100}%` }}
-                                        />
+                                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(count / totalActiveCases) * 100}%` }} />
                                     </div>
                                 </div>
                             ))}

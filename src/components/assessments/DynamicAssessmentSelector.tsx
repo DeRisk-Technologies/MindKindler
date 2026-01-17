@@ -30,39 +30,40 @@ export function DynamicAssessmentSelector({ studentId, caseId, onClose }: Dynami
     const [isStarting, setIsStarting] = useState(false);
 
     const handleStart = async () => {
-        if (!user || !selectedTemplateId) return;
+        if (!user || !user.tenantId) {
+            toast({ title: "Auth Error", description: "Missing Tenant ID. Please reload.", variant: "destructive" });
+            return;
+        }
+        if (!selectedTemplateId) return;
+        
         setIsStarting(true);
 
         try {
-            const db = getRegionalDb(user.region || 'uk');
+            const region = user.region || 'uk';
+            const db = getRegionalDb(region);
             
             // Create "In Progress" Result
             const resultRef = await addDoc(collection(db, 'assessment_results'), {
                 templateId: selectedTemplateId,
                 studentId,
                 caseId,
-                tenantId: user.tenantId,
+                tenantId: user.tenantId, // Ensure valid tenantId
                 status: 'in_progress',
                 startedAt: new Date().toISOString(),
                 conductorId: user.uid,
-                answers: {} // Empty answers to start
+                answers: {} 
             });
 
             toast({ title: "Assessment Started", description: "Redirecting to assessment runner..." });
             
-            // Navigate to the runner (Assuming this route exists from Phase 1)
-            // If not, we might need to build the runner view inside the workbench.
-            // For now, let's assume /dashboard/assessments/run/[resultId] or similar.
-            // Actually, usually it's /portal/assessment/[id] for students, or /dashboard/assessments/results/[id] for EPPs entering data.
-            
-            // Let's redirect to the "Results/Entry" page which usually allows editing if status is in_progress
+            // Navigate to the runner
             router.push(`/dashboard/assessments/results/${resultRef.id}`);
             
             if (onClose) onClose();
 
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            toast({ title: "Error", description: "Failed to start assessment.", variant: "destructive" });
+            toast({ title: "Error", description: e.message || "Failed to start assessment.", variant: "destructive" });
         } finally {
             setIsStarting(false);
         }
@@ -77,20 +78,14 @@ export function DynamicAssessmentSelector({ studentId, caseId, onClose }: Dynami
                         <SelectValue placeholder="Choose a template..." />
                     </SelectTrigger>
                     <SelectContent>
-                        {templates.length === 0 ? (
+                        {loading ? (
+                            <div className="p-2 flex justify-center"><Loader2 className="animate-spin h-4 w-4"/></div>
+                        ) : templates.length === 0 ? (
                             <SelectItem value="none" disabled>No templates found</SelectItem>
                         ) : (
                             templates.map((t: any) => (
                                 <SelectItem key={t.id} value={t.id}>{t.title} ({t.category || 'General'})</SelectItem>
                             ))
-                        )}
-                        {/* Fallback Mocks if DB empty */}
-                        {templates.length === 0 && (
-                            <>
-                                <SelectItem value="temp-reading">Reading Fluency Check (Standard)</SelectItem>
-                                <SelectItem value="temp-phonics">Phonics Screener (Year 1)</SelectItem>
-                                <SelectItem value="temp-sdq">Strengths & Difficulties (SDQ)</SelectItem>
-                            </>
                         )}
                     </SelectContent>
                 </Select>

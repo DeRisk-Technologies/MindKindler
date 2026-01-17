@@ -145,6 +145,45 @@ async function seedPilotData() {
         createdAt: weeksAgo(2)
     });
 
+    // --- ASSESSMENT TEMPLATES (NEW) ---
+    console.log("📚 Seeding Assessment Templates...");
+    const templates = [
+        {
+            id: 'temp-reading',
+            title: 'Reading Fluency Check',
+            category: 'Literacy',
+            questions: [
+                { id: 'q1', text: 'Reads high frequency words (List 1)', type: 'scale', points: 10 },
+                { id: 'q2', text: 'Decodes CVC words', type: 'boolean', points: 5, correctAnswer: true }
+            ]
+        },
+        {
+            id: 'temp-phonics',
+            title: 'Phonics Screener (Year 1)',
+            category: 'Literacy',
+            questions: [
+                { id: 'q1', text: 'Identify Phase 2 sounds (s, a, t, p)', type: 'boolean', points: 4, correctAnswer: true }
+            ]
+        },
+        {
+            id: 'temp-sdq',
+            title: 'Strengths & Difficulties (SDQ)',
+            category: 'SEMH',
+            questions: [
+                { id: 'q1', text: 'Considerate of other people\'s feelings', type: 'scale', options: ['Not True', 'Somewhat True', 'Certainly True'], points: 2 }
+            ]
+        }
+    ];
+
+    templates.forEach(t => {
+        BATCH.set(db.collection('assessment_templates').doc(t.id), {
+            ...t,
+            tenantId: 'system', // Shared templates
+            createdBy: 'system',
+            createdAt: new Date().toISOString()
+        });
+    });
+
     // --- REPORTING ---
     const findingsA: Finding[] = [
         {
