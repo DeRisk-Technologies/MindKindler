@@ -15,12 +15,13 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { getRegionalDb } from '@/lib/firebase';
 import { collection, addDoc, doc, updateDoc, setDoc } from 'firebase/firestore';
-import { CalendarIcon, Loader2, Upload, FileText, Briefcase } from 'lucide-react';
+import { CalendarIcon, Loader2, Upload, FileText, Briefcase, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { EvidenceUploadZone } from '@/components/intake/EvidenceUploadZone';
 import { analyzeDocument } from '@/ai/clerkAgent'; 
 import { EvidenceItem, IngestionAnalysis } from '@/types/evidence';
+import { Badge } from '@/components/ui/badge';
 
 // Extract content to subcomponent to isolate hook usage
 function NewCaseContent() {
@@ -36,7 +37,7 @@ function NewCaseContent() {
     // Form State
     const [contract, setContract] = useState({
         clientName: '',
-        serviceType: 'statutory_advice', // Default
+        serviceTypes: ['statutory_advice'], // Array for multiple selections
         commissionedDate: new Date(),
         dueDate: new Date(new Date().setDate(new Date().getDate() + 42)), // Default +6 weeks
         budgetHours: 6,
@@ -53,6 +54,24 @@ function NewCaseContent() {
 
     const [uploadedItems, setUploadedItems] = useState<EvidenceItem[]>([]);
 
+    const SERVICE_OPTIONS = [
+        { id: 'statutory_advice', label: 'Statutory Advice (Appendix D)' },
+        { id: 'intervention_plan', label: 'Intervention Plan' },
+        { id: 'tribunal', label: 'Tribunal Witness' },
+        { id: 'consultation', label: 'School Consultation' }
+    ];
+
+    const toggleService = (id: string) => {
+        setContract(prev => {
+            const exists = prev.serviceTypes.includes(id);
+            if (exists) {
+                return { ...prev, serviceTypes: prev.serviceTypes.filter(s => s !== id) };
+            } else {
+                return { ...prev, serviceTypes: [...prev.serviceTypes, id] };
+            }
+        });
+    };
+
     // --- STEP 1: FORENSIC INGEST (The "Zip File") ---
     const handleAnalysisComplete = (files: EvidenceItem[], analysis: IngestionAnalysis[]) => {
         setUploadedItems(files);
@@ -62,7 +81,6 @@ function NewCaseContent() {
             // Auto-fill from "Request for Advice.pdf" simulation
             // In a real scenario, we'd inspect 'analysis' array for extracted entities
             
-            // Checking if analysis found anything
             if (analysis.length > 0) {
                 const firstAnalysis = analysis[0];
                 if (firstAnalysis.suggestedStakeholders?.length > 0) {
@@ -125,7 +143,7 @@ function NewCaseContent() {
                 status: 'assessment', // Start in active assessment
                 contract: {
                     clientName: contract.clientName,
-                    serviceType: contract.serviceType,
+                    serviceTypes: contract.serviceTypes, // Array
                     commissionedDate: contract.commissionedDate.toISOString(),
                     dueDate: contract.dueDate.toISOString(),
                     budgetHours: contract.budgetHours,
@@ -157,10 +175,6 @@ function NewCaseContent() {
             
             await updateDoc(caseRef, { workSchedule: tasks });
 
-            // 4. Link Uploaded Files to Case
-            // (Assuming EvidenceItems need to be updated with the real caseId)
-            // Ideally we'd loop through uploadedItems and update their docs in Firestore
-            
             toast({ title: "Case Created", description: "Redirecting to Workbench..." });
             router.push(`/dashboard/cases/${caseRef.id}`);
 
@@ -221,16 +235,23 @@ function NewCaseContent() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Service Type</Label>
-                                <select 
-                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                    value={contract.serviceType}
-                                    onChange={e => setContract({...contract, serviceType: e.target.value as any})}
-                                >
-                                    <option value="statutory_advice">Statutory Advice (Appendix D)</option>
-                                    <option value="intervention_plan">Intervention Plan</option>
-                                    <option value="tribunal">Tribunal Witness</option>
-                                </select>
+                                <Label>Service Types (Select multiple)</Label>
+                                <div className="flex flex-wrap gap-2 p-2 border rounded-md min-h-[42px]">
+                                    {SERVICE_OPTIONS.map(opt => {
+                                        const isSelected = contract.serviceTypes.includes(opt.id);
+                                        return (
+                                            <Badge 
+                                                key={opt.id}
+                                                variant={isSelected ? "default" : "outline"}
+                                                className="cursor-pointer select-none"
+                                                onClick={() => toggleService(opt.id)}
+                                            >
+                                                {isSelected && <Check className="w-3 h-3 mr-1" />}
+                                                {opt.label}
+                                            </Badge>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
@@ -290,7 +311,14 @@ function NewCaseContent() {
                     </CardContent>
                     <CardFooter className="flex justify-between">
                         <Button variant="ghost" onClick={() => setStep(1)}>Back</Button>
-                        <Button onClick={handleCreate} disabled={loading} className="bg-indigo-600 hover:bg-indigo-700">
+                        <Button 
+                            onClick={(e) => {
+                                e.preventDefault(); // Prevent accidental form submit if wrapped
+                                handleCreate();
+                            }} 
+                            disabled={loading || !contract.clientName || !studentData.lastName} 
+                            className="bg-indigo-600 hover:bg-indigo-700"
+                        >
                             {loading ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <FileText className="mr-2 h-4 w-4" />}
                             Create Case File
                         </Button>
