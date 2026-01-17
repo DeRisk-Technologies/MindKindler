@@ -40,7 +40,11 @@ export interface Stakeholder {
  */
 export interface CaseContract {
     clientName: string; // e.g., "Leeds City Council"
-    serviceType: 'statutory_advice' | 'intervention_plan' | 'tribunal' | 'consultation_only';
+    // CHANGED: Multi-select support
+    serviceTypes: string[]; 
+    // Legacy support (optional)
+    serviceType?: string; 
+    
     commissionedDate: string; // ISO Date (Date of Instruction)
     dueDate: string; // ISO Date (The EPP's strict deadline, e.g. 6 weeks from commissioned)
     budgetHours?: number; // e.g. 6 hours

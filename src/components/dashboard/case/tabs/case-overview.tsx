@@ -35,15 +35,27 @@ export function CaseOverview({ caseFile, workflow }: CaseOverviewProps) {
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">Service Type</p>
-                                <Badge variant="outline" className="capitalize">{contract.serviceType.replace('_', ' ')}</Badge>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                    {contract.serviceTypes?.map(type => (
+                                        <Badge key={type} variant="outline" className="capitalize">
+                                            {type.replace(/_/g, ' ')}
+                                        </Badge>
+                                    ))}
+                                    {/* Fallback for legacy single type */}
+                                    {!contract.serviceTypes && contract.serviceType && (
+                                        <Badge variant="outline" className="capitalize">
+                                            {contract.serviceType.replace(/_/g, ' ')}
+                                        </Badge>
+                                    )}
+                                </div>
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">Commissioned</p>
-                                <p>{format(new Date(contract.commissionedDate), 'PPP')}</p>
+                                <p>{contract.commissionedDate ? format(new Date(contract.commissionedDate), 'PPP') : 'N/A'}</p>
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">Deadline</p>
-                                <p className="font-bold text-red-600">{format(new Date(contract.dueDate), 'PPP')}</p>
+                                <p className="font-bold text-red-600">{contract.dueDate ? format(new Date(contract.dueDate), 'PPP') : 'N/A'}</p>
                             </div>
                             {contract.specialInstructions && (
                                 <div className="col-span-2 bg-yellow-50 p-3 rounded-md border border-yellow-100 text-sm text-yellow-900 mt-2">
@@ -119,7 +131,7 @@ export function CaseOverview({ caseFile, workflow }: CaseOverviewProps) {
                             <div className="w-2 h-2 mt-2 rounded-full bg-blue-500 shrink-0" />
                             <div>
                                 <p className="text-sm font-medium">Case Created (Intake)</p>
-                                <p className="text-xs text-muted-foreground">{format(new Date(caseFile.createdAt), 'PP p')}</p>
+                                <p className="text-xs text-muted-foreground">{caseFile.createdAt ? format(new Date(caseFile.createdAt), 'PP p') : 'Unknown'}</p>
                             </div>
                         </div>
                         {caseFile.lastActivity && (
