@@ -27,11 +27,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// PHASE 21: New Components
 import { LiveCockpit } from '@/components/consultations/LiveCockpit';
 import { analyzeSegmentAction, AiInsight, ConsultationMode } from '@/app/actions/consultation';
 
-// FIREBASE IMPORTS
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { getRegionalDb, db as globalDb, functions } from '@/lib/firebase'; 
 import { useAuth } from '@/hooks/use-auth';
@@ -75,6 +73,9 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
     // Refs
     const transcriptEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any>(null); 
+    
+    // AI Buffer Ref
+    const transcriptBuffer = useRef<string[]>([]);
 
     // Load Session Context
     useEffect(() => {
@@ -93,7 +94,6 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
                     }
                 }
 
-                console.log(`[Consultation] Resolved Region: ${region}`);
                 setActiveShard(region || 'default');
 
                 const regionalDb = getRegionalDb(region);
@@ -102,8 +102,6 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
                 
                 if (sessionSnap.exists()) {
                     const data = sessionSnap.data();
-                    
-                    // Set Mode if saved (e.g. from creation screen)
                     if (data.mode) setMode(data.mode);
 
                     if (data.studentId) {
@@ -133,7 +131,53 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
         transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [transcript, interimText, insights]); 
 
-    // --- Core Logic: Process Transcript & Trigger AI ---
+    // --- PERIODIC AI ANALYSIS LOOP ---
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            if (transcriptBuffer.current.length === 0) return;
+
+            // Join buffer into a chunk
+            const chunk = transcriptBuffer.current.join("\n");
+            
+            // Only send if substantial context (> 50 chars)
+            if (chunk.length < 50) return;
+
+            // Clear buffer immediately to prevent double send
+            transcriptBuffer.current = [];
+
+            try {
+                // Call Cloud Function
+                const analyzeFn = httpsCallable(functions, 'analyzeConsultationInsight');
+                const result = await analyzeFn({
+                    transcriptChunk: chunk,
+                    tenantId: user?.tenantId,
+                    studentId: studentContext?.id,
+                    context: mode
+                });
+                
+                const newInsight = result.data as AiInsight;
+                
+                if (newInsight && newInsight.type !== 'none') {
+                    setInsights(prev => [newInsight, ...prev]);
+                    // Minimal Toast to avoid spam
+                    toast({ 
+                        title: "AI Insight", 
+                        description: newInsight.type.toUpperCase() + ": " + newInsight.text.substring(0, 30) + "...", 
+                        duration: 3000 
+                    });
+                }
+            } catch (e) {
+                console.error("AI Insight Loop Failed", e);
+                // On fail, maybe re-add to buffer? For now, we drop to avoid loop crashes.
+            }
+
+        }, 15000); // 15 Seconds Interval
+
+        return () => clearInterval(interval);
+    }, [user, studentContext, mode]);
+
+
+    // --- Core Logic: Process Transcript ---
     const handleFinalTranscript = async (text: string) => {
         const newSegment: TranscriptSegment = {
             id: Date.now().toString(),
@@ -145,26 +189,9 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
 
         setTranscript(prev => [...prev, newSegment]);
         setInterimText(""); 
-
-        // Trigger Co-Pilot (Cloud Function)
-        try {
-            const analyzeFn = httpsCallable(functions, 'analyzeConsultationInsight');
-            const result = await analyzeFn({
-                transcriptChunk: text,
-                tenantId: user?.tenantId,
-                studentId: studentContext?.id,
-                context: mode
-            });
-            
-            const newInsight = result.data as AiInsight;
-            
-            if (newInsight && newInsight.type !== 'none') {
-                setInsights(prev => [newInsight, ...prev]);
-                toast({ title: "AI Suggestion", description: newInsight.text, duration: 4000 });
-            }
-        } catch (e) {
-            console.error("AI Action failed", e);
-        }
+        
+        // Push to AI Buffer
+        transcriptBuffer.current.push(`${activeSpeaker}: ${text}`);
     };
 
     // --- Web Speech API Setup ---
@@ -256,9 +283,7 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
         }
     };
 
-    // Handler for Live Cockpit Observations
     const handleLiveObservation = (label: string) => {
-        // Log observation into the transcript stream as an event
         const obsSegment: TranscriptSegment = {
             id: Date.now().toString(),
             speaker: 'Event',
@@ -267,6 +292,7 @@ export default function LiveConsultationPage({ params }: { params: Promise<{ id:
             isFinal: true
         };
         setTranscript(prev => [...prev, obsSegment]);
+        transcriptBuffer.current.push(`[OBSERVATION]: ${label}`);
     };
 
     return (

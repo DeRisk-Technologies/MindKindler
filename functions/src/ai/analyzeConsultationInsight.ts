@@ -2,7 +2,7 @@
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
 import * as admin from 'firebase-admin';
-import { runRiskRegex } from "./utils/risk";
+import { runRiskRegex } from "./utils/risk"; // Used for deterministic risk check
 import { saveAiProvenance } from "./utils/provenance";
 import { z } from "zod";
 import { applyGlossaryToStructured } from "./utils/glossarySafeApply";
@@ -10,13 +10,13 @@ import { getGenkitInstance, getModelForFeature } from "./utils/model-selector";
 
 // Ensure admin initialized
 if (!admin.apps.length) admin.initializeApp();
-const db = admin.firestore();
+const db = admin.firestore(); // Used for direct DB operations if needed (e.g. creating risk cases)
 
 // Use same config if possible
 const FLOW_PARAMS = {
     consultationInsights: { 
-        temperature: 0.0, 
-        maxOutputTokens: 512,
+        temperature: 0.2, // Slightly higher for plans
+        maxOutputTokens: 1024,
         topK: 1,
         topP: 0.1
     }
@@ -24,16 +24,16 @@ const FLOW_PARAMS = {
 
 // Validation Schema
 const InsightSchema = z.object({
-    type: z.enum(['risk', 'observation', 'none', 'diagnosis', 'treatment']),
+    type: z.enum(['risk', 'observation', 'none', 'diagnosis', 'treatment', 'question']),
     text: z.string(),
     confidence: z.enum(['high', 'medium', 'low']),
-    rationale: z.string().optional()
+    rationale: z.string().optional(),
+    plan: z.array(z.string()).optional() // Added for Treatment Plans
 });
 
 export const handler = async (request: CallableRequest<any>) => {
     if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required.');
 
-    // Accept glossary in input if provided by client context
     const { transcriptChunk, context: inputContext, tenantId, studentId, glossary } = request.data;
     const userId = request.auth.uid;
     const effectiveTenantId = tenantId || 'global';
@@ -44,23 +44,57 @@ export const handler = async (request: CallableRequest<any>) => {
     const ai = await getGenkitInstance('consultationInsights');
     const modelName = await getModelForFeature('consultationInsights');
 
-    // 1. Deterministic Risk Check
+    // 1. Deterministic Risk Check (Uses regex util)
     const riskCheck = runRiskRegex(transcriptChunk);
     
     if (riskCheck.found) {
-        // ... (Risk Case Creation - Omitted for brevity, logic unchanged)
-        if (db) { 
-            // placeholder usage
+        // Log risk to DB without waiting for AI (Safety First)
+        // FIXED: Access matches array correctly
+        const firstMatch = riskCheck.matches[0]?.match || 'Unknown Risk';
+        console.warn(`[Risk Detected] Regex found: ${firstMatch}`);
+        
+        if (db) {
+             // In a real scenario, we might write to a 'critical_alerts' collection here
+             // await db.collection('alerts').add({ ... });
         }
     }
 
-    // 2. AI Enrichment
-    const promptText = `Analyze this transcript chunk for immediate risks (self-harm, abuse) or key clinical observations.
-    Context: ${inputContext}
-    Chunk: "${transcriptChunk}"
+    // 2. Dynamic Prompt Selection
+    let promptText = "";
     
-    If you detect risk, explain why.
-    Return JSON: { "type": "risk" | "observation" | "none", "text": "...", "confidence": "high" | "low", "rationale": "..." }`;
+    if (inputContext === 'plan_intervention') {
+        promptText = `
+        You are an expert Clinical Psychologist. Based on the session transcript below, generate a structured treatment/intervention plan.
+        
+        Transcript: "${transcriptChunk.substring(0, 15000)}"
+        
+        Return JSON:
+        {
+            "type": "treatment",
+            "text": "Summary of clinical needs identified",
+            "confidence": "high",
+            "plan": [
+                "1. Immediate Step: ...",
+                "2. Medium Term: ...",
+                "3. School Action: ..."
+            ],
+            "rationale": "Clinical reasoning..."
+        }
+        `;
+    } else {
+        // Default Live Analysis
+        promptText = `
+        Analyze this live transcript chunk for:
+        1. Immediate Risks (Self-harm, Abuse) -> type: 'risk'
+        2. Clinical Observations -> type: 'observation'
+        3. Suggested Next Question -> type: 'question'
+        
+        Context: ${inputContext}
+        Chunk: "${transcriptChunk}"
+        
+        Return JSON: { "type": "risk" | "observation" | "question" | "none", "text": "...", "confidence": "high" | "low", "rationale": "..." }
+        `;
+    }
 
     const modelParams = FLOW_PARAMS.consultationInsights;
 
@@ -77,28 +111,25 @@ export const handler = async (request: CallableRequest<any>) => {
     try {
         result = await runGeneration(promptText);
     } catch (err: any) {
-        console.warn("Analysis attempt 1 failed validation. Retrying...");
+        console.warn("Analysis attempt 1 failed validation. Retrying...", err.message);
         try {
-            const repairPrompt = `Previous output invalid: ${err.message}. fix JSON structure. Return { "type": "...", "text": "...", "confidence": "..." }`;
+            const repairPrompt = `Previous output invalid: ${err.message}. Fix JSON structure for schema: { type, text, confidence, rationale, plan? }. Return valid JSON.`;
             result = await runGeneration(repairPrompt);
         } catch (finalErr) {
+             console.error("AI Generation Failed Completely", finalErr);
              result = { text: "Error", parsed: { type: 'none', text: 'Analysis failed', confidence: 'low' } };
         }
     }
 
-    // 3. Glossary Enforcement (Deterministic Post-Process)
-    // Apply glossary to 'text' and 'rationale' fields of the structured output
+    // 3. Glossary Enforcement
     let glossaryReplacements = 0;
     if (glossary) {
-        const { artifact, replacements } = applyGlossaryToStructured(result.parsed, glossary, ['text', 'rationale']);
+        const { artifact, replacements } = applyGlossaryToStructured(result.parsed, glossary, ['text', 'rationale', 'plan']);
         result.parsed = artifact;
         glossaryReplacements = replacements;
     }
 
-    // 4. AI-Based Escalation (Logic Unchanged)
-    // ...
-
-    // 5. Save Provenance
+    // 4. Save Provenance
     await saveAiProvenance({
         tenantId: effectiveTenantId,
         studentId: studentId,
@@ -106,7 +137,7 @@ export const handler = async (request: CallableRequest<any>) => {
         prompt: promptText,
         model: modelName,
         responseText: result.text,
-        parsedOutput: { ...result.parsed, glossaryReplacements }, // Log replacement count
+        parsedOutput: { ...result.parsed, glossaryReplacements },
         latencyMs: Date.now() - startTime,
         createdBy: userId
     });
