@@ -9,7 +9,14 @@ if (!admin.apps.length) admin.initializeApp();
 
 // Configuration
 const region = "europe-west3";
-const callOptions: HttpsOptions = { region, cors: true };
+// We add GEMINI_API_KEY to the secrets so it is available in process.env
+// The Vertex SDK uses Google Cloud IAM (ADC), so it doesn't strictly need a VERTEX_API_KEY secret 
+// if the Service Account has permissions, but we'll include it if you intend to use it manually.
+const callOptions: HttpsOptions = { 
+    region, 
+    cors: true,
+    secrets: ["GEMINI_API_KEY", "VERTEX_API_KEY"] 
+};
 
 // --- 1. AI & Core Clinical Functions ---
 import * as aiReports from "./ai/generateClinicalReport";
