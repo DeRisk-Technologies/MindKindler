@@ -139,9 +139,10 @@ export function DocumentUploader({ preselectedStudentId, locked }: DocumentUploa
           const url = await uploadFileToStorage(file);
           setProgress(50);
 
-          const targetDb = getRegionalDb(user?.region || 'uk');
+          const region = user?.region || 'uk';
+          const targetDb = getRegionalDb(region);
 
-          await addDoc(collection(targetDb, "documents"), { // Write to regional DB
+          await addDoc(collection(targetDb, "knowledgeDocuments"), { // Corrected collection name
               userId: user?.uid,
               targetId: selectedTarget.id,
               targetType,
@@ -150,10 +151,14 @@ export function DocumentUploader({ preselectedStudentId, locked }: DocumentUploa
               fileUrl: url,
               fileType: file.type,
               category,
+              metadata: { evidenceType: category },
               uploadDate: new Date().toISOString(),
               status: 'uploading',
-              tenantId: user?.tenantId || 'default', // Add tenantId
-              createdAt: serverTimestamp()
+              tenantId: user?.tenantId || 'default', 
+              createdAt: serverTimestamp(),
+              // Ensure linking if we have context
+              studentId: targetType === 'student' ? selectedTarget.id : undefined,
+              caseId: selectedTarget.activeCaseId || undefined 
           });
           setProgress(100);
           
@@ -169,8 +174,13 @@ export function DocumentUploader({ preselectedStudentId, locked }: DocumentUploa
               setCategory("");
           }
 
-      } catch (e) {
-          toast({ title: "Error", description: "Upload failed.", variant: "destructive" });
+      } catch (e: any) {
+          console.error("Upload Error:", e);
+           if (e.code === 'permission-denied') {
+                toast({ title: "Permission Denied", description: "You do not have write access to this region.", variant: "destructive" });
+            } else {
+                toast({ title: "Error", description: "Upload failed.", variant: "destructive" });
+            }
       } finally {
           setUploading(false);
           setTimeout(() => setProgress(0), 2000);

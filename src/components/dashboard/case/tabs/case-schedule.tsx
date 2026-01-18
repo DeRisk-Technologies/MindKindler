@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckSquare, Calendar, Plus, Clock, Loader2, Trash2, ListChecks, ChevronRight } from 'lucide-react';
-import { CaseFile, WorkTask } from '@/types/case';
+import { CheckSquare, Calendar, Plus, Clock, Loader2, Trash2, ListChecks, ChevronRight, CornerDownRight } from 'lucide-react';
+import { CaseFile, WorkTask, WorkSubTask } from '@/types/case';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -32,11 +32,12 @@ export function CaseSchedule({ caseFile }: { caseFile: CaseFile }) {
     
     // Add Task State
     const [isAddOpen, setIsAddOpen] = useState(false);
-    const [newTask, setNewTask] = useState<Partial<WorkTask> & { notes?: string }>({ 
+    const [newTask, setNewTask] = useState<Partial<WorkTask> & { notes?: string, subtasksText?: string }>({ 
         title: '', 
         type: 'admin', 
         status: 'pending',
-        notes: ''
+        notes: '',
+        subtasksText: ''
     });
     const [loading, setLoading] = useState(false);
     const [apptLoading, setApptLoading] = useState(false);
@@ -80,14 +81,24 @@ export function CaseSchedule({ caseFile }: { caseFile: CaseFile }) {
         setLoading(true);
         try {
             const db = getRegionalDb(user.region || 'uk');
+            
+            // Parse subtasks from text (one per line)
+            const subtasks: WorkSubTask[] = newTask.subtasksText 
+                ? newTask.subtasksText.split('\n').filter(l => l.trim()).map(line => ({
+                    id: `st-${Date.now()}-${Math.random()}`,
+                    title: line.trim(),
+                    completed: false
+                }))
+                : [];
+
             const task: WorkTask = {
                 id: `t-${Date.now()}`,
                 title: newTask.title,
                 type: newTask.type as any,
                 status: 'pending',
                 dueDate: newTask.dueDate,
-                // @ts-ignore: Assuming we extend the type or use metadata field
-                notes: newTask.notes
+                notes: newTask.notes,
+                subtasks
             };
 
             const updatedTasks = [...tasks, task];
@@ -98,7 +109,7 @@ export function CaseSchedule({ caseFile }: { caseFile: CaseFile }) {
 
             setTasks(updatedTasks);
             setIsAddOpen(false);
-            setNewTask({ title: '', type: 'admin', status: 'pending', notes: '' });
+            setNewTask({ title: '', type: 'admin', status: 'pending', notes: '', subtasksText: '' });
 
         } catch (e) {
             console.error("Failed to add task", e);
@@ -121,6 +132,36 @@ export function CaseSchedule({ caseFile }: { caseFile: CaseFile }) {
             setTasks(updatedTasks);
         } catch (e) {
             console.error("Failed to toggle task", e);
+        }
+    };
+
+    const handleToggleSubtask = async (taskId: string, subtaskId: string) => {
+        if (!user) return;
+        try {
+            const db = getRegionalDb(user.region || 'uk');
+            const updatedTasks = tasks.map(t => {
+                if (t.id !== taskId) return t;
+                
+                const updatedSubtasks = t.subtasks?.map(st => 
+                    st.id === subtaskId ? { ...st, completed: !st.completed } : st
+                ) || [];
+
+                // Optional: Auto-complete parent if all subtasks done
+                const allDone = updatedSubtasks.every(st => st.completed);
+                
+                return { 
+                    ...t, 
+                    subtasks: updatedSubtasks,
+                    status: allDone ? 'done' : t.status 
+                };
+            });
+            
+            await updateDoc(doc(db, 'cases', caseFile.id), {
+                workSchedule: updatedTasks
+            });
+            setTasks(updatedTasks);
+        } catch (e) {
+            console.error("Failed to toggle subtask", e);
         }
     };
 
@@ -153,7 +194,7 @@ export function CaseSchedule({ caseFile }: { caseFile: CaseFile }) {
                             Add Task
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
+                    <DialogContent className="sm:max-w-[500px]">
                         <DialogHeader><DialogTitle>New Engagement Task</DialogTitle></DialogHeader>
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
@@ -166,10 +207,20 @@ export function CaseSchedule({ caseFile }: { caseFile: CaseFile }) {
                             </div>
                             
                             <div className="space-y-2">
+                                <Label>Subtasks (One per line)</Label>
+                                <Textarea 
+                                    placeholder="1. Interview Class Teacher&#10;2. Review Attendance Data&#10;3. Observe Playground"
+                                    className="resize-none min-h-[80px]"
+                                    value={newTask.subtasksText}
+                                    onChange={e => setNewTask({...newTask, subtasksText: e.target.value})}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
                                 <Label>Notes (Optional)</Label>
                                 <Textarea 
-                                    placeholder="Add details, sub-tasks, or requirements..."
-                                    className="resize-none"
+                                    placeholder="Add details or requirements..."
+                                    className="resize-none h-[60px]"
                                     value={newTask.notes}
                                     onChange={e => setNewTask({...newTask, notes: e.target.value})}
                                 />
@@ -216,45 +267,69 @@ export function CaseSchedule({ caseFile }: { caseFile: CaseFile }) {
                                 No tasks scheduled yet.
                             </div>
                         ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-3">
                                 {tasks.map((task: WorkTask) => (
-                                    <div key={task.id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-slate-50 transition-colors group bg-white shadow-sm">
-                                        <div className="pt-1">
-                                            <div 
-                                                onClick={() => handleToggleTask(task.id)}
-                                                className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-colors ${task.status === 'done' ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 hover:border-indigo-400'}`}
-                                            >
-                                                {task.status === 'done' && <CheckSquare className="w-3 h-3 text-white" />}
+                                    <div key={task.id} className="border rounded-lg bg-white shadow-sm overflow-hidden">
+                                        {/* Main Task Row */}
+                                        <div className="flex items-start gap-3 p-3 hover:bg-slate-50 transition-colors group">
+                                            <div className="pt-1">
+                                                <div 
+                                                    onClick={() => handleToggleTask(task.id)}
+                                                    className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-colors ${task.status === 'done' ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 hover:border-indigo-400'}`}
+                                                >
+                                                    {task.status === 'done' && <CheckSquare className="w-3 h-3 text-white" />}
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className={`text-sm font-medium truncate ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
-                                                {task.title}
-                                            </p>
-                                            {(task as any).notes && (
-                                                <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                                                    {(task as any).notes}
+                                            <div className="flex-1 min-w-0">
+                                                <p className={`text-sm font-medium truncate ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
+                                                    {task.title}
                                                 </p>
-                                            )}
-                                            <div className="flex gap-2 mt-2">
-                                                <Badge variant="secondary" className="text-[10px] h-5 px-1.5 capitalize font-normal bg-slate-100 text-slate-600 border-slate-200">{task.type}</Badge>
-                                                {task.linkedAppointmentId && <Badge variant="outline" className="text-[10px] h-5 px-1 bg-blue-50 text-blue-700 border-blue-200">Linked Event</Badge>}
-                                                {task.dueDate && (
-                                                    <div className={`flex items-center text-[10px] px-1.5 rounded ${new Date(task.dueDate) < new Date() && task.status !== 'done' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
-                                                        <Clock className="w-3 h-3 mr-1" />
-                                                        {new Date(task.dueDate).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
-                                                    </div>
+                                                {(task as any).notes && (
+                                                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                                        {(task as any).notes}
+                                                    </p>
                                                 )}
+                                                <div className="flex gap-2 mt-2">
+                                                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5 capitalize font-normal bg-slate-100 text-slate-600 border-slate-200">{task.type}</Badge>
+                                                    {task.dueDate && (
+                                                        <div className={`flex items-center text-[10px] px-1.5 rounded ${new Date(task.dueDate) < new Date() && task.status !== 'done' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
+                                                            <Clock className="w-3 h-3 mr-1" />
+                                                            {new Date(task.dueDate).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 text-slate-400 hover:text-red-500 -mt-1 -mr-1"
+                                                onClick={() => handleDeleteTask(task.id)}
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </Button>
                                         </div>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 text-slate-400 hover:text-red-500 -mt-1 -mr-1"
-                                            onClick={() => handleDeleteTask(task.id)}
-                                        >
-                                            <Trash2 className="w-3 h-3" />
-                                        </Button>
+
+                                        {/* Subtasks Section */}
+                                        {task.subtasks && task.subtasks.length > 0 && (
+                                            <div className="bg-slate-50/50 border-t p-2 pl-10 space-y-1">
+                                                {task.subtasks.map(st => (
+                                                    <div key={st.id} className="flex items-center gap-2 py-1">
+                                                        <div className="relative">
+                                                            <CornerDownRight className="w-3 h-3 text-slate-300 absolute -left-5 top-1" />
+                                                            <div 
+                                                                onClick={() => handleToggleSubtask(task.id, st.id)}
+                                                                className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${st.completed ? 'bg-indigo-400 border-indigo-400' : 'border-slate-300 hover:border-indigo-400'}`}
+                                                            >
+                                                                {st.completed && <CheckSquare className="w-2.5 h-2.5 text-white" />}
+                                                            </div>
+                                                        </div>
+                                                        <span className={`text-xs ${st.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                                                            {st.title}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

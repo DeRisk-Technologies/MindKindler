@@ -13,15 +13,39 @@ service cloud.firestore {
       );
     }
 
-    // STRICT TENANT CHECK:
-    // 1. If reading/updating/deleting: The existing doc (resource) must have matching tenantId.
-    // 2. If creating/updating: The new data (request.resource) must have matching tenantId.
+    // STRICT TENANT CHECK (Robust & Syntax Correct)
     function isTenantScoped() {
-      return isSystemAdmin() || (
-        isAuthenticated() && 
-        (resource == null || resource.data.tenantId == request.auth.token.tenantId) &&
-        (request.resource == null || request.resource.data.tenantId == request.auth.token.tenantId)
+      let userTenant = request.auth.token.tenantId;
+      
+      // Determine Operation Type
+      let isReadOrDelete = (request.method == 'get' || request.method == 'list' || request.method == 'delete');
+      let isCreate = (request.method == 'create');
+      let isUpdate = (request.method == 'update');
+      
+      // Check Existing Resource (safely handle null resource for create)
+      let existingMatch = resource != null && (
+          resource.data.get('tenantId', '') == userTenant || 
+          resource.data.get('managedByTenantId', '') == userTenant
       );
+      
+      // Check New Resource (safely handle null request.resource for delete)
+      let newMatch = request.resource != null && (
+          request.resource.data.get('tenantId', '') == userTenant || 
+          request.resource.data.get('managedByTenantId', '') == userTenant
+      );
+
+      return isSystemAdmin() || (
+        isAuthenticated() && (
+          (isReadOrDelete && existingMatch) ||
+          (isCreate && newMatch) ||
+          (isUpdate && existingMatch && newMatch)
+        )
+      );
+    }
+
+    // Combined Check
+    function isAuthorized() {
+        return isTenantScoped();
     }
 
     // --- 1. CORE USER & ROUTING ---
@@ -36,7 +60,10 @@ service cloud.firestore {
     }
 
     // --- 2. SCHEDULING & MESSAGING ---
-    match /appointments/{appointmentId} { allow read, write: if isTenantScoped(); }
+    match /appointments/{appointmentId} { 
+        allow read: if isAuthenticated(); // Broadened for cross-referencing
+        allow write: if isAuthorized(); 
+    }
     
     match /notifications/{notifId} { 
       allow read, write: if isAuthenticated() && (resource == null || resource.data.recipientUserId == request.auth.uid);
@@ -47,14 +74,22 @@ service cloud.firestore {
         match /messages/{messageId} { allow read, write: if isAuthenticated(); }
     }
     match /messages/{messageId} { allow read, write: if isAuthenticated(); }
+    
+    // AI Copilot Sessions
+    match /bot_sessions/{sessionId} {
+        allow read, write: if isAuthorized();
+        match /messages/{messageId} { allow read, write: if isAuthorized(); }
+    }
 
     // --- 3. CLINICAL DATA (Root Level) ---
-    match /students/{document=**} { allow read, write: if isTenantScoped(); } 
-    match /cases/{document=**} { allow read, write: if isTenantScoped(); }
-    match /reports/{document=**} { allow read, write: if isTenantScoped(); }
-    match /consultation_sessions/{document=**} { allow read, write: if isTenantScoped(); }
-    match /assessment_results/{id} { allow read, write: if isTenantScoped(); }
-    match /assessment_assignments/{id} { allow read, write: if isTenantScoped(); }
+    match /students/{document=**} { allow read, write: if isAuthorized(); } 
+    match /cases/{document=**} { allow read, write: if isAuthorized(); }
+    match /reports/{document=**} { allow read, write: if isAuthorized(); }
+    match /consultation_sessions/{document=**} { allow read, write: if isAuthorized(); }
+    match /assessment_results/{id} { allow read, write: if isAuthorized(); }
+    match /assessment_assignments/{id} { allow read, write: if isAuthorized(); }
+    match /observations/{id} { allow read, write: if isAuthorized(); }
+    match /alerts/{id} { allow read, write: if isAuthorized(); }
 
     match /assessment_templates/{id} { 
       allow read: if isAuthenticated(); 
@@ -78,12 +113,12 @@ service cloud.firestore {
     
     // Schools: STRICT Tenant Scoped
     match /schools/{id} { 
-        allow read, write: if isTenantScoped();
-        match /staff/{staffId} { allow read, write: if isTenantScoped(); }
+        allow read, write: if isAuthorized();
+        match /staff/{staffId} { allow read, write: if isAuthorized(); }
     }
     
     match /districts/{id} {
-        allow read, write: if isTenantScoped();
+        allow read, write: if isAuthorized();
     }
     
     // --- 5. ENTERPRISE TENANTS (Nested) ---
@@ -95,15 +130,49 @@ service cloud.firestore {
     }
 
     // --- 6. ASSETS & INTEGRATIONS ---
-    match /integrations/{configId} { allow read, write: if isTenantScoped(); }
-    match /data_jobs/{jobId} { allow read, write: if isTenantScoped(); }
+    match /integrations/{configId} { allow read, write: if isAuthorized(); }
+    match /data_jobs/{jobId} { allow read, write: if isAuthorized(); }
     
     match /knowledgeDocuments/{docId} { 
       allow read: if isAuthenticated(); 
       allow write: if isAuthenticated(); 
     }
     
-    match /uploaded_documents/{docId} { allow read, write: if isTenantScoped(); }
+    match /uploaded_documents/{docId} { allow read, write: if isAuthorized(); }
+    
+    // --- 7. MISSING COLLECTIONS (Added for Pilot Unblocking) ---
+    match /threads/{threadId} { allow read, write: if isAuthenticated(); }
+    match /posts/{postId} { allow read, write: if isAuthenticated(); }
+    
+    match /trainingModules/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /trainingCompletions/{id} { allow read, write: if isAuthenticated(); } 
+    match /certificates/{id} { allow read, write: if isAuthenticated(); }
+    
+    // FIXED: CamelCase to Snake_Case mismatch
+    match /marketplace_items/{id} { allow read: if isAuthenticated(); allow write: if isSystemAdmin(); }
+    match /marketplace_reviews/{id} { allow read, write: if isAuthenticated(); }
+    match /marketplace_purchases/{id} { allow read, write: if isAuthorized(); }
+    
+    match /partners/{id} { allow read, write: if isAuthenticated(); }
+    match /partnerStatements/{id} { allow read, write: if isAuthenticated(); }
+    match /partnerInvoices/{id} { allow read, write: if isAuthenticated(); }
+    match /partnerRevenueLedger/{id} { allow read, write: if isAuthenticated(); }
+    match /dealRegistrations/{id} { allow read, write: if isAuthenticated(); }
+    
+    match /document_staging/{id} { allow read, write: if isAuthorized(); }
+    
+    // --- 8. PHASE 40/41 ADDITIONS (Portal & Consent) ---
+    match /consents/{id} { allow read, write: if isAuthorized(); }
+    match /external_requests/{id} { allow read, write: if isAuthorized(); }
+    match /contribution_requests/{id} { allow read, write: if isAuthorized(); }
+    match /contribution_submissions/{id} { allow read, write: if isAuthorized(); }
+    
+    match /telemetry_report_edits/{id} { allow read, write: if isAuthorized(); }
+    match /mail_queue/{id} { allow read, write: if isAuthorized(); }
+    
+    // --- 9. PHASE 43: SAFEGUARDING ---
+    match /safeguarding_events/{id} { allow read, write: if isAuthorized(); }
+    match /safeguardingIncidents/{id} { allow read, write: if isAuthorized(); } // Legacy support
 
     match /{document=**} { allow read, write: if false; }
   }

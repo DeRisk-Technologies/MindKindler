@@ -23,7 +23,9 @@ import { CaseFiles } from "@/components/dashboard/case/tabs/case-files";
 import { useRouter } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { CopilotFloat } from "@/components/dashboard/case/ai-copilot-float"; // FIXED IMPORT
+import { CopilotFloat } from "@/components/dashboard/case/ai-copilot-float"; 
+import { RiskAlertButton } from "@/components/dashboard/widgets/RiskAlertButton"; 
+import { CreateAppointmentDialog } from '@/components/dashboard/appointments/create-dialog';
 
 interface CaseDetailsProps {
   caseId: string;
@@ -36,6 +38,7 @@ export function CaseDetails({ caseId }: CaseDetailsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [createAppointmentOpen, setCreateAppointmentOpen] = useState(false);
 
   // Real-time listener for the case document
   useEffect(() => {
@@ -114,13 +117,17 @@ export function CaseDetails({ caseId }: CaseDetailsProps) {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <RiskAlertButton 
+                caseId={caseId} 
+                studentId={caseData.studentId} 
+                studentName={caseData.studentName} // Assuming flattening
+            />
             <Button variant="outline" onClick={() => router.push('/dashboard/cases')}>
               Back to List
             </Button>
-            <Button>
-              <Calendar className="mr-2 h-4 w-4" />
-              Schedule Meeting
-            </Button>
+            
+            {/* Direct Integration of Appointment Dialog */}
+            <CreateAppointmentDialog />
           </div>
         </div>
 

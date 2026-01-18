@@ -8,15 +8,17 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MeetingService } from '@/services/integrations/meetings/zoom-service';
-import { Loader2, Video, Calendar, ShieldCheck } from 'lucide-react';
+import { Loader2, Video, Calendar, ShieldCheck, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { addDoc, collection } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { getRegionalDb } from '@/lib/firebase';
 import { Appointment } from '@/types/schema';
 
-export function CreateAppointmentDialog({ onCreated, open, setOpen }: { onCreated?: () => void, open: boolean, setOpen: (open: boolean) => void }) {
-    const { tenant, user } = useAuth();
+// Export as Default or Named (fixing export issue)
+export function CreateAppointmentDialog() {
+    const [open, setOpen] = useState(false);
+    const { user } = useAuth();
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
     
@@ -29,41 +31,53 @@ export function CreateAppointmentDialog({ onCreated, open, setOpen }: { onCreate
     const [platform, setPlatform] = useState<'zoom' | 'teams'>('zoom');
 
     const handleCreate = async () => {
-        if (!tenant || !user) return;
+        if (!user) return;
         setIsLoading(true);
 
         try {
             // 1. Create Appointment Record (Pending)
             const startDateTime = new Date(`${date}T${time}`);
             const endDateTime = new Date(startDateTime.getTime() + parseInt(duration) * 60000);
+            
+            const region = user.region || 'uk';
+            const db = getRegionalDb(region);
 
             const appointmentData: Partial<Appointment> = {
-                tenantId: tenant.id,
+                tenantId: user.tenantId,
                 hostUserId: user.uid,
                 title,
                 startAt: startDateTime.toISOString(),
                 endAt: endDateTime.toISOString(),
                 status: 'scheduled',
-                type: 'consultation',
+                type: 'consultation', // Default
+                provider: type === 'video' ? platform : 'manual',
                 locationType: type,
-                participantIds: [], // Add participants logic later
+                participantIds: [], 
                 createdAt: new Date().toISOString(),
                 createdBy: user.uid
             };
 
-            const docRef = await addDoc(collection(db, `tenants/${tenant.id}/appointments`), appointmentData);
+            const docRef = await addDoc(collection(db, 'appointments'), appointmentData);
 
-            // 2. Provision Video Link if needed
+            // 2. Provision Video Link if needed (Call Cloud Function)
             if (type === 'video') {
-                const meetingUrl = await MeetingService.createMeeting(docRef.id, platform);
-                // Update doc is handled by Cloud Function usually, but for immediate UI feedback:
-                // We trust the service or wait for the function. 
-                // The service `createMeeting` waits for the function result.
+                try {
+                    // We call the service which calls 'securelyCreateMeetingV2' function
+                    await MeetingService.createMeeting(docRef.id, platform);
+                } catch (videoError) {
+                    console.error("Video Provisioning Failed", videoError);
+                    toast({ title: "Meeting Created", description: "Appointment saved, but video link failed. Check settings.", variant: "warning" });
+                    setOpen(false);
+                    return;
+                }
             }
 
-            toast({ title: "Appointment Scheduled", description: "Meeting link generated securely." });
+            toast({ title: "Appointment Scheduled", description: type === 'video' ? "Video link generated securely." : "Added to calendar." });
             setOpen(false);
-            if (onCreated) onCreated();
+            
+            // Reset Form
+            setTitle(''); setDate(''); setTime('');
+            
         } catch (error: any) {
             console.error(error);
             toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -74,6 +88,12 @@ export function CreateAppointmentDialog({ onCreated, open, setOpen }: { onCreate
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Appointment
+                </Button>
+            </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>Schedule Appointment</DialogTitle>
