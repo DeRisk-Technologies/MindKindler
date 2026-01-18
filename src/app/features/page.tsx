@@ -3,7 +3,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, BrainCircuit, Activity, FileText, Globe, Store, Users, MessageSquare, Zap, Clock, ShieldCheck, Map as MapIcon, GraduationCap } from "lucide-react";
+import { ArrowRight, BrainCircuit, Activity, FileText, Globe, Store, Users, MessageSquare, Zap, Clock, ShieldCheck, Map as MapIcon, GraduationCap, Gavel } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 
@@ -79,8 +79,48 @@ export default function FeaturesPage() {
                     </div>
                 </div>
 
-                {/* 2. Live Cockpit */}
+                {/* 2. UK Statutory & Legal (NEW) */}
                 <div className="flex flex-col md:flex-row-reverse items-center gap-12">
+                    <div className="md:w-1/2">
+                        <div className="h-12 w-12 bg-red-100 rounded-xl flex items-center justify-center mb-6">
+                            <Gavel className="h-6 w-6 text-red-600" />
+                        </div>
+                        <h2 className="text-3xl font-bold mb-4">UK Statutory Compliance</h2>
+                        <p className="text-lg text-slate-600 mb-6">
+                            Built specifically for the UK SEND Code of Practice. Manage the 20-week statutory clock, generate legal "Appendix D" advice, and ensure tribunal readiness.
+                        </p>
+                        <ul className="space-y-3">
+                            <li className="flex items-center gap-2"><FileText className="h-4 w-4 text-slate-600"/> <span>Automated Appendix D & Section F drafting</span></li>
+                            <li className="flex items-center gap-2"><Clock className="h-4 w-4 text-red-500"/> <span>20-Week Breach Risk Radar</span></li>
+                            <li className="flex items-center gap-2"><Activity className="h-4 w-4 text-blue-500"/> <span>Supported Assessments: WISC-V, WAIS-IV, BAS3, WIAT-4</span></li>
+                        </ul>
+                    </div>
+                    <div className="md:w-1/2 bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                         <div className="space-y-3">
+                             <div className="flex justify-between items-center text-sm border-b pb-2">
+                                 <span className="font-bold">Statutory Timeline</span>
+                                 <Badge className="bg-amber-100 text-amber-800">Week 18</Badge>
+                             </div>
+                             <div className="flex gap-2">
+                                 <div className="flex-1 p-2 bg-slate-50 rounded text-center">
+                                     <div className="text-xs text-slate-500">Request</div>
+                                     <div className="font-bold text-slate-800">✓</div>
+                                 </div>
+                                 <div className="flex-1 p-2 bg-slate-50 rounded text-center">
+                                     <div className="text-xs text-slate-500">Evidence</div>
+                                     <div className="font-bold text-slate-800">✓</div>
+                                 </div>
+                                 <div className="flex-1 p-2 bg-blue-50 border border-blue-200 rounded text-center">
+                                     <div className="text-xs text-blue-600 font-bold">Draft Plan</div>
+                                     <div className="font-bold text-blue-800">Due</div>
+                                 </div>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+
+                {/* 3. Live Cockpit */}
+                <div className="flex flex-col md:flex-row items-center gap-12">
                     <div className="md:w-1/2">
                         <div className="h-12 w-12 bg-blue-100 rounded-xl flex items-center justify-center mb-6">
                             <MessageSquare className="h-6 w-6 text-blue-600" />
@@ -104,8 +144,8 @@ export default function FeaturesPage() {
                     </div>
                 </div>
 
-                {/* 3. Marketplace */}
-                <div className="flex flex-col md:flex-row items-center gap-12">
+                {/* 4. Global Marketplace */}
+                <div className="flex flex-col md:flex-row-reverse items-center gap-12">
                     <div className="md:w-1/2">
                         <div className="h-12 w-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-6">
                             <Store className="h-6 w-6 text-emerald-600" />
@@ -131,34 +171,6 @@ export default function FeaturesPage() {
                                 <div className="text-xs text-slate-500">Clinical</div>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                {/* 4. Training Academy */}
-                <div className="flex flex-col md:flex-row-reverse items-center gap-12">
-                    <div className="md:w-1/2">
-                        <div className="h-12 w-12 bg-amber-100 rounded-xl flex items-center justify-center mb-6">
-                            <GraduationCap className="h-6 w-6 text-amber-600" />
-                        </div>
-                        <h2 className="text-3xl font-bold mb-4">AI Gap Scanner & Academy</h2>
-                        <p className="text-lg text-slate-600 mb-6">
-                            MindKindler monitors your report writing. If you struggle with specific sections (e.g. "Sensory Processing"), the AI automatically generates a personalized "Micro-Course" to bridge the gap.
-                        </p>
-                        <ul className="space-y-3">
-                            <li className="flex items-center gap-2"><Zap className="h-4 w-4 text-amber-500"/> <span>Automated CPD Suggestions</span></li>
-                            <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-500"/> <span>Compliance Training (GDPR/Safeguarding)</span></li>
-                        </ul>
-                    </div>
-                    <div className="md:w-1/2 bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
-                         <div className="space-y-3">
-                             <div className="flex justify-between items-center text-sm">
-                                 <span className="font-medium">Recent Activity Analysis</span>
-                                 <Badge variant="destructive">Gap Found</Badge>
-                             </div>
-                             <div className="p-3 bg-amber-50 border border-amber-100 rounded text-xs text-amber-800">
-                                 AI detected frequent rewrites in 'Cognition' section. Recommended Course: "WISC-V Interpretation Advanced".
-                             </div>
-                         </div>
                     </div>
                 </div>
 

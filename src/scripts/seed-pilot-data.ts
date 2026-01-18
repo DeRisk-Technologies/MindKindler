@@ -2,6 +2,8 @@ import * as admin from 'firebase-admin';
 import { CaseFile, WorkTask } from '../types/case';
 import { Finding } from '../types/report';
 import { subWeeks, formatISO, addDays } from 'date-fns';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // --- Configuration ---
 if (!admin.apps.length) {
@@ -24,6 +26,43 @@ async function seedPilotData() {
     const BATCH = db.batch();
     const TENANT_ID = 'pilot-tenant';
     const REGION = 'uk-north';
+
+    // --- 0. SYSTEM KNOWLEDGE (User Manual) ---
+    console.log("📖 Ingesting System Manual...");
+    try {
+        const manualPath = path.join(process.cwd(), 'docs', 'MANUAL_MindKindler_v1.md');
+        if (fs.existsSync(manualPath)) {
+            const manualContent = fs.readFileSync(manualPath, 'utf-8');
+            
+            // Chunking strategy (Simple paragraph split for V1)
+            const chunks = manualContent.split('## ').filter(c => c.trim().length > 0);
+            
+            chunks.forEach((chunk, i) => {
+                const title = chunk.split('\n')[0].trim();
+                const content = chunk.replace(title, '').trim();
+                
+                const docRef = db.collection('knowledgeDocuments').doc(`sys-manual-${i}`);
+                BATCH.set(docRef, {
+                    id: `sys-manual-${i}`,
+                    tenantId: 'system', // Shared
+                    title: `Manual: ${title}`,
+                    type: 'system_instruction', // Special type for Chatbot
+                    content: content, // Store text directly for simple retrieval
+                    status: 'processed',
+                    metadata: {
+                        source: 'MANUAL_MindKindler_v1.md',
+                        section: title
+                    },
+                    createdAt: new Date().toISOString()
+                });
+            });
+            console.log(`   Indexed ${chunks.length} manual sections.`);
+        } else {
+            console.warn("   Manual file not found at:", manualPath);
+        }
+    } catch (e) {
+        console.error("   Failed to ingest manual:", e);
+    }
 
     // --- CASE A: XX Jeffery (The Drafting Demo) ---
     console.log("📝 Seeding Case A: XX Jeffery (Drafting Stage)...");
@@ -145,13 +184,15 @@ async function seedPilotData() {
         createdAt: weeksAgo(2)
     });
 
-    // --- ASSESSMENT TEMPLATES (NEW) ---
+    // --- ASSESSMENT TEMPLATES (ENRICHED) ---
     console.log("📚 Seeding Assessment Templates...");
     const templates = [
+        // 1. Reading & Phonics
         {
             id: 'temp-reading',
-            title: 'Reading Fluency Check',
+            title: 'Reading Fluency Check (UK Standard)',
             category: 'Literacy',
+            description: 'Quick check of word reading efficiency.',
             questions: [
                 { id: 'q1', text: 'Reads high frequency words (List 1)', type: 'scale', points: 10 },
                 { id: 'q2', text: 'Decodes CVC words', type: 'boolean', points: 5, correctAnswer: true }
@@ -161,6 +202,7 @@ async function seedPilotData() {
             id: 'temp-phonics',
             title: 'Phonics Screener (Year 1)',
             category: 'Literacy',
+            description: 'Statutory check of phonic decoding.',
             questions: [
                 { id: 'q1', text: 'Identify Phase 2 sounds (s, a, t, p)', type: 'boolean', points: 4, correctAnswer: true }
             ]
@@ -169,8 +211,40 @@ async function seedPilotData() {
             id: 'temp-sdq',
             title: 'Strengths & Difficulties (SDQ)',
             category: 'SEMH',
+            description: 'Behavioural screening questionnaire (Goodman, 1997).',
             questions: [
                 { id: 'q1', text: 'Considerate of other people\'s feelings', type: 'scale', options: ['Not True', 'Somewhat True', 'Certainly True'], points: 2 }
+            ]
+        },
+        
+        // 2. WIAT-4 UK (Wechsler Individual Achievement Test)
+        {
+            id: 'wiat-4-uk',
+            title: 'WIAT-4 UK (Attainment)',
+            category: 'Cognitive & Attainment',
+            description: 'Comprehensive assessment of reading, written expression, and mathematics.',
+            questions: [
+                { id: 'word_reading', text: 'Word Reading (Standard Score)', type: 'number', min: 40, max: 160 },
+                { id: 'reading_comp', text: 'Reading Comprehension (Standard Score)', type: 'number', min: 40, max: 160 },
+                { id: 'pseudo_decoding', text: 'Pseudoword Decoding (Standard Score)', type: 'number', min: 40, max: 160 },
+                { id: 'num_ops', text: 'Numerical Operations (Standard Score)', type: 'number', min: 40, max: 160 },
+                { id: 'maths_res', text: 'Maths Problem Solving (Standard Score)', type: 'number', min: 40, max: 160 },
+                { id: 'spelling', text: 'Spelling (Standard Score)', type: 'number', min: 40, max: 160 }
+            ]
+        },
+
+        // 3. BAS 3 (British Ability Scales)
+        {
+            id: 'bas-3',
+            title: 'BAS 3 (British Ability Scales)',
+            category: 'Cognitive (IQ)',
+            description: 'Measures cognitive functioning and educational achievement.',
+            questions: [
+                { id: 'gca', text: 'General Conceptual Ability (GCA)', type: 'number', min: 40, max: 160 },
+                { id: 'snc', text: 'Special Non-verbal Composite (SNC)', type: 'number', min: 40, max: 160 },
+                { id: 'matrices', text: 'Matrices (T-Score)', type: 'number', min: 20, max: 80 },
+                { id: 'similarities', text: 'Word Definitions / Similarities (T-Score)', type: 'number', min: 20, max: 80 },
+                { id: 'quant_reasoning', text: 'Quantitative Reasoning (T-Score)', type: 'number', min: 20, max: 80 }
             ]
         }
     ];

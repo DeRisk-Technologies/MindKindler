@@ -4,7 +4,7 @@ import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from 'firebase-admin';
 import { getFirestore } from "firebase-admin/firestore";
 import { logAuditEvent } from '../student360/audit/audit-logger';
-import { retrieveContext } from "./knowledge/retrieve"; // Import real retrieval logic
+import { retrieveContext } from "./knowledge/retrieve"; 
 import { VertexAI } from '@google-cloud/vertexai';
 
 // Initialize Vertex AI for Generation
@@ -34,8 +34,6 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
     const tenantId = request.auth.token.tenantId || 'default';
     const region = request.auth.token.region || 'uk'; 
 
-    // 1. Resolve Shard (Regional Data Plane)
-    // AI Sessions contain sensitive context, so they must be stored in the tenant's region.
     const shardId = region === 'default' ? 'default' : `mindkindler-${region}`;
     const db = shardId === 'default' ? admin.firestore() : getFirestore(admin.app(), shardId);
 
@@ -67,13 +65,20 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         throw new HttpsError('permission-denied', 'Safety Violation: Query blocked by Guardian.');
     }
 
-    // 5. RAG Retrieval (Real Implementation)
+    // 5. RAG Retrieval (System + Context)
     let contextText = "";
     let citations: Citation[] = [];
     
     try {
-        // Construct query: augment user message with context mode
-        const retrievalQuery = `${contextMode} ${contextId ? `(${contextId})` : ''}: ${message}`;
+        // A. Check for "How-To" intent (Heuristic)
+        const isHowTo = /how (do|to|can) i|where is|help with/i.test(lowerMsg);
+        
+        let retrievalQuery = `${contextMode} ${contextId ? `(${contextId})` : ''}: ${message}`;
+        if (isHowTo) {
+            // Bias towards system manual
+            retrievalQuery = `system_instruction: ${message}`;
+        }
+
         const searchResults = await retrieveContext(tenantId, retrievalQuery);
         
         if (searchResults.length > 0) {
@@ -86,15 +91,22 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         }
     } catch (e) {
         console.error("RAG Retrieval Failed", e);
-        // Fallback to no context
     }
 
     // 6. LLM Generation with Grounding
     const systemPrompt = `
-        You are MindKindler Copilot, an AI assistant for Educational Psychologists.
-        Use the provided context to answer the user's question accurately.
-        If the context doesn't answer the question, say "I don't have that information in my knowledge base."
-        Do not halluncinate.
+        You are MindKindler Copilot, an AI assistant for Educational Psychologists using the MindKindler platform.
+        
+        PLATFORM MAP (Quick Reference):
+        - "Case Workbench": Main dashboard for a child. Tabs: Overview, Files, Schedule, Evidence, Reporting.
+        - "Live Cockpit": Real-time transcription tool in 'Evidence'.
+        - "Direct Work": Launch assessments (WISC-V, BAS3, WIAT-4) in 'Evidence'.
+        - "Report Builder": Generate statutory drafts in 'Reporting'.
+        - "Guardian": Compliance dashboard.
+
+        Use the provided context (below) to answer accurately. 
+        If the user asks "How do I...", prefer using the 'Manual' content in the context.
+        If the context is empty, use the PLATFORM MAP above.
         
         Context:
         ${contextText}
@@ -123,13 +135,10 @@ export const handler = async (request: CallableRequest<ChatRequest>) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // 8. Log Provenance
-    // Note: auditLogger should also handle sharding, but usually writes to a central or mirrored log.
-    // Assuming auditLogger handles its own DB connection or uses default.
     await logAuditEvent({
         tenantId,
         action: 'ai_generate',
-        resourceType: 'student', // or 'system'
+        resourceType: 'student', 
         resourceId: contextId || 'general',
         actorId: uid,
         details: 'Copilot Response Generated',
