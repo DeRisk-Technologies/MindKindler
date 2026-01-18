@@ -45,8 +45,16 @@ export function StakeholderMapper({ analyses, onConfirm }: StakeholderMapperProp
     }, [analyses]);
 
     const mapRole = (aiRole: string): StakeholderRole => {
-        const valid: StakeholderRole[] = ['parent', 'senco', 'social_worker', 'pediatrician', 'class_teacher', 'epp_lead'];
-        return valid.includes(aiRole as any) ? (aiRole as StakeholderRole) : 'class_teacher'; // Default fallback
+        // Fallback mapper for AI output
+        const normalized = aiRole.toLowerCase();
+        if (normalized.includes('mother') || normalized.includes('mom')) return 'Mother';
+        if (normalized.includes('father') || normalized.includes('dad')) return 'Father';
+        if (normalized.includes('senco')) return 'SENCO';
+        if (normalized.includes('teacher')) return 'Class Teacher';
+        if (normalized.includes('social')) return 'Social Worker';
+        if (normalized.includes('doctor') || normalized.includes('pediatrician')) return 'Pediatrician';
+        
+        return 'Other'; // Default
     };
 
     const updateCandidate = (id: string, field: string, value: any) => {
@@ -66,11 +74,19 @@ export function StakeholderMapper({ analyses, onConfirm }: StakeholderMapperProp
         setCandidates(prev => [...prev, {
             id: `manual-${Date.now()}`,
             name: '',
-            role: 'class_teacher',
+            role: 'Class Teacher',
             contactInfo: { email: '' },
             consentStatus: 'pending',
             contributionStatus: 'not_requested'
         }]);
+    };
+
+    // Grouped Roles for easier selection
+    const roleGroups = {
+        "Family": ["Mother", "Father", "Step-Parent", "Legal Guardian", "Foster Carer", "GrandMother", "GrandFather", "Sister", "Brother", "Cousin"],
+        "Social": ["Friend", "Girlfriend", "BoyFriend"],
+        "School": ["Class Teacher", "Head Teacher", "SENCO", "Teacher"],
+        "Professional": ["Social Worker", "Pediatrician", "EPP Lead", "Other"]
     };
 
     return (
@@ -115,12 +131,17 @@ export function StakeholderMapper({ analyses, onConfirm }: StakeholderMapperProp
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="parent">Parent / Carer</SelectItem>
-                                            <SelectItem value="senco">SENCO</SelectItem>
-                                            <SelectItem value="social_worker">Social Worker</SelectItem>
-                                            <SelectItem value="class_teacher">Class Teacher</SelectItem>
-                                            <SelectItem value="pediatrician">Pediatrician</SelectItem>
+                                        <SelectContent className="max-h-[300px]">
+                                            {Object.entries(roleGroups).map(([group, roles]) => (
+                                                <React.Fragment key={group}>
+                                                    <SelectItem value={group} disabled className="font-bold text-xs opacity-100 bg-slate-50 text-slate-900 cursor-default py-1">
+                                                        --- {group} ---
+                                                    </SelectItem>
+                                                    {roles.map(role => (
+                                                        <SelectItem key={role} value={role} className="pl-6">{role}</SelectItem>
+                                                    ))}
+                                                </React.Fragment>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                 </div>

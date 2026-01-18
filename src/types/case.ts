@@ -15,7 +15,12 @@ export type CaseStatus =
 /**
  * Stakeholder Roles in an EHC Needs Assessment.
  */
-export type StakeholderRole = 'parent' | 'senco' | 'social_worker' | 'pediatrician' | 'class_teacher' | 'epp_lead';
+export type StakeholderRole = 
+    | 'Mother' | 'Father' | 'Step-Parent' | 'Legal Guardian' | 'Foster Carer' 
+    | 'GrandMother' | 'GrandFather' | 'Sister' | 'Brother' | 'Cousin'
+    | 'Friend' | 'Girlfriend' | 'BoyFriend'
+    | 'Teacher' | 'Class Teacher' | 'Head Teacher' | 'SENCO' 
+    | 'Social Worker' | 'Pediatrician' | 'EPP Lead' | 'Other';
 
 export interface Stakeholder {
     id: string; // User ID or external contact ID
@@ -52,17 +57,28 @@ export interface CaseContract {
 }
 
 /**
+ * Subtask for a work task
+ */
+export interface WorkSubTask {
+    id: string;
+    title: string;
+    completed: boolean;
+}
+
+/**
  * NEW: Work Schedule Task
  * A unit of work for the EPP.
  */
 export interface WorkTask {
     id: string;
     title: string; // e.g., "Interview SENCO"
-    type: 'admin' | 'consultation' | 'observation' | 'analysis' | 'drafting';
+    type: 'admin' | 'consultation' | 'observation' | 'analysis' | 'drafting' | 'review';
     status: 'pending' | 'scheduled' | 'done';
     dueDate?: string;
     linkedAppointmentId?: string; // If scheduled
     linkedEvidenceId?: string; // If done
+    notes?: string;
+    subtasks?: WorkSubTask[];
 }
 
 /**

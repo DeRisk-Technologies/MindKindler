@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Upload, FileText, Eye, Loader2, Plus, UserPlus } from 'lucide-react';
 import { DocumentUploader } from '@/components/dashboard/data-ingestion/document-uploader'; 
 import { Badge } from '@/components/ui/badge';
-import { collection, query, where, getDocs, updateDoc, doc, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, arrayUnion, getDoc } from 'firebase/firestore';
 import { getRegionalDb } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { formatDistanceToNow } from 'date-fns';
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Stakeholder } from '@/types/case';
+import { Stakeholder, StakeholderRole } from '@/types/case';
 
 export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: string }) {
     const { user } = useAuth();
@@ -25,10 +25,18 @@ export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: st
     // Stakeholder Dialog
     const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false);
     const [newStakeholder, setNewStakeholder] = useState<Partial<Stakeholder>>({
-        role: 'parent',
+        role: 'Mother',
         name: '',
         contactInfo: { email: '', phone: '' }
     });
+
+    // Grouped Roles for easier selection
+    const roleGroups = {
+        "Family": ["Mother", "Father", "Step-Parent", "Legal Guardian", "Foster Carer", "GrandMother", "GrandFather", "Sister", "Brother", "Cousin"],
+        "Social": ["Friend", "Girlfriend", "BoyFriend"],
+        "School": ["Class Teacher", "Head Teacher", "SENCO", "Teacher"],
+        "Professional": ["Social Worker", "Pediatrician", "EPP Lead", "Other"]
+    };
 
     useEffect(() => {
         async function fetchData() {
@@ -140,7 +148,7 @@ export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: st
                 {/* Stakeholders Manager */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">Stakeholders</CardTitle>
+                        <CardTitle className="text-sm font-medium">Stakeholders (360° View)</CardTitle>
                         <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
                             <DialogTrigger asChild>
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -148,7 +156,7 @@ export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: st
                                 </Button>
                             </DialogTrigger>
                             <DialogContent>
-                                <DialogHeader><DialogTitle>Add Stakeholder</DialogTitle></DialogHeader>
+                                <DialogHeader><DialogTitle>Add 360° Stakeholder</DialogTitle></DialogHeader>
                                 <div className="space-y-4 py-4">
                                     <div className="space-y-2">
                                         <Label>Role</Label>
@@ -157,11 +165,17 @@ export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: st
                                             onValueChange={v => setNewStakeholder({...newStakeholder, role: v as any})}
                                         >
                                             <SelectTrigger><SelectValue/></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="parent">Parent</SelectItem>
-                                                <SelectItem value="senco">SENCO</SelectItem>
-                                                <SelectItem value="social_worker">Social Worker</SelectItem>
-                                                <SelectItem value="pediatrician">Pediatrician</SelectItem>
+                                            <SelectContent className="max-h-[300px]">
+                                                {Object.entries(roleGroups).map(([group, roles]) => (
+                                                    <React.Fragment key={group}>
+                                                        <SelectItem value={group} disabled className="font-bold text-xs opacity-100 bg-slate-50 text-slate-900 cursor-default py-1">
+                                                            --- {group} ---
+                                                        </SelectItem>
+                                                        {roles.map(role => (
+                                                            <SelectItem key={role} value={role} className="pl-6">{role}</SelectItem>
+                                                        ))}
+                                                    </React.Fragment>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -179,6 +193,13 @@ export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: st
                                             onChange={e => setNewStakeholder({...newStakeholder, contactInfo: {...newStakeholder.contactInfo, email: e.target.value} as any})}
                                         />
                                     </div>
+                                    <div className="space-y-2">
+                                        <Label>Phone</Label>
+                                        <Input 
+                                            value={newStakeholder.contactInfo?.phone} 
+                                            onChange={e => setNewStakeholder({...newStakeholder, contactInfo: {...newStakeholder.contactInfo, phone: e.target.value} as any})}
+                                        />
+                                    </div>
                                 </div>
                                 <Button onClick={handleAddStakeholder}>Add Stakeholder</Button>
                             </DialogContent>
@@ -188,8 +209,12 @@ export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: st
                         <div className="space-y-3">
                             {stakeholders.map((sh) => (
                                 <div key={sh.id} className="text-sm border-b pb-2 last:border-0">
-                                    <p className="font-medium">{sh.name} <span className="text-xs text-muted-foreground">({sh.role})</span></p>
-                                    <p className="text-xs text-muted-foreground">{sh.contactInfo.email}</p>
+                                    <div className="flex justify-between">
+                                        <p className="font-medium">{sh.name}</p>
+                                        <Badge variant="secondary" className="text-[10px] h-5">{sh.role}</Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-1">{sh.contactInfo.email}</p>
+                                    {sh.contactInfo.phone && <p className="text-xs text-muted-foreground">{sh.contactInfo.phone}</p>}
                                     {sh.consentStatus === 'pending' && <Badge variant="outline" className="mt-1 text-[10px] text-amber-600 bg-amber-50">Consent Pending</Badge>}
                                 </div>
                             ))}
@@ -201,6 +226,3 @@ export function CaseFiles({ caseId, studentId }: { caseId: string, studentId: st
         </div>
     );
 }
-
-// Helper needed for getDoc import
-import { getDoc } from 'firebase/firestore';

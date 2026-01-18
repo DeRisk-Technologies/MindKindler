@@ -71,7 +71,9 @@ export function WiscVEntryForm({ studentId, onComplete }: WiscVEntryFormProps) {
                 totalScore: Math.round((vci + vsi + fri + wmi + psi) / 5), 
                 completedAt: new Date().toISOString(),
                 status: 'graded',
-                tenantId: user.tenantId || 'default' // Ensure tenantId is never undefined
+                tenantId: user.tenantId || 'default', // Ensure tenantId is never undefined
+                createdAt: serverTimestamp(),
+                createdBy: user.uid
             });
 
             toast({ title: "Assessment Saved", description: "WISC-V scores recorded." });
@@ -81,7 +83,7 @@ export function WiscVEntryForm({ studentId, onComplete }: WiscVEntryFormProps) {
             console.error("WISC-V Save Error:", e);
             // Show more detailed error if permission denied
             if (e.code === 'permission-denied') {
-                toast({ title: "Permission Denied", description: "You do not have write access to this region.", variant: "destructive" });
+                toast({ title: "Permission Denied", description: "You do not have write access to this region. Check if you are an Admin.", variant: "destructive" });
             } else {
                 toast({ title: "Error", description: "Failed to save assessment. Check console.", variant: "destructive" });
             }
